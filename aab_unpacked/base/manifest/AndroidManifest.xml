@@ -1,0 +1,881 @@
+
+üƒ
+9
+android*http://schemas.android.com/apk/res/androidmanifest"#packagecom.app.junctionRetailer"L
+*http://schemas.android.com/apk/res/androidversionCode10"(õÑÑ2:0
+"D
+*http://schemas.android.com/apk/res/androidversionName10.0(úÑÑ"R
+*http://schemas.android.com/apk/res/androidcompileSdkVersion34"(ÚäÑ2:0""(platformBuildVersionCode34"2:0""P
+*http://schemas.android.com/apk/res/androidcompileSdkVersionCodename14(ÛäÑ"(platformBuildVersionName14"2:0*
+
+     *∂
+≠uses-sdk"N
+*http://schemas.android.com/apk/res/androidminSdkVersion21"(åÑÑ2:0"Q
+*http://schemas.android.com/apk/res/androidtargetSdkVersion35"(ÑÑ2:0#*
+
+    	(*o
+guses-permission"T
+*http://schemas.android.com/apk/res/androidnameandroid.permission.INTERNET(ÉÄÑ*
+    B*m
+euses-permission"R
+*http://schemas.android.com/apk/res/androidnameandroid.permission.CAMERA(ÉÄÑ*
+    @*}
+uuses-permission"b
+*http://schemas.android.com/apk/res/androidname)android.permission.WRITE_EXTERNAL_STORAGE(ÉÄÑ*
+    P*|
+tuses-permission"a
+*http://schemas.android.com/apk/res/androidname(android.permission.READ_EXTERNAL_STORAGE(ÉÄÑ*
+    O*{
+suses-permission"`
+*http://schemas.android.com/apk/res/androidname'android.permission.ACCESS_FINE_LOCATION(ÉÄÑ*
+    N*}
+uuses-permission"b
+*http://schemas.android.com/apk/res/androidname)android.permission.ACCESS_COARSE_LOCATION(ÉÄÑ*
+    P*s
+kuses-permission"X
+*http://schemas.android.com/apk/res/androidnameandroid.permission.RECORD_AUDIO(ÉÄÑ*
+    F*|
+tuses-permission"a
+*http://schemas.android.com/apk/res/androidname(android.permission.MODIFY_AUDIO_SETTINGS(ÉÄÑ*
+    O*Ñ
+|uses-permission"i
+*http://schemas.android.com/apk/res/androidname0android.permission.DOWNLOAD_WITHOUT_NOTIFICATION(ÉÄÑ*
+
+    W*h
+`uses-feature"P
+*http://schemas.android.com/apk/res/androidnameandroid.hardware.camera(ÉÄÑ*
+    ;*r
+juses-feature"Z
+*http://schemas.android.com/apk/res/androidname!android.hardware.camera.autofocus(ÉÄÑ*
+    E*n
+fuses-feature"V
+*http://schemas.android.com/apk/res/androidnameandroid.hardware.audio.output(ÉÄÑ*
+    A*l
+duses-feature"T
+*http://schemas.android.com/apk/res/androidnameandroid.hardware.microphone(ÉÄÑ*
+
+    ?*{
+suses-permission"`
+*http://schemas.android.com/apk/res/androidname'android.permission.ACCESS_NETWORK_STATE(ÉÄÑ*
+    N*{
+suses-permission"`
+*http://schemas.android.com/apk/res/androidname'android.permission.CHANGE_NETWORK_STATE(ÉÄÑ*
+    N*|
+tuses-permission"a
+*http://schemas.android.com/apk/res/androidname(android.permission.MODIFY_AUDIO_SETTINGS(ÉÄÑ*
+    O*¡
+∏uses-permission"N
+*http://schemas.android.com/apk/res/androidmaxSdkVersion30"(ÒÑÑ2:0"U
+*http://schemas.android.com/apk/res/androidnameandroid.permission.BLUETOOTH(ÉÄÑ*
+    %*«
+æuses-permission"N
+*http://schemas.android.com/apk/res/androidmaxSdkVersion30" (ÒÑÑ2:0"[
+*http://schemas.android.com/apk/res/androidname"android.permission.BLUETOOTH_ADMIN(ÉÄÑ *
+    "%*x
+puses-permission"]
+*http://schemas.android.com/apk/res/androidname$android.permission.BLUETOOTH_CONNECT(ÉÄÑ#*
+    #K*y
+quses-permission"^
+*http://schemas.android.com/apk/res/androidname%android.permission.FOREGROUND_SERVICE(ÉÄÑ$*
+    $L*y
+quses-permission"^
+*http://schemas.android.com/apk/res/androidname%android.permission.POST_NOTIFICATIONS(ÉÄÑ%*
+    %L*{
+suses-permission"`
+*http://schemas.android.com/apk/res/androidname'android.permission.SCHEDULE_EXACT_ALARM(ÉÄÑ&*
+    &N*x
+puses-permission"]
+*http://schemas.android.com/apk/res/androidname$android.permission.READ_MEDIA_IMAGES(ÉÄÑ'*
+    'K*w
+ouses-permission"\
+*http://schemas.android.com/apk/res/androidname#android.permission.READ_MEDIA_VIDEO(ÉÄÑ(*
+    (J*w
+ouses-permission"\
+*http://schemas.android.com/apk/res/androidname#android.permission.READ_MEDIA_AUDIO(ÉÄÑ)*
+    )J*n
+fuses-permission"S
+*http://schemas.android.com/apk/res/androidnameandroid.permission.VIBRATE(ÉÄÑ**
+    *A*}
+uuses-permission"b
+*http://schemas.android.com/apk/res/androidname)android.permission.RECEIVE_BOOT_COMPLETED(ÉÄÑ+*
+    +P*x
+puses-permission"]
+*http://schemas.android.com/apk/res/androidname$android.permission.READ_MEDIA_IMAGES(ÉÄÑ,*
+    ,K*w
+ouses-permission"\
+*http://schemas.android.com/apk/res/androidname#android.permission.READ_MEDIA_VIDEO(ÉÄÑ-*
+    -J*w
+ouses-permission"\
+*http://schemas.android.com/apk/res/androidname#android.permission.READ_MEDIA_AUDIO(ÉÄÑ.*
+    .J*
+    2*p
+huses-permission"U
+*http://schemas.android.com/apk/res/androidnameandroid.permission.WAKE_LOCK(ÉÄÑ3*	 3C*
+    3w*x
+puses-permission"]
+*http://schemas.android.com/apk/res/androidname$android.permission.ACCESS_WIFI_STATE(ÉÄÑ4*
+    4K*u
+muses-permission"Z
+*http://schemas.android.com/apk/res/androidname!android.permission.WRITE_CALENDAR(ÉÄÑ5*
+    5H*t
+luses-permission"Y
+*http://schemas.android.com/apk/res/androidname android.permission.READ_CALENDAR(ÉÄÑ6*
+
+    6G*É
+˙queries*	
+        8*™
+°intent*
+            9*m
+eaction"[
+*http://schemas.android.com/apk/res/androidname"android.media.action.IMAGE_CAPTURE(ÉÄÑ:*	
+        :H9*	
+        ;*Ã
+√intent*
+            <*e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.VIEW(ÉÄÑ=*
+
+            =@*è
+Üdata"@
+*http://schemas.android.com/apk/res/androidmimeType*/*(¶ÄÑ"<
+*http://schemas.android.com/apk/res/androidscheme*(ßÄÑ?*	
+        A%<*	
+        B*î
+ãintent*
+            C*e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.VIEW(ÉÄÑD*
+
+            D@*n
+fcategory"Z
+*http://schemas.android.com/apk/res/androidname!android.intent.category.BROWSABLE(ÉÄÑF*
+
+            FI*œ
+∆data"<
+*http://schemas.android.com/apk/res/androidhostpay(®ÄÑ"@
+*http://schemas.android.com/apk/res/androidmimeType*/*(¶ÄÑ">
+*http://schemas.android.com/apk/res/androidschemeupi(ßÄÑH*	
+        K'C*	
+        L*¢
+ôintent*
+            M*e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.MAIN(ÉÄÑN*	
+        N@M*	
+        O*å
+Éintent*
+            P*e
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.SEND(ÉÄÑQ*
+
+            Q@*P
+Hdata"@
+*http://schemas.android.com/apk/res/androidmimeType*/*(¶ÄÑS*	
+        S+P*	
+        T*û
+ïintent*
+            U*a
+Yaction"O
+*http://schemas.android.com/apk/res/androidnamerzp.device_token.share(ÉÄÑV*	
+        V<U*	 W*	
+        WH*h
+`package"U
+*http://schemas.android.com/apk/res/androidnamecom.google.android.apps.maps(ÉÄÑX*
+    X?8*
+
+    Y*º
+≥uses-feature"V
+*http://schemas.android.com/apk/res/androidglEsVersion
+0x00020000"[(ÅÖÑ2:8ÄÄ"K
+*http://schemas.android.com/apk/res/androidrequiredtrue"[(éÖÑ2:@[*	 ]"*
+    ]s*~
+vuses-permission"c
+*http://schemas.android.com/apk/res/androidname*com.google.android.c2dm.permission.RECEIVE(ÉÄÑ^*
+    ^Q*õ
+íuses-permission"
+*http://schemas.android.com/apk/res/androidnameFcom.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE(ÉÄÑ_*
+    _m*{
+suses-permission"`
+*http://schemas.android.com/apk/res/androidname'com.google.android.gms.permission.AD_ID(ÉÄÑ`*	 `N*
+    `c*
+    a\*
+    b]*
+    c`*
+    db*
+    e*Ç
+zuses-permission"g
+*http://schemas.android.com/apk/res/androidname.com.sec.android.provider.badge.permission.READ(ÉÄÑf*
+    fU*É
+{uses-permission"h
+*http://schemas.android.com/apk/res/androidname/com.sec.android.provider.badge.permission.WRITE(ÉÄÑg*	 gV*
+    gg*}
+uuses-permission"b
+*http://schemas.android.com/apk/res/androidname)com.htc.launcher.permission.READ_SETTINGS(ÉÄÑh*
+    hP*
+wuses-permission"d
+*http://schemas.android.com/apk/res/androidname+com.htc.launcher.permission.UPDATE_SHORTCUT(ÉÄÑi*	 iR*
+    id*Ñ
+|uses-permission"i
+*http://schemas.android.com/apk/res/androidname0com.sonyericsson.home.permission.BROADCAST_BADGE(ÉÄÑj*
+    jW*â
+Äuses-permission"m
+*http://schemas.android.com/apk/res/androidname4com.sonymobile.home.permission.PROVIDER_INSERT_BADGE(ÉÄÑk*	 k[*
+    km*Ä
+xuses-permission"e
+*http://schemas.android.com/apk/res/androidname,com.anddoes.launcher.permission.UPDATE_COUNT(ÉÄÑl*	 lS*
+    lf*
+wuses-permission"d
+*http://schemas.android.com/apk/res/androidname+com.majeur.launcher.permission.UPDATE_BADGE(ÉÄÑm*	 mR*
+    mf*á
+uses-permission"l
+*http://schemas.android.com/apk/res/androidname3com.huawei.android.launcher.permission.CHANGE_BADGE(ÉÄÑn*
+    nZ*â
+Äuses-permission"m
+*http://schemas.android.com/apk/res/androidname4com.huawei.android.launcher.permission.READ_SETTINGS(ÉÄÑo*
+    o[*ä
+Åuses-permission"n
+*http://schemas.android.com/apk/res/androidname5com.huawei.android.launcher.permission.WRITE_SETTINGS(ÉÄÑp*	 p\*
+    pm*u
+muses-permission"Z
+*http://schemas.android.com/apk/res/androidname!android.permission.READ_APP_BADGE(ÉÄÑq*	 qH*
+    qZ*~
+vuses-permission"c
+*http://schemas.android.com/apk/res/androidname*com.oppo.launcher.permission.READ_SETTINGS(ÉÄÑr*
+    rQ*
+wuses-permission"d
+*http://schemas.android.com/apk/res/androidname+com.oppo.launcher.permission.WRITE_SETTINGS(ÉÄÑs*	 sR*
+    sd*Ñ
+|uses-permission"i
+*http://schemas.android.com/apk/res/androidname0me.everything.badger.permission.BADGE_COUNT_READ(ÉÄÑt*
+    tW*Ö
+}uses-permission"j
+*http://schemas.android.com/apk/res/androidname1me.everything.badger.permission.BADGE_COUNT_WRITE(ÉÄÑu*	 uX*
+    uï*}
+uuses-permission"b
+*http://schemas.android.com/apk/res/androidname)android.permission.READ_BASIC_PHONE_STATE(ÉÄÑv*
+
+    vP*ƒÔ
+∫Ôapplication"O
+*http://schemas.android.com/apk/res/androidallowBackupfalse"x(ÄÖÑ2:@ "n
+*http://schemas.android.com/apk/res/androidappComponentFactory&androidx.core.app.CoreComponentFactory(˙äÑ"p
+*http://schemas.android.com/apk/res/androidicon@mipmap/ic_launcher"x(ÇÄÑ2
+ÄÄ∏¯mipmap/ic_launcher0"k
+*http://schemas.android.com/apk/res/androidlabel@string/app_name"x(ÅÄÑ2
+üÄƒ¯string/app_name0"a
+*http://schemas.android.com/apk/res/androidname(com.app.junctionRetailer.MainApplication(ÉÄÑ"_
+*http://schemas.android.com/apk/res/androidrequestLegacyExternalStoragetrue"x(ÉåÑ2:@"u
+*http://schemas.android.com/apk/res/android	roundIcon@mipmap/ic_launcher"x(¨äÑ2
+ÄÄ∏¯mipmap/ic_launcher0"i
+*http://schemas.android.com/apk/res/androidtheme@style/AppTheme"x(ÄÄÑ2
+ãÄ»¯style/AppTheme0*	
+        Ä)*£
+ôactivity"£
+*http://schemas.android.com/apk/res/androidconfigChangesUkeyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"Å(üÄÑ2:8∞"L
+*http://schemas.android.com/apk/res/androidexportedtrue"Å(êÄÑ2:@"l
+*http://schemas.android.com/apk/res/androidlabel@string/app_name"Å(ÅÄÑ2
+üÄƒ¯string/app_name0"T
+*http://schemas.android.com/apk/res/android
+launchMode
+singleTask"Å(ùÄÑ2:0"^
+*http://schemas.android.com/apk/res/androidname%com.app.junctionRetailer.MainActivity(ÉÄÑ"Y
+*http://schemas.android.com/apk/res/androidscreenOrientationportrait"Å(ûÄÑ2:0"_
+*http://schemas.android.com/apk/res/androidwindowSoftInputModeadjustResize"Å(´ÑÑ2:8*
+            à8*‘
+ intent-filter*
+                â*f
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.MAIN(ÉÄÑä*
+
+                äD*n
+ecategory"Y
+*http://schemas.android.com/apk/res/androidname android.intent.category.LAUNCHER(ÉÄÑå*
+
+                åL*s
+jaction"`
+*http://schemas.android.com/apk/res/androidname'android.intent.action.DOWNLOAD_COMPLETE(ÉÄÑé*
+            éQâ*
+            è*ù
+ìintent-filter"N
+*http://schemas.android.com/apk/res/android
+autoVerifytrue"ê(ÓâÑ2:@*
+                ê6*f
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.VIEW(ÉÄÑë*
+
+                ëD*m
+dcategory"X
+*http://schemas.android.com/apk/res/androidnameandroid.intent.category.DEFAULT(ÉÄÑì*
+                ìK*o
+fcategory"Z
+*http://schemas.android.com/apk/res/androidname!android.intent.category.BROWSABLE(ÉÄÑî*
+
+                îM*õ
+ëdata"G
+*http://schemas.android.com/apk/res/androidhostg5ky7.app.link(®ÄÑ"@
+*http://schemas.android.com/apk/res/androidschemehttps(ßÄÑñ*
+                ò-*•
+õdata"Q
+*http://schemas.android.com/apk/res/androidhostg5ky7-alternate.app.link(®ÄÑ"@
+*http://schemas.android.com/apk/res/androidschemehttps(ßÄÑô*
+            õ-ê*	
+        úÅ*
+
+
+        ù*—
+«	meta-data"W
+*http://schemas.android.com/apk/res/androidnamecom.google.android.geo.API_KEY(ÉÄÑ"a
+*http://schemas.android.com/apk/res/androidvalue'AIzaSyD6BLhCe-6q5A0DMWadE6xDouCOTnxhJ_k(§ÄÑü*
+
+
+        °F*	
+        £º*ÿ
+Œ	meta-data"v
+*http://schemas.android.com/apk/res/androidname=com.dieam.reactnativepushnotification.notification_foreground(ÉÄÑ"I
+*http://schemas.android.com/apk/res/androidvaluetrue"§(§ÄÑ2:@§*	
+        ¶#*	
+        ßb*Ò
+Á	meta-data"q
+*http://schemas.android.com/apk/res/androidname8com.dieam.reactnativepushnotification.notification_color(ÉÄÑ"g
+*http://schemas.android.com/apk/res/androidresource@color/white"®(•ÄÑ2
+óÜî¯color/white0®*
+ ™.*
+
+
+        ™h*™
+†	meta-data"v
+*http://schemas.android.com/apk/res/androidname=com.google.firebase.messaging.default_notification_channel_id(ÉÄÑ"ö
+*http://schemas.android.com/apk/res/androidvalue'@string/default_notification_channel_id"¨(§ÄÑ22
+0ﬁÄƒ¯&string/default_notification_channel_id0>¨*
+
+
+        ÆF*ó
+çreceiver"Ä
+*http://schemas.android.com/apk/res/androidnameGcom.dieam.reactnativepushnotification.modules.RNPushNotificationActions(ÉÄÑ∞*	
+        ∞k*ô
+èreceiver"Ç
+*http://schemas.android.com/apk/res/androidnameIcom.dieam.reactnativepushnotification.modules.RNPushNotificationPublisher(ÉÄÑ±*	
+        ±m*ˇ
+ıreceiver"L
+*http://schemas.android.com/apk/res/androidexportedtrue"≤(êÄÑ2:@"ä
+*http://schemas.android.com/apk/res/androidnameQcom.dieam.reactnativepushnotification.modules.RNPushNotificationBootEventReceiver(ÉÄÑ*
+            ¥%*·
+◊intent-filter*
+                µ*p
+gaction"]
+*http://schemas.android.com/apk/res/androidname$android.intent.action.BOOT_COMPLETED(ÉÄÑ∂*
+                ∂N*s
+jaction"`
+*http://schemas.android.com/apk/res/androidname'android.intent.action.QUICKBOOT_POWERON(ÉÄÑ∑*
+                ∑Q*s
+jaction"`
+*http://schemas.android.com/apk/res/androidname'com.htc.intent.action.QUICKBOOT_POWERON(ÉÄÑ∏*
+            ∏Qµ*	
+        π≤*
+
+
+        ∫*⁄
+–service"M
+*http://schemas.android.com/apk/res/androidexportedfalse"º(êÄÑ2:@ "à
+*http://schemas.android.com/apk/res/androidnameOcom.dieam.reactnativepushnotification.modules.RNPushNotificationListenerService(ÉÄÑ*
+            æ&*æ
+¥intent-filter*
+                ø*o
+faction"\
+*http://schemas.android.com/apk/res/androidname#com.google.firebase.MESSAGING_EVENT(ÉÄÑ¿*
+            ¿Mø*	
+        ¡º*
+
+
+        ¬*Ã
+¬	meta-data"P
+*http://schemas.android.com/apk/res/androidnameio.branch.sdk.BranchKey(ÉÄÑ"c
+*http://schemas.android.com/apk/res/androidvalue)key_live_dCticEUncqHbZYEAzhS11pnfDEkLzyZZ(§ÄÑƒ*	
+        ∆H*≤
+®	meta-data"O
+*http://schemas.android.com/apk/res/androidnameio.branch.sdk.TestMode(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvaluefalse"«(§ÄÑ2:@ «*
+
+
+        …$*ù
+ìprovider"a
+*http://schemas.android.com/apk/res/androidauthorities!com.app.junctionRetailer.provider(òÄÑ"M
+*http://schemas.android.com/apk/res/androidexportedfalse"À(êÄÑ2:@ "W
+*http://schemas.android.com/apk/res/androidgrantUriPermissionstrue"À(õÄÑ2:@"c
+*http://schemas.android.com/apk/res/androidname*com.ReactNativeBlobUtil.Utils.FileProvider(ÉÄÑ*
+            œ0*Í
+‡	meta-data"\
+*http://schemas.android.com/apk/res/androidname#android.support.FILE_PROVIDER_PATHS(ÉÄÑ"u
+*http://schemas.android.com/apk/res/androidresource@xml/provider_paths"–(•ÄÑ2
+ÑÄ–¯xml/provider_paths0–*	
+        “9À*	
+        ”*ª
+±provider"a
+*http://schemas.android.com/apk/res/androidauthorities!com.app.junctionRetailer.provider(òÄÑ"M
+*http://schemas.android.com/apk/res/androidexportedfalse"‘(êÄÑ2:@ "W
+*http://schemas.android.com/apk/res/androidgrantUriPermissionstrue"‘(õÄÑ2:@"h
+*http://schemas.android.com/apk/res/androidname/com.vinzscam.reactnativefileviewer.FileProvider(ÉÄÑ*
+            ÿ0*É
+˘	meta-data"\
+*http://schemas.android.com/apk/res/androidname#android.support.FILE_PROVIDER_PATHS(ÉÄÑ"ç
+*http://schemas.android.com/apk/res/androidresource@xml/file_viewer_provider_paths"Ÿ(•ÄÑ2*
+(ÇÄ–¯xml/file_viewer_provider_paths0Ÿ*	
+        €E‘*	
+        ‹*ﬁ
+‘provider"a
+*http://schemas.android.com/apk/res/androidauthorities!com.app.junctionRetailer.provider(òÄÑ"M
+*http://schemas.android.com/apk/res/androidexportedfalse"›(êÄÑ2:@ "W
+*http://schemas.android.com/apk/res/androidgrantUriPermissionstrue"›(õÄÑ2:@"{
+*http://schemas.android.com/apk/res/androidnameBcom.reactnative.ivpusic.imagepicker.IvpusicImagePickerFileProvider(ÉÄÑ*
+            ·0*ì
+â	meta-data"\
+*http://schemas.android.com/apk/res/androidname#android.support.FILE_PROVIDER_PATHS(ÉÄÑ"ù
+*http://schemas.android.com/apk/res/androidresource'@xml/ivpusic_imagepicker_provider_paths"‚(•ÄÑ22
+0ÉÄ–¯&xml/ivpusic_imagepicker_provider_paths0‚*	
+        ‰M›*
+
+
+        Â*é
+Ñactivity"Y
+*http://schemas.android.com/apk/res/androidname com.yalantis.ucrop.UCropActivity(ÉÄÑ"ú
+*http://schemas.android.com/apk/res/androidtheme(@style/Theme.AppCompat.Light.NoActionBar"Á(ÄÄÑ23
+1£Ñ»¯'style/Theme.AppCompat.Light.NoActionBar0Á*
+ ÈG*	
+        ÈÕ*
+vservice"k
+*http://schemas.android.com/apk/res/androidname2com.wix.reactnativenotifications.core.ProxyService(ÉÄÑÍ*	
+        ÍU*Ÿ
+œservice"L
+*http://schemas.android.com/apk/res/androidexportedtrue"Î(êÄÑ2:@"z
+*http://schemas.android.com/apk/res/androidnameAcom.wix.reactnativenotifications.fcm.FcmInstanceIdListenerService(ÉÄÑ*
+            Ì%*Õ
+√intent-filter*
+                Ó*o
+faction"\
+*http://schemas.android.com/apk/res/androidname#com.google.firebase.MESSAGING_EVENT(ÉÄÑÔ*
+                ÔM*q
+haction"^
+*http://schemas.android.com/apk/res/androidname%com.google.firebase.INSTANCE_ID_EVENT(ÉÄÑ*
+            OÓ*	
+        ÒÎ*	
+        Ú*…
+øservice"M
+*http://schemas.android.com/apk/res/androidexportedfalse"Û(êÄÑ2:@ "Ä
+*http://schemas.android.com/apk/res/androidnameGcom.wix.reactnativenotifications.fcm.FcmInstanceIdRefreshHandlerService(ÉÄÑ"b
+*http://schemas.android.com/apk/res/android
+permission#android.permission.BIND_JOB_SERVICE(ÜÄÑÛ*
+
+
+        ˆG*ì
+âactivity"|
+*http://schemas.android.com/apk/res/androidconfigChanges.keyboard|keyboardHidden|orientation|screenSize"¯(üÄÑ2:8∞	"M
+*http://schemas.android.com/apk/res/androidexportedfalse"¯(êÄÑ2:@ "V
+*http://schemas.android.com/apk/res/androidnamecom.razorpay.CheckoutActivity(ÉÄÑ"t
+*http://schemas.android.com/apk/res/androidtheme@style/CheckoutTheme"¯(ÄÄÑ2
+°Ç»¯style/CheckoutTheme0*
+            ¸2*µ
+´intent-filter*
+                ˝*f
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.MAIN(ÉÄÑ˛*
+            ˛D˝*	
+        ˇ¯*
+
+
+        Ä*∏
+Æprovider"e
+*http://schemas.android.com/apk/res/androidauthorities%com.app.junctionRetailer.fileprovider(òÄÑ"M
+*http://schemas.android.com/apk/res/androidexportedfalse"Ç(êÄÑ2:@ "W
+*http://schemas.android.com/apk/res/androidgrantUriPermissionstrue"Ç(õÄÑ2:@"p
+*http://schemas.android.com/apk/res/androidname7com.reactnativecommunity.webview.RNCWebViewFileProvider(ÉÄÑ*
+            Ü0*Ù
+Í	meta-data"\
+*http://schemas.android.com/apk/res/androidname#android.support.FILE_PROVIDER_PATHS(ÉÄÑ"
+*http://schemas.android.com/apk/res/androidresource@xml/file_provider_paths"á(•ÄÑ2#
+!ÅÄ–¯xml/file_provider_paths0á*	
+        â>Ç*
+
+
+        ä*˜
+Ìservice"S
+*http://schemas.android.com/apk/res/androiddirectBootAwaretrue"å(ÖäÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"å(êÄÑ2:@ "q
+*http://schemas.android.com/apk/res/androidname8com.google.firebase.components.ComponentDiscoveryService(ÉÄÑ*
+            è&*ú
+í	meta-data"ó
+*http://schemas.android.com/apk/res/androidname^com.google.firebase.components:com.google.firebase.analytics.ktx.FirebaseAnalyticsKtxRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑê*
+            íT*è
+Ö	meta-data"ä
+*http://schemas.android.com/apk/res/androidnameQcom.google.firebase.components:com.google.firebase.ktx.FirebaseCommonKtxRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑì*
+            ïT*ï
+ã	meta-data"ê
+*http://schemas.android.com/apk/res/androidnameWcom.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑñ*
+            òT*©
+ü	meta-data"§
+*http://schemas.android.com/apk/res/androidnamekcom.google.firebase.components:com.google.firebase.analytics.connector.internal.AnalyticsConnectorRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑô*
+            õT*ë
+á	meta-data"å
+*http://schemas.android.com/apk/res/androidnameScom.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑú*
+            ûT*ù
+ì	meta-data"ò
+*http://schemas.android.com/apk/res/androidname_com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar(ÉÄÑ"k
+*http://schemas.android.com/apk/res/androidvalue1com.google.firebase.components.ComponentRegistrar(§ÄÑü*	
+        °Tå*
+
+
+        ¢*œ
+≈	meta-data"q
+*http://schemas.android.com/apk/res/androidname8com.bumptech.glide.integration.okhttp3.OkHttpGlideModule(ÉÄÑ"E
+*http://schemas.android.com/apk/res/androidvalueGlideModule(§ÄÑ§*
+
+
+        ¶**Ω	
+≥	provider"i
+*http://schemas.android.com/apk/res/androidauthorities)com.app.junctionRetailer.androidx-startup(òÄÑ"M
+*http://schemas.android.com/apk/res/androidexportedfalse"®(êÄÑ2:@ "`
+*http://schemas.android.com/apk/res/androidname'androidx.startup.InitializationProvider(ÉÄÑ*
+            ´&*º
+≤	meta-data"Y
+*http://schemas.android.com/apk/res/androidname com.razorpay.RazorpayInitializer(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvalueandroidx.startup(§ÄÑ¨*
+            Æ3*¿
+∂	meta-data"]
+*http://schemas.android.com/apk/res/androidname$androidx.work.WorkManagerInitializer(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvalueandroidx.startup(§ÄÑØ*
+            ±3*«
+Ω	meta-data"d
+*http://schemas.android.com/apk/res/androidname+androidx.emoji2.text.EmojiCompatInitializer(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvalueandroidx.startup(§ÄÑ≤*
+            ¥3* 
+¿	meta-data"g
+*http://schemas.android.com/apk/res/androidname.androidx.lifecycle.ProcessLifecycleInitializer(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvalueandroidx.startup(§ÄÑµ*	
+        ∑3®*
+
+
+        ∏*›
+”activity"M
+*http://schemas.android.com/apk/res/androidexportedfalse"∫(êÄÑ2:@ "T
+*http://schemas.android.com/apk/res/androidnamecom.razorpay.MagicXActivity(ÉÄÑ"°
+*http://schemas.android.com/apk/res/androidtheme+@android:style/Theme.Translucent.NoTitleBar"∫(ÄÄÑ25
+3êÄå*android:style/Theme.Translucent.NoTitleBar0∫*
+
+
+        ΩJ*«
+Ω	meta-data"Z
+*http://schemas.android.com/apk/res/androidname!com.razorpay.plugin.googlepay_all(ÉÄÑ"T
+*http://schemas.android.com/apk/res/androidvaluecom.razorpay.RzpGpayMerged(§ÄÑø*
+ ¡9*	
+        ¡h*∏
+Æuses-library"O
+*http://schemas.android.com/apk/res/androidnameorg.apache.http.legacy(ÉÄÑ"M
+*http://schemas.android.com/apk/res/androidrequiredfalse"¬(éÖÑ2:@ ¬*
+
+
+        ƒ'*€
+—activity"V
+*http://schemas.android.com/apk/res/androidexcludeFromRecentstrue"∆(óÄÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"∆(êÄÑ2:@ "z
+*http://schemas.android.com/apk/res/androidnameAcom.google.android.gms.auth.api.signin.internal.SignInHubActivity(ÉÄÑ"°
+*http://schemas.android.com/apk/res/androidtheme+@android:style/Theme.Translucent.NoTitleBar"∆(ÄÄÑ25
+3êÄå*android:style/Theme.Translucent.NoTitleBar0∆*	
+         J*	
+        Œ*æ
+¥service"L
+*http://schemas.android.com/apk/res/androidexportedtrue"œ(êÄÑ2:@"v
+*http://schemas.android.com/apk/res/androidname=com.google.android.gms.auth.api.signin.RevocationBoundService(ÉÄÑ"à
+*http://schemas.android.com/apk/res/android
+permissionIcom.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION(ÜÄÑ"X
+*http://schemas.android.com/apk/res/androidvisibleToInstantAppstrue"œ(±äÑ2:@œ*
+
+
+        ”2*ß
+ùreceiver"L
+*http://schemas.android.com/apk/res/androidexportedtrue"’(êÄÑ2:@"k
+*http://schemas.android.com/apk/res/androidname2com.google.firebase.iid.FirebaseInstanceIdReceiver(ÉÄÑ"f
+*http://schemas.android.com/apk/res/android
+permission'com.google.android.c2dm.permission.SEND(ÜÄÑ*
+            ÿJ*¡
+∑intent-filter*
+                Ÿ*r
+iaction"_
+*http://schemas.android.com/apk/res/androidname&com.google.android.c2dm.intent.RECEIVE(ÉÄÑ⁄*
+            ⁄PŸ*	
+        €’*	
+        ‹*	
+        ‡*Ï
+‚service"S
+*http://schemas.android.com/apk/res/androiddirectBootAwaretrue"·(ÖäÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"·(êÄÑ2:@ "o
+*http://schemas.android.com/apk/res/androidname6com.google.firebase.messaging.FirebaseMessagingService(ÉÄÑ*
+            ‰&*ï
+ãintent-filter"U
+*http://schemas.android.com/apk/res/androidpriority-500"Â(úÄÑ2:0å¸ˇˇˇˇˇˇˇ*
+                Â4*o
+faction"\
+*http://schemas.android.com/apk/res/androidname#com.google.firebase.MESSAGING_EVENT(ÉÄÑÊ*
+            ÊMÂ*	
+        Á·*
+
+
+        Ë*ı
+Îactivity"M
+*http://schemas.android.com/apk/res/androidexportedfalse"Í(êÄÑ2:@ "l
+*http://schemas.android.com/apk/res/androidname3com.google.android.gms.common.api.GoogleApiActivity(ÉÄÑ"°
+*http://schemas.android.com/apk/res/androidtheme+@android:style/Theme.Translucent.NoTitleBar"Í(ÄÄÑ25
+3êÄå*android:style/Theme.Translucent.NoTitleBar0Í*
+
+
+        ÌJ*∏
+Æreceiver"K
+*http://schemas.android.com/apk/res/androidenabledtrue"Ô(éÄÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"Ô(êÄÑ2:@ "r
+*http://schemas.android.com/apk/res/androidname9com.google.android.gms.measurement.AppMeasurementReceiver(ÉÄÑ*	
+        Ú&Ô*
+
+
+        Û*¢
+òservice"K
+*http://schemas.android.com/apk/res/androidenabledtrue"ı(éÄÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"ı(êÄÑ2:@ "q
+*http://schemas.android.com/apk/res/androidname8com.google.android.gms.measurement.AppMeasurementService(ÉÄÑı*	
+        ¯'*â
+ˇservice"K
+*http://schemas.android.com/apk/res/androidenabledtrue"˘(éÄÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"˘(êÄÑ2:@ "t
+*http://schemas.android.com/apk/res/androidname;com.google.android.gms.measurement.AppMeasurementJobService(ÉÄÑ"b
+*http://schemas.android.com/apk/res/android
+permission#android.permission.BIND_JOB_SERVICE(ÜÄÑ˘*
+
+
+        ˝G*·
+◊provider"m
+*http://schemas.android.com/apk/res/androidauthorities-com.app.junctionRetailer.firebaseinitprovider(òÄÑ"S
+*http://schemas.android.com/apk/res/androiddirectBootAwaretrue"ˇ(ÖäÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"ˇ(êÄÑ2:@ "L
+*http://schemas.android.com/apk/res/android	initOrder100"ˇ(öÄÑ2:0d"j
+*http://schemas.android.com/apk/res/androidname1com.google.firebase.provider.FirebaseInitProvider(ÉÄÑˇ*
+
+
+        Ñ&*á
+˝	meta-data"W
+*http://schemas.android.com/apk/res/androidnamecom.google.android.gms.version(ÉÄÑ"ñ
+*http://schemas.android.com/apk/res/androidvalue%@integer/google_play_services_version"Ü(§ÄÑ20
+.àÄ§¯$integer/google_play_services_version0>Ü*
+
+
+        àD*Â
+€service"M
+*http://schemas.android.com/apk/res/androidexportedfalse"ä(êÄÑ2:@ "Ñ
+*http://schemas.android.com/apk/res/androidnameKcom.google.android.datatransport.runtime.backends.TransportBackendDiscovery(ÉÄÑ*
+            å&*Õ
+√	meta-data"w
+*http://schemas.android.com/apk/res/androidname>backend:com.google.android.datatransport.cct.CctBackendFactory(ÉÄÑ"=
+*http://schemas.android.com/apk/res/androidvaluecct(§ÄÑç*	
+        è&ä*	
+        ê*Ô
+Âservice"M
+*http://schemas.android.com/apk/res/androidexportedfalse"ë(êÄÑ2:@ "í
+*http://schemas.android.com/apk/res/androidnameYcom.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService(ÉÄÑ"b
+*http://schemas.android.com/apk/res/android
+permission#android.permission.BIND_JOB_SERVICE(ÜÄÑ*	
+        îFë*
+
+
+        ï*á
+˝receiver"M
+*http://schemas.android.com/apk/res/androidexportedfalse"ó(êÄÑ2:@ "°
+*http://schemas.android.com/apk/res/androidnamehcom.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver(ÉÄÑó*
+
+
+        ô'*“
+»service"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"õ(ÖäÑ2:@ "†
+*http://schemas.android.com/apk/res/androidenabled)@bool/enable_system_alarm_service_default"õ(éÄÑ24
+2ÇÄê¯(bool/enable_system_alarm_service_default0"M
+*http://schemas.android.com/apk/res/androidexportedfalse"õ(êÄÑ2:@ "u
+*http://schemas.android.com/apk/res/androidname<androidx.work.impl.background.systemalarm.SystemAlarmService(ÉÄÑõ*	
+        ü'*≠
+£service"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"†(ÖäÑ2:@ "ú
+*http://schemas.android.com/apk/res/androidenabled'@bool/enable_system_job_service_default"†(éÄÑ22
+0ÑÄê¯&bool/enable_system_job_service_default0"L
+*http://schemas.android.com/apk/res/androidexportedtrue"†(êÄÑ2:@"q
+*http://schemas.android.com/apk/res/androidname8androidx.work.impl.background.systemjob.SystemJobService(ÉÄÑ"b
+*http://schemas.android.com/apk/res/android
+permission#android.permission.BIND_JOB_SERVICE(ÜÄÑ†*	
+        •G*’
+Àservice"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"¶(ÖäÑ2:@ "™
+*http://schemas.android.com/apk/res/androidenabled.@bool/enable_system_foreground_service_default"¶(éÄÑ29
+7ÉÄê¯-bool/enable_system_foreground_service_default0"M
+*http://schemas.android.com/apk/res/androidexportedfalse"¶(êÄÑ2:@ "n
+*http://schemas.android.com/apk/res/androidname5androidx.work.impl.foreground.SystemForegroundService(ÉÄÑ¶*
+
+
+        ™'*˝
+Ûreceiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"¨(ÖäÑ2:@ "K
+*http://schemas.android.com/apk/res/androidenabledtrue"¨(éÄÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"¨(êÄÑ2:@ "u
+*http://schemas.android.com/apk/res/androidname<androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver(ÉÄÑ¨*	
+        ∞'*†
+ñreceiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"±(ÖäÑ2:@ "L
+*http://schemas.android.com/apk/res/androidenabledfalse"±(éÄÑ2:@ "M
+*http://schemas.android.com/apk/res/androidexportedfalse"±(êÄÑ2:@ "á
+*http://schemas.android.com/apk/res/androidnameNandroidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy(ÉÄÑ*
+            µ&*‡
+÷intent-filter*
+                ∂*x
+oaction"e
+*http://schemas.android.com/apk/res/androidname,android.intent.action.ACTION_POWER_CONNECTED(ÉÄÑ∑*
+                ∑V*{
+raction"h
+*http://schemas.android.com/apk/res/androidname/android.intent.action.ACTION_POWER_DISCONNECTED(ÉÄÑ∏*
+            ∏Y∂*	
+        π±*	
+        ∫*Ü
+¸receiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"ª(ÖäÑ2:@ "L
+*http://schemas.android.com/apk/res/androidenabledfalse"ª(éÄÑ2:@ "M
+*http://schemas.android.com/apk/res/androidexportedfalse"ª(êÄÑ2:@ "Ö
+*http://schemas.android.com/apk/res/androidnameLandroidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy(ÉÄÑ*
+            ø&*»
+æintent-filter*
+                ¿*n
+eaction"[
+*http://schemas.android.com/apk/res/androidname"android.intent.action.BATTERY_OKAY(ÉÄÑ¡*
+                ¡L*m
+daction"Z
+*http://schemas.android.com/apk/res/androidname!android.intent.action.BATTERY_LOW(ÉÄÑ¬*
+            ¬K¿*	
+        √ª*	
+        ƒ*í
+àreceiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"≈(ÖäÑ2:@ "L
+*http://schemas.android.com/apk/res/androidenabledfalse"≈(éÄÑ2:@ "M
+*http://schemas.android.com/apk/res/androidexportedfalse"≈(êÄÑ2:@ "Ö
+*http://schemas.android.com/apk/res/androidnameLandroidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy(ÉÄÑ*
+            …&*‘
+ intent-filter*
+                 *t
+kaction"a
+*http://schemas.android.com/apk/res/androidname(android.intent.action.DEVICE_STORAGE_LOW(ÉÄÑÀ*
+                ÀR*s
+jaction"`
+*http://schemas.android.com/apk/res/androidname'android.intent.action.DEVICE_STORAGE_OK(ÉÄÑÃ*
+            ÃQ *	
+        Õ≈*	
+        Œ*¸
+Úreceiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"œ(ÖäÑ2:@ "L
+*http://schemas.android.com/apk/res/androidenabledfalse"œ(éÄÑ2:@ "M
+*http://schemas.android.com/apk/res/androidexportedfalse"œ(êÄÑ2:@ "Ñ
+*http://schemas.android.com/apk/res/androidnameKandroidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy(ÉÄÑ*
+            ”&*ø
+µintent-filter*
+                ‘*p
+gaction"]
+*http://schemas.android.com/apk/res/androidname$android.net.conn.CONNECTIVITY_CHANGE(ÉÄÑ’*
+            ’N‘*	
+        ÷œ*	
+        ◊*Ñ
+˙receiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"ÿ(ÖäÑ2:@ "L
+*http://schemas.android.com/apk/res/androidenabledfalse"ÿ(éÄÑ2:@ "M
+*http://schemas.android.com/apk/res/androidexportedfalse"ÿ(êÄÑ2:@ "u
+*http://schemas.android.com/apk/res/androidname<androidx.work.impl.background.systemalarm.RescheduleReceiver(ÉÄÑ*
+            ‹&*◊
+Õintent-filter*
+                ›*p
+gaction"]
+*http://schemas.android.com/apk/res/androidname$android.intent.action.BOOT_COMPLETED(ÉÄÑﬁ*
+                ﬁN*j
+aaction"W
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.TIME_SET(ÉÄÑﬂ*
+                ﬂH*r
+iaction"_
+*http://schemas.android.com/apk/res/androidname&android.intent.action.TIMEZONE_CHANGED(ÉÄÑ‡*
+            ‡P›*	
+        ·ÿ*	
+        ‚*·
+◊receiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"„(ÖäÑ2:@ "†
+*http://schemas.android.com/apk/res/androidenabled)@bool/enable_system_alarm_service_default"„(éÄÑ24
+2ÇÄê¯(bool/enable_system_alarm_service_default0"M
+*http://schemas.android.com/apk/res/androidexportedfalse"„(êÄÑ2:@ "Ä
+*http://schemas.android.com/apk/res/androidnameGandroidx.work.impl.background.systemalarm.ConstraintProxyUpdateReceiver(ÉÄÑ*
+            Á&*”
+…intent-filter*
+                Ë*É
+zaction"p
+*http://schemas.android.com/apk/res/androidname7androidx.work.impl.background.systemalarm.UpdateProxies(ÉÄÑÈ*
+            ÈaË*	
+        Í„*	
+        Î*¡
+∑receiver"T
+*http://schemas.android.com/apk/res/androiddirectBootAwarefalse"Ï(ÖäÑ2:@ "K
+*http://schemas.android.com/apk/res/androidenabledtrue"Ï(éÄÑ2:@"L
+*http://schemas.android.com/apk/res/androidexportedtrue"Ï(êÄÑ2:@"k
+*http://schemas.android.com/apk/res/androidname2androidx.work.impl.diagnostics.DiagnosticsReceiver(ÉÄÑ"V
+*http://schemas.android.com/apk/res/android
+permissionandroid.permission.DUMP(ÜÄÑ*
+            Ò:*»
+æintent-filter*
+                Ú*y
+paction"f
+*http://schemas.android.com/apk/res/androidname-androidx.work.diagnostics.REQUEST_DIAGNOSTICS(ÉÄÑÛ*
+            ÛWÚ*	
+        ÙÏ*
+
+
+        ı*†
+ñservice"S
+*http://schemas.android.com/apk/res/androiddirectBootAwaretrue"˜(ÖäÑ2:@"M
+*http://schemas.android.com/apk/res/androidexportedfalse"˜(êÄÑ2:@ "g
+*http://schemas.android.com/apk/res/androidname.androidx.room.MultiInstanceInvalidationService(ÉÄÑ˜*
+
+
+        ˙'*π
+Ø	meta-data"V
+*http://schemas.android.com/apk/res/androidnamecom.facebook.soloader.enabled(ÉÄÑ"J
+*http://schemas.android.com/apk/res/androidvaluefalse"¸(§ÄÑ2:@ ¸*
+
+
+        ˛$*∫	
+∞	activity"L
+*http://schemas.android.com/apk/res/androidexportedtrue"Ä(êÄÑ2:@"V
+*http://schemas.android.com/apk/res/androidnamecom.razorpay.DeeplinkActivity(ÉÄÑ"t
+*http://schemas.android.com/apk/res/androidtheme@style/CheckoutTheme"Ä(ÄÄÑ2
+°Ç»¯style/CheckoutTheme0*
+            É2*€
+—intent-filter*
+                Ñ*f
+]action"S
+*http://schemas.android.com/apk/res/androidnameandroid.intent.action.VIEW(ÉÄÑÖ*
+
+                ÖD*m
+dcategory"X
+*http://schemas.android.com/apk/res/androidnameandroid.intent.category.DEFAULT(ÉÄÑá*
+                áK*o
+fcategory"Z
+*http://schemas.android.com/apk/res/androidname!android.intent.category.BROWSABLE(ÉÄÑà*
+
+                àM*®
+ûdata"Q
+*http://schemas.android.com/apk/res/androidhostcom.app.junctionRetailer(®ÄÑ"C
+*http://schemas.android.com/apk/res/androidschemerazorpay(ßÄÑä*
+                å0*¶
+údata"R
+*http://schemas.android.com/apk/res/androidhostpg-router.dev.razorpay.in(®ÄÑ"@
+*http://schemas.android.com/apk/res/androidschemehttps(ßÄÑç*
+            è-Ñ*	
+        êÄ*
+    ëx*
+
+í

@@ -1,0 +1,57 @@
+
+£
+;
+android*http://schemas.android.com/apk/res/android	 
+4
+app'http://schemas.android.com/apk/res-auto	 RelativeLayout"M
+*http://schemas.android.com/apk/res/android
+visibilitygone"	(Ü„2:0"`
+*http://schemas.android.com/apk/res/androidlayout_widthmatch_parent"	(ô„2:0ÿÿÿÿÿÿÿÿÿ"a
+*http://schemas.android.com/apk/res/androidlayout_heightmatch_parent"	(õ„2:0ÿÿÿÿÿÿÿÿÿ*â
+ÙTextView"Zstyle@style/ucrop_TextViewWidgetText"2,
+*öˆÈøstyle/ucrop_TextViewWidgetText0ÿÿ"q
+*http://schemas.android.com/apk/res/androidid@+id/text_view_rotate"(Ğ„2
+Î„ øid/text_view_rotate0*±
+¨:com.yalantis.ucrop.view.widget.HorizontalProgressWheelView"…
+*http://schemas.android.com/apk/res/androidlayout_toEndOf@+id/wrapper_reset_rotate"(¸‡„2#
+!‹… øid/wrapper_reset_rotate0"{
+*http://schemas.android.com/apk/res/androidlayout_below@+id/text_view_rotate"(…ƒ„2
+Î„ øid/text_view_rotate0"
+*http://schemas.android.com/apk/res/androidlayout_toStartOf@+id/wrapper_rotate_by_angle"(·‡„2&
+$Œ… øid/wrapper_rotate_by_angle0"`
+*http://schemas.android.com/apk/res/androidlayout_widthmatch_parent"(ô„2:0ÿÿÿÿÿÿÿÿÿ"a
+*http://schemas.android.com/apk/res/androidlayout_heightmatch_parent"(õ„2:0ÿÿÿÿÿÿÿÿÿ"Œ
+*http://schemas.android.com/apk/res/androidlayout_toLeftOf@+id/wrapper_rotate_by_angle"(‚ƒ„2&
+$Œ… øid/wrapper_rotate_by_angle0"‡
+*http://schemas.android.com/apk/res/androidlayout_toRightOf@+id/wrapper_reset_rotate"(ƒƒ„2#
+!‹… øid/wrapper_reset_rotate0"w
+*http://schemas.android.com/apk/res/androidid@+id/rotate_scroll_wheel"(Ğ„2"
+ Ìƒ øid/rotate_scroll_wheel0@*Î
+ÅFrameLayout"
+*http://schemas.android.com/apk/res/android
+background?attr/selectableItemBackground"(Ô„2+
+)ğ‡Œøattr/selectableItemBackground0"X
+*http://schemas.android.com/apk/res/androidlayout_centerVerticaltrue"(‘ƒ„2:@"\style @style/ucrop_WrapperRotateButton"2-
++øˆÈøstyle/ucrop_WrapperRotateButton0ÿÿ"y
+*http://schemas.android.com/apk/res/androidid@+id/wrapper_reset_rotate"(Ğ„2#
+!‹… øid/wrapper_reset_rotate0*ñ
+è	ImageView"\style @style/ucrop_ImageViewWidgetIcon""2-
++óˆÈøstyle/ucrop_ImageViewWidgetIcon0ÿÿ"}
+'http://schemas.android.com/apk/res-auto	srcCompat@drawable/ucrop_ic_reset""(§ˆŒø2#
+!½ƒœødrawable/ucrop_ic_reset0"8=*Ÿ
+–FrameLayout"
+*http://schemas.android.com/apk/res/android
+background?attr/selectableItemBackground",(Ô„2+
+)ğ‡Œøattr/selectableItemBackground0"X
+*http://schemas.android.com/apk/res/androidlayout_centerVerticaltrue",(‘ƒ„2:@"X
+*http://schemas.android.com/apk/res/androidlayout_alignParentEndtrue",(¼‡„2:@"\style @style/ucrop_WrapperRotateButton",2-
++øˆÈøstyle/ucrop_WrapperRotateButton0ÿÿ"Z
+*http://schemas.android.com/apk/res/androidlayout_alignParentRighttrue",(ƒ„2:@"
+*http://schemas.android.com/apk/res/androidid@+id/wrapper_rotate_by_angle",(Ğ„2&
+$Œ… øid/wrapper_rotate_by_angle0*†
+ı	ImageView"y
+*http://schemas.android.com/apk/res/androidsrc@drawable/ucrop_ic_angle"1(™‚„2#
+!·ƒœødrawable/ucrop_ic_angle0"–
+*http://schemas.android.com/apk/res/androidtint&@color/ucrop_color_widget_rotate_angle"1(¡‚„21
+/††”ø%color/ucrop_color_widget_rotate_angle0"\style @style/ucrop_ImageViewWidgetIcon"12-
++óˆÈøstyle/ucrop_ImageViewWidgetIcon0ÿÿ1E,=	 

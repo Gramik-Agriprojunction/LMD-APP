@@ -1,0 +1,18 @@
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/nkf-0.2.0/ext/nkf
+/opt/homebrew/opt/ruby/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20240903-32716-u3felo sitelibdir\=./.gem.20240903-32716-u3felo clean
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20240903-32716-u3felo sitelibdir\=./.gem.20240903-32716-u3felo
+compiling nkf.c
+linking shared-object nkf.bundle
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20240903-32716-u3felo sitelibdir\=./.gem.20240903-32716-u3felo install
+/usr/bin/install -c -m 0755 nkf.bundle ./.gem.20240903-32716-u3felo
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20240903-32716-u3felo sitelibdir\=./.gem.20240903-32716-u3felo clean

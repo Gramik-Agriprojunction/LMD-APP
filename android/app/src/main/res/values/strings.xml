@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Gramik LMD</string>
+    <string name="appAuthRedirectScheme">com.app.lmd</string>
+    <string name="default_notification_channel_id">default-channel-id</string>
+</resources>

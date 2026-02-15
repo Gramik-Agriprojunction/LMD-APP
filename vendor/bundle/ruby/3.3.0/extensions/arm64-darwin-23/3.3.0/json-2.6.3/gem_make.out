@@ -1,0 +1,16 @@
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/json-2.6.3/ext/json
+/opt/homebrew/opt/ruby/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/json-2.6.3/ext/json
+make DESTDIR\= sitearchdir\=./.gem.20240903-31529-xkyxab sitelibdir\=./.gem.20240903-31529-xkyxab clean
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/json-2.6.3/ext/json
+make DESTDIR\= sitearchdir\=./.gem.20240903-31529-xkyxab sitelibdir\=./.gem.20240903-31529-xkyxab
+make: Nothing to be done for `all'.
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/json-2.6.3/ext/json
+make DESTDIR\= sitearchdir\=./.gem.20240903-31529-xkyxab sitelibdir\=./.gem.20240903-31529-xkyxab install
+
+current directory: /Users/eighteenpixels/Desktop/eventapp/vendor/bundle/ruby/3.3.0/gems/json-2.6.3/ext/json
+make DESTDIR\= sitearchdir\=./.gem.20240903-31529-xkyxab sitelibdir\=./.gem.20240903-31529-xkyxab clean

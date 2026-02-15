@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/Users/brijesh/Desktop/Projects/GramikLMD/android/app"
+    name=":app"
+    type="APP"
+    maven="PlasticsHub:app:"
+    gradle="7.3.1"
+    buildFolder="build"
+    bootClassPath="/Users/brijesh/Library/Android/sdk/platforms/android-34/android.jar:/Users/brijesh/Library/Android/sdk/build-tools/30.0.3/core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-34"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

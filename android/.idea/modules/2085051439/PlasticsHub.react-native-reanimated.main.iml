@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/a1cbaa4881ae7edb30cf155abed25045/transformed/jetified-fbjni-0.3.0/prefab/modules/fbjni/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/a1cbaa4881ae7edb30cf155abed25045/transformed/jetified-fbjni-0.3.0/prefab/modules/fbjni/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/b6d2a3c35bfcf221bbdbd62d7a1b991b/transformed/jetified-hermes-android-0.72.15-debug/prefab/modules/libhermes/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/b6d2a3c35bfcf221bbdbd62d7a1b991b/transformed/jetified-hermes-android-0.72.15-debug/prefab/modules/libhermes/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/folly_runtime/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/folly_runtime/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/glog/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/glog/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/hermes_executor/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/hermes_executor/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/jsi/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/jsi/include" type="native-header-root" />
+    </content>
+    <content url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/reactnativejni/include">
+      <sourceFolder url="file://$USER_HOME$/.gradle/caches/transforms-3/c1f1d6fda4581af02930a9da3ce94607/transformed/jetified-react-android-0.72.15-debug/prefab/modules/reactnativejni/include" type="native-header-root" />
+    </content>
+    <content url="file://$MODULE_DIR$/../../../../node_modules/react-native-reanimated">
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native-reanimated" type="native-Source-root" />
+      <excludeFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native-reanimated/android/.cxx" />
+      <excludeFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native-reanimated/android/.externalNativeBuild" />
+    </content>
+    <content url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactAndroid/src/main/jni/react/turbomodule">
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactAndroid/src/main/jni/react/turbomodule" type="native-header-root" />
+    </content>
+    <content url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon">
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/callinvoker" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/runtimeexecutor" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/react/renderer/componentregistry" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/react/renderer/core" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/react/renderer/graphics/platform/cxx" type="native-header-root" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../../node_modules/react-native/ReactCommon/yoga" type="native-header-root" />
+    </content>
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
