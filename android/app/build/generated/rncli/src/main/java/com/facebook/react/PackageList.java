@@ -23,8 +23,6 @@ import org.reactnative.maskedview.RNCMaskedViewPackage;
 import com.reactnativecommunity.picker.RNCPickerPackage;
 // @react-native-voice/voice
 import com.wenkesj.voice.VoicePackage;
-// react-native-audio-jack
-import com.robinpowered.AudioJack.AudioJackPackage;
 // react-native-blob-util
 import com.ReactNativeBlobUtil.ReactNativeBlobUtilPackage;
 // react-native-calendar-events
@@ -47,8 +45,6 @@ import com.github.douglasjunior.reactNativeGetLocation.ReactNativeGetLocationPac
 import com.reactnative.ivpusic.imagepicker.PickerPackage;
 // react-native-linear-gradient
 import com.BV.LinearGradient.LinearGradientPackage;
-// react-native-maps
-import com.rnmaps.maps.MapsPackage;
 // react-native-permissions
 import com.zoontek.rnpermissions.RNPermissionsPackage;
 // react-native-push-notification
@@ -122,7 +118,6 @@ public class PackageList {
       new RNCMaskedViewPackage(),
       new RNCPickerPackage(),
       new VoicePackage(),
-      new AudioJackPackage(),
       new ReactNativeBlobUtilPackage(),
       new RNCalendarEventsPackage(),
       new DatePickerPackage(),
@@ -134,7 +129,6 @@ public class PackageList {
       new ReactNativeGetLocationPackage(),
       new PickerPackage(),
       new LinearGradientPackage(),
-      new MapsPackage(),
       new RNPermissionsPackage(),
       new ReactNativePushNotificationPackage(),
       new RazorpayPackage(),

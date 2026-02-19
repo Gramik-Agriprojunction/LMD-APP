@@ -13,30 +13,6 @@ PODS:
     - ReactCommon/turbomodule/core (= 0.72.15)
   - fmt (6.2.1)
   - glog (0.3.5)
-  - Google-Maps-iOS-Utils (4.2.2):
-    - Google-Maps-iOS-Utils/Clustering (= 4.2.2)
-    - Google-Maps-iOS-Utils/Geometry (= 4.2.2)
-    - Google-Maps-iOS-Utils/GeometryUtils (= 4.2.2)
-    - Google-Maps-iOS-Utils/Heatmap (= 4.2.2)
-    - Google-Maps-iOS-Utils/QuadTree (= 4.2.2)
-    - GoogleMaps (~> 7.3)
-  - Google-Maps-iOS-Utils/Clustering (4.2.2):
-    - Google-Maps-iOS-Utils/QuadTree
-    - GoogleMaps (~> 7.3)
-  - Google-Maps-iOS-Utils/Geometry (4.2.2):
-    - GoogleMaps (~> 7.3)
-  - Google-Maps-iOS-Utils/GeometryUtils (4.2.2):
-    - GoogleMaps (~> 7.3)
-  - Google-Maps-iOS-Utils/Heatmap (4.2.2):
-    - Google-Maps-iOS-Utils/QuadTree
-    - GoogleMaps (~> 7.3)
-  - Google-Maps-iOS-Utils/QuadTree (4.2.2):
-    - GoogleMaps (~> 7.3)
-  - GoogleMaps (7.4.0):
-    - GoogleMaps/Maps (= 7.4.0)
-  - GoogleMaps/Base (7.4.0)
-  - GoogleMaps/Maps (7.4.0):
-    - GoogleMaps/Base
   - hermes-engine (0.72.15):
     - hermes-engine/Pre-built (= 0.72.15)
   - hermes-engine/Pre-built (0.72.15)
@@ -366,8 +342,6 @@ PODS:
   - react-native-geolocation (3.4.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - react-native-maps (1.8.3):
-    - React-Core
   - react-native-razorpay (2.3.1):
     - razorpay-pod (= 1.5.0)
     - React
@@ -516,17 +490,15 @@ PODS:
     - React-Core
   - RNGestureHandler (2.12.0):
     - React-Core
-  - RNImageCropPicker (0.51.1):
-    - RCT-Folly (= 2021.07.22.00)
+  - RNImageCropPicker (0.40.3):
     - React-Core
     - React-RCTImage
-    - RNImageCropPicker/QBImagePickerController (= 0.51.1)
-    - TOCropViewController (~> 2.8.0)
-  - RNImageCropPicker/QBImagePickerController (0.51.1):
-    - RCT-Folly (= 2021.07.22.00)
+    - RNImageCropPicker/QBImagePickerController (= 0.40.3)
+    - TOCropViewController
+  - RNImageCropPicker/QBImagePickerController (0.40.3):
     - React-Core
     - React-RCTImage
-    - TOCropViewController (~> 2.8.0)
+    - TOCropViewController
   - RNPDF (0.14.0):
     - React
   - RNPermissions (4.1.5):
@@ -575,7 +547,7 @@ PODS:
   - TextToSpeech (4.1.1):
     - React-Core
   - Toast (4.0.0)
-  - TOCropViewController (2.8.0)
+  - TOCropViewController (3.1.1)
   - Yoga (1.14.0)
 
 DEPENDENCIES:
@@ -585,8 +557,6 @@ DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - FBReactNativeSpec (from `../node_modules/react-native/React/FBReactNativeSpec`)
   - glog (from `../node_modules/react-native/third-party-podspecs/glog.podspec`)
-  - Google-Maps-iOS-Utils
-  - GoogleMaps
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - libevent (~> 2.1.12)
   - RCT-Folly (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
@@ -609,7 +579,6 @@ DEPENDENCIES:
   - react-native-date-picker (from `../node_modules/react-native-date-picker`)
   - react-native-document-picker (from `../node_modules/react-native-document-picker`)
   - "react-native-geolocation (from `../node_modules/@react-native-community/geolocation`)"
-  - react-native-maps (from `../node_modules/react-native-maps`)
   - react-native-razorpay (from `../node_modules/react-native-razorpay`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - react-native-simple-toast (from `../node_modules/react-native-simple-toast`)
@@ -656,8 +625,6 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - fmt
-    - Google-Maps-iOS-Utils
-    - GoogleMaps
     - libevent
     - libwebp
     - razorpay-core-pod
@@ -721,8 +688,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-document-picker"
   react-native-geolocation:
     :path: "../node_modules/@react-native-community/geolocation"
-  react-native-maps:
-    :path: "../node_modules/react-native-maps"
   react-native-razorpay:
     :path: "../node_modules/react-native-razorpay"
   react-native-safe-area-context:
@@ -816,8 +781,6 @@ SPEC CHECKSUMS:
   FBReactNativeSpec: e03b22fbf7017a6f76641ea4472e73c915dcdda7
   fmt: ff9d55029c625d3757ed641535fd4a75fedc7ce9
   glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
-  Google-Maps-iOS-Utils: f77eab4c4326d7e6a277f8e23a0232402731913a
-  GoogleMaps: 032f676450ba0779bd8ce16840690915f84e57ac
   hermes-engine: 5b340c6a5affbf3aba22185be41563bbb2426654
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
@@ -842,7 +805,6 @@ SPEC CHECKSUMS:
   react-native-date-picker: 2eca217a8fb09c517f5bb6b23978718c6cec59ec
   react-native-document-picker: 9f13a38d0d5938086406fdaf99803b7593b417fd
   react-native-geolocation: 9867b4b00c5788b8bfd2c07468631ed1c165a8c4
-  react-native-maps: 76ee3d7e57579486eaf19480e69f3ed3ba496be8
   react-native-razorpay: 376ba84b614ef8a22b5701df4ffee10f4c116d14
   react-native-safe-area-context: 758e894ca5a9bd1868d2a9cfbca7326a2b6bf9dc
   react-native-simple-toast: 59d8b58998dac9f063b46d95f9fd7fd7caab6101
@@ -877,7 +839,7 @@ SPEC CHECKSUMS:
   RNFileViewer: 4b5d83358214347e4ab2d4ca8d5c1c90d869e251
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNGestureHandler: 025e54543330650898436f429d9220ebf64d22f5
-  RNImageCropPicker: 191f3165c8adef5b5786bf52803e222fdf305c84
+  RNImageCropPicker: 2c53b596a1af85eacba1048e996f916933021bbb
   RNPDF: 3034363e634140278083f16ccba4abad34552724
   RNPermissions: 4f7b81b0d457c8ec4e892cc36ef2376734a4b22c
   RNReanimated: eadb0edc36d21c3743f92827475f5f8496634d8a
@@ -888,9 +850,9 @@ SPEC CHECKSUMS:
   SocketRocket: f32cd54efbe0f095c4d7594881e52619cfe80b17
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b
   Toast: 91b396c56ee72a5790816f40d3a94dd357abc196
-  TOCropViewController: 797deaf39c90e6e9ddd848d88817f6b9a8a09888
+  TOCropViewController: 9002a9b12d8104d7478cdc306d80f0efea7fe2c5
   Yoga: 6f5ab94cd8b1ecd04b6e973d0bc583ede2a598cc
 
-PODFILE CHECKSUM: e4fc5037e4cb1e44c660041316a1ef1d9e015b6a
+PODFILE CHECKSUM: 12c4a4e18e675f0f5115e934155c705ff539a309
 
 COCOAPODS: 1.16.2

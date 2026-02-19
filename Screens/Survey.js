@@ -9,566 +9,1260 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  TextInput,
+  ActivityIndicator,
+  Platform,
   Image,
 } from 'react-native';
+import ActionSheet from 'react-native-actionsheet';
+import ImagePicker from 'react-native-image-crop-picker';
+import Toast from 'react-native-simple-toast';
+import constants from './constants';
+import { StackActions, NavigationActions } from 'react-navigation';
+
+const { width: W } = Dimensions.get('window');
 
 const THEME = {
   green: '#1C8A62',
-  greenDark: '#0F7451',
-  bg: '#F3F5F7',
-  paper: '#F2EDE2',
-  card: '#EFE7D9',
-  border: 'rgba(17,24,39,0.10)',
+  orange: '#F68A20',
+  bg: '#F7F9FA',
+  card: '#FFFFFF',
+  soft: '#F3F6F7',
+  border: '#E6ECEE',
   text: '#111827',
   subText: '#6B7280',
-  white: '#FFFFFF',
-  chip: '#E9E3D6',
-  chipBorder: 'rgba(17,24,39,0.10)',
-  accent: '#E5A84A',
+  muted: '#9CA3AF',
+  danger: '#D64545',
 };
 
-const W = Dimensions.get('window').width;
+/** ---------- Small UI components ---------- */
+const Section = ({ title, icon, children }) => (
+  <View style={styles.card}>
+    <View style={styles.cardHead}>
+      <View style={styles.cardHeadLeft}>
+        {icon ? <Text style={styles.cardHeadEmoji}>{icon}</Text> : null}
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+    </View>
+    {children}
+  </View>
+);
 
+const Chip = ({ label, active, onPress, icon }) => (
+  <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={[styles.chip, active ? styles.chipOn : null]}>
+    {icon ? <Text style={[styles.chipEmoji, active ? { opacity: 1 } : { opacity: 0.75 }]}>{icon}</Text> : null}
+    <Text style={[styles.chipText, active ? styles.chipTextOn : null]} numberOfLines={1}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+const Header = ({ farmer, onBack, initials, maskPhone }) => (
+  <View style={styles.headerWrap}>
+    <SafeAreaView style={styles.headerSafe}>
+      <View style={styles.headerRowNew}>
+        <TouchableOpacity onPress={onBack} style={styles.headerBackBtn} activeOpacity={0.85}>
+          <Image source={require('./assets/back.png')} style={styles.backImg} resizeMode="contain" />
+        </TouchableOpacity>
+
+        <View style={styles.headerInfo}>
+          <View style={styles.headerAvatar}>
+            {farmer?.image ? (
+              <Image source={{ uri: String(farmer.image) }} style={styles.headerAvatarImg} />
+            ) : (
+              <Text style={styles.headerAvatarTxt}>{initials(farmer?.name)}</Text>
+            )}
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {farmer?.name || '-'}
+            </Text>
+            <Text style={styles.headerPhone} numberOfLines={1}>
+              {maskPhone(farmer?.phone)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ width: 44 }} />
+      </View>
+    </SafeAreaView>
+  </View>
+);
+
+const SeasonCropRow = ({ item, onChangeAcres, onChangeStage, onRemove }) => (
+  <View style={styles.cropRow}>
+    <View style={styles.cropLeft}>
+      <View style={styles.cropIconWrap}>
+        <Text style={styles.cropEmoji}>{item?.icon || '🌾'}</Text>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cropName} numberOfLines={1}>
+          {item?.label || 'Crop'}
+        </Text>
+
+        <View style={styles.cropInlineFields}>
+          <TextInput
+            value={String(item?.acres || '')}
+            onChangeText={onChangeAcres}
+            placeholder="Acres"
+            placeholderTextColor={THEME.muted}
+            keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+            style={styles.cropMiniInput}
+          />
+
+          <TextInput
+            value={String(item?.stage || '')}
+            onChangeText={onChangeStage}
+            placeholder="Stage"
+            placeholderTextColor={THEME.muted}
+            style={[styles.cropMiniInput, { flex: 1, marginLeft: 8 }]}
+          />
+        </View>
+      </View>
+    </View>
+
+    <TouchableOpacity onPress={onRemove} style={styles.iconBtn} activeOpacity={0.85}>
+      <Text style={[styles.iconBtnTxt, { color: THEME.danger }]}>✕</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+/** ---------- Main Screen ---------- */
 export default class Survey extends Component {
-  state = {
-    farmer: { name: 'Ramesh Kumar', phone: '9923 569 XXX' }, // replace from API
-    payment: 1800, // replace from API
-    currentSeason: 'Rabi Season',
-    currentCrops: [
-      { id: 'dhan', label: 'Dhan', sub: '3 Acres', icon: '🌾' },
-      { id: 'makka', label: 'Makka', sub: 'Silking', icon: '🌽' },
-      { id: 'lehsun', label: 'Lehsun', sub: '1 Acre', icon: '🧄' },
-    ],
-    problems: [
-      { id: 'pila', label: 'Pila pan', icon: '🌼' },
-      { id: 'sukha', label: 'Sukha / Jalna', icon: '🔥' },
-      { id: 'keeda', label: 'Keeda', icon: '🐛' },
-    ],
-    selectedProblem: { id: 'fungal', label: 'Fungal Daag', icon: '🍃' }, // replace from API
-    rabi: [
-      { id: 'gehu', label: 'Gehu', acres: '2 Acres', stage: 'Grain Filling', icon: '🌾' },
-      { id: 'sarson', label: 'Sarson', acres: '1 Acre', stage: 'Flowering', icon: '🌼' },
-    ],
-    kharif: [
-      { id: 'dhan2', label: 'Dhan', acres: '3 Acres', stage: 'Ready', icon: '🌾' },
-      { id: 'makka2', label: 'Makka', acres: '4 Acre', stage: 'Flowering', icon: '🌽' },
-    ],
-    cattle: { cows: 3, buffalo: 2, milk: 12 },
-    fodder: [
-      { id: 'green', label: 'Green Fodder', icon: '🌿' },
-      { id: 'bhusa', label: 'Bhusa', icon: '🪵' },
-      { id: 'mix', label: 'Mix', icon: '🥣' },
-    ],
-    expense: [
-      { id: 'spray', label: 'Spray', icon: '🧴' },
-      { id: 'beej', label: 'Beej', icon: '🌱' },
-      { id: 'khaad', label: 'Khaad', icon: '🧺' },
-      { id: 'storage', label: 'Storage', icon: '📦' },
-    ],
-    notifCount: 12,
-    activeTab: 'home',
-  };
+  constructor(props) {
+    super(props);
+    this.state = {
+      isLoading: false,
+      isSubmitting: false,
 
-  onMenu = () => {};
-  onChangeFarmer = () => {};
-  onAddCrop = () => {};
-  onTakePhoto = () => {};
-  onAddAnotherCrop = () => {};
-  onSaveFinish = () => {};
-  onTab = (key) => this.setState({ activeTab: key });
+      // order from param
+      order_id: null,
+      order_code: '',
+      payment: 0,
+      orderItems: [],
+
+      farmer: { id: null, name: '-', phone: '', image: null },
+
+      // GET options (4 crop sections)
+      currentCropOptions: [],
+      rabiCropOptions: [],
+      kharifCropOptions: [],
+      zaidCropOptions: [],
+
+      selectedCurrentCropIds: [],
+      selectedRabiCropIds: [],
+      selectedKharifCropIds: [],
+      selectedZaidCropIds: [],
+
+      currentCrops: [],
+      rabiCrops: [],
+      kharifCrops: [],
+      zaidCrops: [],
+
+      problems: [],
+      selectedProblemLabel: null, // send as string[]
+
+      fodderOptions: [],
+      expenseOptions: [],
+      selectedFodder: [], // send as string[]
+      selectedExpense: [], // send as string[]
+
+      cattle: { cows: '', buffalo: '', milk_litre: '' },
+
+      problemPhoto: null,
+      problemPhotoPreview: null,
+    };
+
+    this.actionSheetRef = null;
+  }
+
+  appendArrayOfStrings = (fd, key, arr) => {
+  (arr || []).forEach((val, i) => {
+    fd.append(`${key}[${i}]`, String(val));
+  });
+};
+
+appendArrayOfObjects = (fd, key, arr) => {
+  (arr || []).forEach((obj, i) => {
+    if (!obj) return;
+    if (obj.id !== undefined) fd.append(`${key}[${i}][id]`, String(obj.id));
+    if (obj.acre !== undefined && obj.acre !== null) fd.append(`${key}[${i}][acre]`, String(obj.acre));
+    else fd.append(`${key}[${i}][acre]`, '');
+    if (obj.stage !== undefined && obj.stage !== null) fd.append(`${key}[${i}][stage]`, String(obj.stage));
+    else fd.append(`${key}[${i}][stage]`, '');
+  });
+};
+
+goToDashboardAndReset = () => {
+  const nav = this.props?.navigation;
+  if (!nav?.dispatch) return nav?.navigate?.('LMDDashboard');
+
+  nav.dispatch(
+    StackActions.reset({
+      index: 0,
+      actions: [NavigationActions.navigate({ routeName: 'LMDDashboard' })],
+    })
+  );
+};
+
+  componentDidMount() {
+    const paramOrderData =
+      this.props?.navigation?.getParam
+        ? this.props.navigation.getParam('order_data', null) ||
+          this.props.navigation.getParam('data', null) ||
+          this.props.navigation.getParam('order', null)
+        : this.props?.route?.params?.order_data ??
+          this.props?.route?.params?.data ??
+          this.props?.route?.params?.order ??
+          null;
+
+    // ✅ YOUR CASE: paramOrderData = { order: {...} }
+    const orderObj = paramOrderData?.order ? paramOrderData.order : paramOrderData;
+
+    const order_id = orderObj?.id ?? null;
+
+    const farmerData = orderObj?.farmer_data || {};
+    const farmer = {
+      id: farmerData?.id ?? null,
+      name: farmerData?.name ?? '-',
+      phone: farmerData?.phone ?? '',
+      image: farmerData?.image || farmerData?.image_url || null,
+    };
+
+    const payment = Number(orderObj?.grand_total ?? 0);
+    const order_code = String(orderObj?.order_code ?? '');
+
+    const items = Array.isArray(orderObj?.order_items) ? orderObj.order_items : [];
+
+    const orderItems = items.map((x, idx) => ({
+      key: String(x?.product_id ?? x?.id ?? idx),
+      image: x?.image || x?.product_image || x?.photo || null,
+      name: x?.product_name || x?.name || '-',
+      variant: x?.variation || x?.variant || '',
+      qty: x?.quantity ?? x?.qty ?? 0,
+      amount: x?.price ?? 0,
+      total_price: x?.total_price ?? null,
+    }));
+
+    this.setState(
+      {
+        order_id,
+        order_code,
+        farmer,
+        payment,
+        orderItems,
+      },
+      () => {
+        if (order_id) this.loadSurvey();
+      }
+    );
+  }
+
+  goBack = () => {
+    if (this.props?.navigation?.goBack) this.props.navigation.goBack();
+  };
 
   money = (v) => {
     const n = Number(v);
-    if (!Number.isFinite(n)) return '';
+    if (!Number.isFinite(n)) return '₹ 0';
     return `₹ ${n.toLocaleString('en-IN')}`;
   };
 
-  Chip = ({ icon, label, active, onPress, style }) => (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        active ? styles.chipOn : null,
-        style,
-      ]}
-    >
-      {!!icon ? <Text style={styles.chipIcon}>{icon}</Text> : null}
-      <Text style={[styles.chipText, active ? styles.chipTextOn : null]} numberOfLines={1}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  maskPhone = (phone) => {
+    const s = String(phone || '').trim();
+    if (!s) return '';
+    const digits = s.replace(/\D/g, '');
+    if (digits.length <= 4) return s;
+    return `•••• •••• ${digits.slice(-4)}`;
+  };
 
-  CropTile = ({ icon, label, sub, onPress }) => (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.cropTile}>
-      <View style={styles.cropTopRow}>
-        <Text style={styles.cropIcon}>{icon}</Text>
-        <Text style={styles.cropLabel} numberOfLines={1}>{label}</Text>
+  initials = (name) => {
+    const n = String(name || '').trim();
+    if (!n) return 'F';
+    const parts = n.split(/\s+/).filter(Boolean);
+    const a = (parts[0] || '').charAt(0);
+    const b = (parts[1] || '').charAt(0);
+    return (a + b).toUpperCase() || 'F';
+  };
+
+  toggleString = (key, label) => {
+    const list = this.state[key] || [];
+    const v = String(label);
+    const has = list.includes(v);
+    const next = has ? list.filter((x) => x !== v) : [...list, v];
+    this.setState({ [key]: next });
+  };
+
+  toggleSeasonCrop = (idsKey, rowsKey, optionItem) => {
+    const id = String(optionItem.id);
+    const currentIds = this.state[idsKey] || [];
+    const has = currentIds.includes(id);
+
+    const nextIds = has ? currentIds.filter((x) => x !== id) : [...currentIds, id];
+
+    let nextRows = this.state[rowsKey] || [];
+    if (has) nextRows = nextRows.filter((x) => String(x.id) !== id);
+    else nextRows = [...nextRows, { id, label: optionItem.label, acres: '', stage: '', icon: '🌾' }];
+
+    this.setState({ [idsKey]: nextIds, [rowsKey]: nextRows });
+  };
+
+  openPhotoSheet = () => {
+    if (this.actionSheetRef?.show) this.actionSheetRef.show();
+  };
+
+  onPhotoActionPress = async (index) => {
+    try {
+      if (index === 2) return;
+
+      const common = {
+        cropping: true,
+        includeBase64: false,
+        compressImageQuality: 0.85,
+        mediaType: 'photo',
+        forceJpg: true,
+      };
+
+      let img = null;
+      if (index === 0) img = await ImagePicker.openCamera(common);
+      if (index === 1) img = await ImagePicker.openPicker(common);
+      if (!img?.path) return;
+
+      const uri =
+        Platform.OS === 'android'
+          ? img.path
+          : img.path.startsWith('file://')
+          ? img.path
+          : `file://${img.path}`;
+
+      this.setState({
+        problemPhoto: { uri, type: img?.mime || 'image/jpeg', name: `problem_${Date.now()}.jpg` },
+        problemPhotoPreview: uri,
+      });
+    } catch (e) {}
+  };
+
+  clearPhoto = () => {
+    this.setState({ problemPhoto: null, problemPhotoPreview: null });
+  };
+
+  loadSurvey = async () => {
+    this.setState({ isLoading: true });
+
+    try {
+      let url = constants?.farmerSurveyForm;
+      const orderId = this.state?.order_id;
+
+      if (url && orderId) {
+        const oid = encodeURIComponent(String(orderId));
+        if (String(url).includes('{order_id}')) url = String(url).replace('{order_id}', oid);
+        else url = String(url).endsWith('/') ? `${url}${oid}` : `${url}/${oid}`;
+      }
+
+      if (!url) {
+        this.setState({ isLoading: false });
+        return;
+      }
+      
+      console.log("load survey fromData== ",url)
+
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-localization': 'en',
+          Authorization: 'Bearer ' + (global.token || ''),
+          Accept: 'application/json',
+        },
+      });
+
+      const json = await res.json();
+
+      console.log('load survey response', JSON.stringify(json));
+
+      if (!json?.status) {
+        this.setState({ isLoading: false });
+        Toast.show(json?.message || 'Unable to load survey form', Toast.LONG);
+        return;
+      }
+
+      const d = json?.data || {};
+
+      const mapCrop = (x, idx) => ({
+        id: String(x?.id ?? x?.crop_id ?? idx),
+        label: String(x?.name || x?.crop || 'Crop'),
+        subLabel: x?.hindi_name ? String(x.hindi_name) : '',
+        icon: '🌾',
+      });
+
+      // ✅ CURRENT CROPS (API GET response will contain this)
+        const currentCropOptions = (
+          Array.isArray(d?.current_crop) ? d.current_crop :
+          Array.isArray(d?.current_crops) ? d.current_crops :
+          Array.isArray(d?.crop) ? d.crop :
+          Array.isArray(d?.crops) ? d.crops :
+          []
+        ).map(mapCrop);
+
+      const rabiCropOptions = (Array.isArray(d?.rabi_season) ? d.rabi_season : []).map(mapCrop);
+      const kharifCropOptions = (Array.isArray(d?.kharif_season) ? d.kharif_season : []).map(mapCrop);
+      const zaidCropOptions = (Array.isArray(d?.zaid_season) ? d.zaid_season : Array.isArray(d?.zaid_season) ? d.zaid_season : []).map(mapCrop);
+
+      const selectedCurrentCropIds = Array.isArray(d?.selected_current_crop_ids)
+        ? d.selected_current_crop_ids.map(String)
+        : Array.isArray(d?.selected_current_crop)
+        ? d.selected_current_crop.map(String)
+        : [];
+
+      const selectedRabiCropIds = Array.isArray(d?.selected_rabi_crop_ids) ? d.selected_rabi_crop_ids.map(String) : [];
+      const selectedKharifCropIds = Array.isArray(d?.selected_kharif_crop_ids) ? d.selected_kharif_crop_ids.map(String) : [];
+      const selectedZaidCropIds = Array.isArray(d?.selected_zaid_crop_ids) ? d.selected_zaid_crop_ids.map(String) : [];
+
+      const buildRows = (ids, options) =>
+        (ids || [])
+          .map((cid) => {
+            const found = options.find((c) => String(c.id) === String(cid));
+            return found ? { id: String(found.id), label: found.label, acres: '', stage: '', icon: '🌾' } : null;
+          })
+          .filter(Boolean);
+
+      const currentCrops = buildRows(selectedCurrentCropIds, currentCropOptions);
+      const rabiCrops = buildRows(selectedRabiCropIds, rabiCropOptions);
+      const kharifCrops = buildRows(selectedKharifCropIds, kharifCropOptions);
+      const zaidCrops = buildRows(selectedZaidCropIds, zaidCropOptions);
+
+      const problems = Array.isArray(d?.crop_problems)
+        ? d.crop_problems.map((x, idx) => ({
+            id: String(x?.id ?? x?.name ?? x ?? idx),
+            label: String(x?.name || x || 'Problem'),
+          }))
+        : [];
+
+      const selectedProblemLabel = d?.selected_problem_label || d?.selected_problem || problems?.[0]?.label || null;
+
+      const fodderOptions = Array.isArray(d?.today_fodder)
+        ? d.today_fodder.map((x, idx) => ({
+            id: String(x?.id ?? x?.name ?? x ?? idx),
+            label: String(x?.name || x || 'Fodder'),
+          }))
+        : [];
+
+      const expenseOptions = Array.isArray(d?.next_expense)
+        ? d.next_expense.map((x, idx) => ({
+            id: String(x?.id ?? x?.name ?? x ?? idx),
+            label: String(x?.name || x || 'Expense'),
+          }))
+        : [];
+
+      const selectedFodder = Array.isArray(d?.selected_fodder) ? d.selected_fodder.map(String) : [];
+      const selectedExpense = Array.isArray(d?.selected_expense) ? d.selected_expense.map(String) : [];
+
+      const cattle = {
+        cows: d?.cows != null ? String(d.cows) : '',
+        buffalo: d?.buffalo != null ? String(d.buffalo) : '',
+        milk_litre: d?.milk_litre != null ? String(d.milk_litre) : '',
+      };
+
+      this.setState({
+        isLoading: false,
+
+        currentCropOptions,
+        rabiCropOptions,
+        kharifCropOptions,
+        zaidCropOptions,
+
+        selectedCurrentCropIds,
+        selectedRabiCropIds,
+        selectedKharifCropIds,
+        selectedZaidCropIds,
+
+        currentCrops,
+        rabiCrops,
+        kharifCrops,
+        zaidCrops,
+
+        problems,
+        selectedProblemLabel,
+
+        fodderOptions,
+        expenseOptions,
+        selectedFodder,
+        selectedExpense,
+
+        cattle,
+      });
+    } catch (e) {
+      console.log('load survey error', e);
+      this.setState({ isLoading: false });
+      Toast.show('Network error while loading survey', Toast.SHORT);
+    }
+  };
+
+  buildSubmitBody = () => {
+    const s = this.state;
+
+    const toCropObjects = (rows) =>
+      (rows || [])
+        .map((x) => {
+          const idNum = Number(x?.id);
+          if (!Number.isFinite(idNum)) return null;
+
+          const acreNum = x?.acres === '' || x?.acres == null ? null : Number(x.acres);
+
+          return {
+            id: idNum,
+            acre: Number.isFinite(acreNum) ? acreNum : null,
+            stage: String(x?.stage ?? '').trim(),
+          };
+        })
+        .filter(Boolean);
+
+    return {
+      id: s.order_id ? Number(s.order_id) : null,
+
+      current_crop: toCropObjects(s.currentCrops),
+      rabi_season: toCropObjects(s.rabiCrops),
+      kharif_season: toCropObjects(s.kharifCrops),
+      zaid_season: toCropObjects(s.zaidCrops),
+
+      crop_problems: s.selectedProblemLabel ? [String(s.selectedProblemLabel)] : [],
+
+      cows: s.cattle?.cows === '' ? null : Number(s.cattle.cows),
+      buffalo: s.cattle?.buffalo === '' ? null : Number(s.cattle.buffalo),
+      milk_litre: s.cattle?.milk_litre === '' ? null : Number(s.cattle.milk_litre),
+
+      today_fodder: (s.selectedFodder || []).map(String),
+      next_expense: (s.selectedExpense || []).map(String),
+    };
+  };
+
+  submit = async () => {
+    if (this.state.isSubmitting) return;
+
+    const url = constants?.fillSurvey || null;
+    if (!url) {
+      Toast.show('Missing API: constants.fillSurvey', Toast.LONG);
+      return;
+    }
+
+    try {
+      this.setState({ isSubmitting: true });
+
+      const body = this.buildSubmitBody();
+
+      let headers = {
+        'X-localization': 'en',
+        Authorization: 'Bearer ' + (global.token || ''),
+        Accept: 'application/json',
+      };
+
+      let requestBody = null;
+
+    if (this.state.problemPhoto?.uri) {
+  const fd = new FormData();
+
+  // normal fields
+  fd.append('id', body?.id == null ? '' : String(body.id));
+  fd.append('cows', body?.cows == null ? '' : String(body.cows));
+  fd.append('buffalo', body?.buffalo == null ? '' : String(body.buffalo));
+  fd.append('milk_litre', body?.milk_litre == null ? '' : String(body.milk_litre));
+
+  // arrays of objects (crops)
+  this.appendArrayOfObjects(fd, 'current_crop', body.current_crop);
+  this.appendArrayOfObjects(fd, 'rabi_season', body.rabi_season);
+  this.appendArrayOfObjects(fd, 'kharif_season', body.kharif_season);
+  this.appendArrayOfObjects(fd, 'zaid_season', body.zaid_season);
+
+  // arrays of strings
+  this.appendArrayOfStrings(fd, 'crop_problems', body.crop_problems);
+  this.appendArrayOfStrings(fd, 'today_fodder', body.today_fodder);
+  this.appendArrayOfStrings(fd, 'next_expense', body.next_expense);
+
+  fd.append('problem_photo', {
+    uri: this.state.problemPhoto.uri,
+    type: this.state.problemPhoto.type || 'image/jpeg',
+    name: this.state.problemPhoto.name || `problem_${Date.now()}.jpg`,
+  });
+
+  requestBody = fd;
+} else {
+  headers = { ...headers, 'Content-Type': 'application/json' };
+  requestBody = JSON.stringify(body);
+}
+
+      // ✅ keep your logs
+      console.log('submit survey body', body);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: requestBody,
+      });
+
+      const json = await res.json();
+
+      // ✅ keep your logs
+      console.log('submit survey response', JSON.stringify(json));
+
+      this.setState({ isSubmitting: false });
+
+     if (json?.status) {
+  Toast.show(json?.message || 'Survey submitted', Toast.SHORT);
+
+      this.goToDashboardAndReset();   // ✅ stack clear, back disabled
+    } else {
+      Toast.show(json?.message || 'Unable to submit survey', Toast.SHORT);
+    }
+    } catch (e) {
+      console.log('submit survey error', e);
+      this.setState({ isSubmitting: false });
+      Toast.show('Network error. Please try again.', Toast.SHORT);
+    }
+  };
+
+  renderSeason = (title, options, selectedIds, rows, idsKey, rowsKey) => (
+    <Section title={title} icon="🌾">
+      <View style={styles.chipRow}>
+        {(options || []).map((c) => {
+          const label = c.subLabel ? `${c.label} (${c.subLabel})` : c.label;
+          return (
+            <Chip
+              key={c.id}
+              label={label}
+              icon="🌾"
+              active={(selectedIds || []).includes(String(c.id))}
+              onPress={() => this.toggleSeasonCrop(idsKey, rowsKey, c)}
+            />
+          );
+        })}
       </View>
-      {!!sub ? <Text style={styles.cropSub} numberOfLines={1}>{sub}</Text> : null}
-    </TouchableOpacity>
+
+      <View style={{ marginTop: 10 }}>
+        {(rows || []).length ? (
+          (rows || []).map((item) => (
+            <SeasonCropRow
+              key={item.id}
+              item={item}
+              onChangeAcres={(t) => {
+                const next = (this.state[rowsKey] || []).map((x) =>
+                  String(x.id) === String(item.id) ? { ...x, acres: t } : x
+                );
+                this.setState({ [rowsKey]: next });
+              }}
+              onChangeStage={(t) => {
+                const next = (this.state[rowsKey] || []).map((x) =>
+                  String(x.id) === String(item.id) ? { ...x, stage: t } : x
+                );
+                this.setState({ [rowsKey]: next });
+              }}
+              onRemove={() => {
+                const id = String(item.id);
+                const nextIds = (this.state[idsKey] || []).filter((x) => String(x) !== id);
+                const nextRows = (this.state[rowsKey] || []).filter((x) => String(x.id) !== id);
+                this.setState({ [idsKey]: nextIds, [rowsKey]: nextRows });
+              }}
+            />
+          ))
+        ) : (
+          <Text style={styles.emptyTxt}>No crop selected</Text>
+        )}
+      </View>
+    </Section>
   );
 
-  SectionCard = ({ children, style }) => (
-    <View style={[styles.sectionCard, style]}>{children}</View>
-  );
+  renderOrderCard = () => {
+    const s = this.state;
 
-  DividerLine = () => <View style={styles.divider} />;
+    const total =
+      Number(s.payment || 0) ||
+      (s.orderItems || []).reduce((sum, x) => {
+        const qty = Number(x.qty) || 0;
+        const amt = Number(x.amount) || 0;
+        return sum + (qty > 0 ? qty * amt : amt);
+      }, 0);
+
+    return (
+      <View style={styles.topCard}>
+        <View style={styles.orderHead}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderTitle}>Order Details</Text>
+            <Text style={styles.orderIdLine}>
+              ORDER : <Text style={styles.orderIdBold}>{s.order_code || s.order_id || '-'}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.orderTotalPill}>
+            <Text style={styles.orderTotalLbl}>Total</Text>
+            <Text style={styles.orderTotalVal}>{this.money(total)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.orderFarmerRow}>
+          <View style={styles.orderAvatar}>
+            {s.farmer?.image ? (
+              <Image source={{ uri: String(s.farmer.image) }} style={styles.orderAvatarImg} />
+            ) : (
+              <Text style={styles.orderAvatarTxt}>{this.initials(s.farmer?.name)}</Text>
+            )}
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.orderFarmerName} numberOfLines={1}>
+              {s.farmer?.name || '-'}
+            </Text>
+            <Text style={styles.orderFarmerPhone} numberOfLines={1}>
+              {this.maskPhone(s.farmer?.phone)}
+            </Text>
+          </View>
+        </View>
+
+        {(s.orderItems || []).length ? (
+          <View style={{ marginTop: 10 }}>
+            <View style={styles.itemsHead}>
+              <Text style={[styles.itemsHeadTxt, { flex: 1 }]}>Product</Text>
+              <Text style={[styles.itemsHeadTxt, { width: 60, textAlign: 'center' }]}>Qty</Text>
+              <Text style={[styles.itemsHeadTxt, { width: 90, textAlign: 'right' }]}>Amount</Text>
+            </View>
+
+            {(s.orderItems || []).map((it) => (
+              <View key={it.key} style={styles.itemRow}>
+                <View style={styles.itemLeft}>
+                  <Image source={{ uri: String(it.image) }} style={styles.itemImg} resizeMode="cover" />
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemName} numberOfLines={1}>
+                      {it.name}
+                    </Text>
+                    {!!it.variant ? (
+                      <Text style={styles.itemVariant} numberOfLines={1}>
+                        {it.variant}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                <Text style={[styles.itemQty, { width: 60, textAlign: 'center' }]}>{String(it.qty ?? 0)}</Text>
+
+                <Text style={[styles.itemAmt, { width: 90, textAlign: 'right' }]}>{this.money(it.amount)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.emptyTxt, { marginTop: 8 }]}>Order items missing in passed data</Text>
+        )}
+      </View>
+    );
+  };
 
   render() {
     const s = this.state;
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="dark-content" backgroundColor={THEME.paper} />
+        <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
 
-        <SafeAreaView style={styles.safeTop} />
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.iconBtn} onPress={this.onMenu} activeOpacity={0.85}>
-            <Text style={styles.iconTxt}>≡</Text>
-          </TouchableOpacity>
+        <Header farmer={s.farmer} onBack={this.goBack} initials={this.initials} maskPhone={this.maskPhone} />
 
-          <View style={styles.brand}>
-            {/* Replace with your logo if you have it */}
-            {/* <Image source={require('./assets/logo.png')} style={styles.logo} /> */}
-            <Text style={styles.brandName}>Gramik</Text>
+        {s.isLoading ? (
+          <View style={styles.loader}>
+            <ActivityIndicator size="large" color={THEME.green} />
+            <Text style={styles.loaderTxt}>Loading...</Text>
           </View>
+        ) : (
+          <>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+              {this.renderOrderCard()}
 
-          <View style={{ width: 42 }} />
-        </View>
+              {/* ✅ Added Current Crops section (NO style/UI change) */}
+              {this.renderSeason(
+                'Current Crops',
+                s.currentCropOptions,
+                s.selectedCurrentCropIds,
+                s.currentCrops,
+                'selectedCurrentCropIds',
+                'currentCrops'
+              )}
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          <Text style={styles.screenTitle}>Farmer Survey</Text>
+              {this.renderSeason('Rabi Season Crops', s.rabiCropOptions, s.selectedRabiCropIds, s.rabiCrops, 'selectedRabiCropIds', 'rabiCrops')}
+              {this.renderSeason('Kharif Season Crops', s.kharifCropOptions, s.selectedKharifCropIds, s.kharifCrops, 'selectedKharifCropIds', 'kharifCrops')}
+              {this.renderSeason('Zaid Season Crops', s.zaidCropOptions, s.selectedZaidCropIds, s.zaidCrops, 'selectedZaidCropIds', 'zaidCrops')}
 
-          <View style={styles.cardWrap}>
-            {/* Farmer row */}
-            <View style={styles.farmerRow}>
-              <Text style={styles.farmerText} numberOfLines={1}>
-                {s.farmer?.name || ''}  <Text style={styles.farmerPhone}>{s.farmer?.phone || ''}</Text>
-              </Text>
-
-              <TouchableOpacity activeOpacity={0.9} onPress={this.onChangeFarmer} style={styles.changeBtn}>
-                <Text style={styles.changeText}>Change</Text>
-                <Text style={styles.chev}>›</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Payment collected */}
-            <View style={styles.payRow}>
-              <View style={styles.checkCircle}>
-                <Text style={styles.checkTxt}>✓</Text>
-              </View>
-              <Text style={styles.payLabel}>Payment Collected:</Text>
-              <Text style={styles.payValue}>{this.money(s.payment)}</Text>
-            </View>
-
-            <DividerLine />
-
-            {/* Current crop */}
-            <Text style={styles.blockTitle}>{`Current Crop (${s.currentSeason})`}</Text>
-            <View style={styles.cropGrid}>
-              {s.currentCrops.map((c) => (
-                <this.CropTile
-                  key={c.id}
-                  icon={c.icon}
-                  label={c.label}
-                  sub={c.sub}
-                  onPress={() => {}}
-                />
-              ))}
-            </View>
-
-            <TouchableOpacity activeOpacity={0.9} onPress={this.onAddCrop} style={styles.addRowBtn}>
-              <Text style={styles.addPlus}>＋</Text>
-              <Text style={styles.addText}>Add Crop</Text>
-            </TouchableOpacity>
-
-            <DividerLine />
-
-            {/* Problems */}
-            <Text style={styles.blockTitle}>Isme koi problem dikhi?</Text>
-            <View style={styles.chipRow}>
-              {s.problems.map((p) => (
-                <this.Chip
-                  key={p.id}
-                  icon={p.icon}
-                  label={p.label}
-                  onPress={() => this.setState({ selectedProblem: { id: p.id, label: p.label, icon: p.icon } })}
-                />
-              ))}
-            </View>
-
-            {/* Selected problem + Take photo */}
-            <View style={styles.problemRow}>
-              <View style={styles.problemPill}>
-                <Text style={styles.problemIcon}>{s.selectedProblem?.icon || '🍃'}</Text>
-                <Text style={styles.problemText} numberOfLines={1}>
-                  {s.selectedProblem?.label || ''}
-                </Text>
-              </View>
-
-              <TouchableOpacity activeOpacity={0.9} onPress={this.onTakePhoto} style={styles.photoBtn}>
-                <Text style={styles.photoIcon}>📷</Text>
-                <Text style={styles.photoText}>Take photo</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity activeOpacity={0.9} onPress={this.onAddAnotherCrop} style={styles.addRowBtn}>
-              <Text style={styles.addPlus}>＋</Text>
-              <Text style={styles.addText}>Add Another Crop</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Rabi season */}
-          <this.SectionCard>
-            <Text style={styles.sectionTitle}>Rabi Season</Text>
-            <View style={styles.twoCol}>
-              {s.rabi.map((c) => (
-                <View key={c.id} style={styles.seasonTile}>
-                  <View style={styles.seasonTop}>
-                    <Text style={styles.seasonIcon}>{c.icon}</Text>
-                    <Text style={styles.seasonName} numberOfLines={1}>{c.label}</Text>
-                    <Text style={styles.seasonAcres} numberOfLines={1}>{c.acres}</Text>
-                  </View>
-                  <View style={styles.stageRow}>
-                    <Text style={styles.stageDot}>●</Text>
-                    <Text style={styles.stageText} numberOfLines={1}>{c.stage}</Text>
-                  </View>
+              <Section title="Isme koi problem dikhi?" icon="🐛">
+                <View style={styles.chipRow}>
+                  {(s.problems || []).map((p) => (
+                    <Chip
+                      key={p.id}
+                      label={p.label}
+                      icon="🏷️"
+                      active={String(p.label) === String(s.selectedProblemLabel)}
+                      onPress={() => this.setState({ selectedProblemLabel: String(p.label) })}
+                    />
+                  ))}
                 </View>
-              ))}
-            </View>
-          </this.SectionCard>
 
-          {/* Kharif season */}
-          <this.SectionCard>
-            <Text style={styles.sectionTitle}>Kharif Season</Text>
-            <View style={styles.twoCol}>
-              {s.kharif.map((c) => (
-                <View key={c.id} style={styles.seasonTile}>
-                  <View style={styles.seasonTop}>
-                    <Text style={styles.seasonIcon}>{c.icon}</Text>
-                    <Text style={styles.seasonName} numberOfLines={1}>{c.label}</Text>
-                    <Text style={styles.seasonAcres} numberOfLines={1}>{c.acres}</Text>
+                <View style={styles.problemBar}>
+                  <View style={styles.problemPill}>
+                    <Text style={styles.problemEmoji}>🏷️</Text>
+                    <Text style={styles.problemLbl} numberOfLines={1}>
+                      {s.selectedProblemLabel || 'Select problem'}
+                    </Text>
                   </View>
-                  <View style={styles.stageRow}>
-                    <Text style={styles.stageDot}>●</Text>
-                    <Text style={styles.stageText} numberOfLines={1}>{c.stage}</Text>
-                  </View>
+
+                  <TouchableOpacity activeOpacity={0.9} onPress={this.openPhotoSheet} style={styles.uploadBtn}>
+                    <Text style={styles.uploadEmoji}>⬆️</Text>
+                    <Text style={styles.uploadTxt}>Upload Photo</Text>
+                  </TouchableOpacity>
                 </View>
-              ))}
-            </View>
 
-            <TouchableOpacity activeOpacity={0.9} onPress={this.onAddCrop} style={[styles.addRowBtn, { marginTop: 10 }]}>
-              <Text style={styles.addPlus}>＋</Text>
-              <Text style={styles.addText}>Add Crop</Text>
-            </TouchableOpacity>
-          </this.SectionCard>
-
-          {/* Cattle */}
-          <this.SectionCard>
-            <Text style={styles.sectionTitle}>Cattle</Text>
-
-            <View style={styles.cattleRow}>
-              <View style={styles.cattlePill}>
-                <Text style={styles.cattleLabel}>Cows</Text>
-                <Text style={styles.cattleValue}>{String(s.cattle.cows)}</Text>
-              </View>
-              <View style={styles.cattlePill}>
-                <Text style={styles.cattleLabel}>Buffalo</Text>
-                <Text style={styles.cattleValue}>{String(s.cattle.buffalo)}</Text>
-              </View>
-              <View style={styles.cattlePill}>
-                <Text style={styles.cattleLabel}>Milk</Text>
-                <Text style={styles.cattleValue}>{String(s.cattle.milk)}</Text>
-                <Text style={styles.cattleUnit}>Litre</Text>
-              </View>
-            </View>
-
-            <Text style={[styles.blockTitle, { marginTop: 12 }]}>Today’s Fodder Given</Text>
-            <View style={styles.chipRow}>
-              {s.fodder.map((f) => (
-                <this.Chip key={f.id} icon={f.icon} label={f.label} onPress={() => {}} />
-              ))}
-            </View>
-
-            <Text style={[styles.blockTitle, { marginTop: 12 }]}>Agla kharcha kis par hoga?</Text>
-            <View style={styles.chipRow}>
-              {s.expense.map((e) => (
-                <this.Chip key={e.id} icon={e.icon} label={e.label} onPress={() => {}} />
-              ))}
-            </View>
-          </this.SectionCard>
-
-          <View style={{ height: 110 }} />
-        </ScrollView>
-
-        {/* Bottom Save */}
-        <View style={styles.bottomWrap}>
-          <TouchableOpacity activeOpacity={0.92} onPress={this.onSaveFinish} style={styles.saveBtn}>
-            <Text style={styles.saveText}>SAVE & FINISH</Text>
-          </TouchableOpacity>
-
-          {/* Bottom Tabs (simple) */}
-          <View style={styles.tabs}>
-            <TouchableOpacity style={styles.tab} onPress={() => this.onTab('home')} activeOpacity={0.85}>
-              <Text style={[styles.tabIcon, s.activeTab === 'home' ? styles.tabOn : null]}>⌂</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.tab} onPress={() => this.onTab('bell')} activeOpacity={0.85}>
-              <View style={{ position: 'relative' }}>
-                <Text style={[styles.tabIcon, s.activeTab === 'bell' ? styles.tabOn : null]}>🔔</Text>
-                {s.notifCount ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{String(s.notifCount)}</Text>
+                {s.problemPhotoPreview ? (
+                  <View style={styles.photoPreview}>
+                    <Image source={{ uri: s.problemPhotoPreview }} style={styles.photoImg} resizeMode="cover" />
+                    <TouchableOpacity onPress={this.clearPhoto} style={styles.photoRemove} activeOpacity={0.85}>
+                      <Text style={styles.photoRemoveTxt}>✕</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
+              </Section>
+
+              <Section title="Cattle" icon="🐄">
+                <View style={styles.cattleRow}>
+                  <View style={styles.cattleBox}>
+                    <Text style={styles.cattleLbl}>Cows</Text>
+                    <TextInput
+                      value={String(s.cattle?.cows ?? '')}
+                      onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, cows: t } })}
+                      placeholder="0"
+                      placeholderTextColor={THEME.muted}
+                      keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                      style={styles.cattleInput}
+                    />
+                  </View>
+
+                  <View style={styles.cattleBox}>
+                    <Text style={styles.cattleLbl}>Buffalo</Text>
+                    <TextInput
+                      value={String(s.cattle?.buffalo ?? '')}
+                      onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, buffalo: t } })}
+                      placeholder="0"
+                      placeholderTextColor={THEME.muted}
+                      keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                      style={styles.cattleInput}
+                    />
+                  </View>
+
+                  <View style={[styles.cattleBox, styles.cattleBoxLast]}>
+                    <Text style={styles.cattleLbl}>Milk (L)</Text>
+                    <TextInput
+                      value={String(s.cattle?.milk_litre ?? '')}
+                      onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, milk_litre: t } })}
+                      placeholder="0"
+                      placeholderTextColor={THEME.muted}
+                      keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+                      style={styles.cattleInput}
+                    />
+                  </View>
+                </View>
+              </Section>
+
+              <Section title="Today’s Fodder Given" icon="🥬">
+                <View style={styles.chipRow}>
+                  {(s.fodderOptions || []).map((f) => (
+                    <Chip
+                      key={f.id}
+                      label={f.label}
+                      icon="🥬"
+                      active={(s.selectedFodder || []).includes(String(f.label))}
+                      onPress={() => this.toggleString('selectedFodder', String(f.label))}
+                    />
+                  ))}
+                </View>
+              </Section>
+
+              <Section title="Agla kharcha kis par hoga?" icon="💰">
+                <View style={styles.chipRow}>
+                  {(s.expenseOptions || []).map((e) => (
+                    <Chip
+                      key={e.id}
+                      label={e.label}
+                      icon="💰"
+                      active={(s.selectedExpense || []).includes(String(e.label))}
+                      onPress={() => this.toggleString('selectedExpense', String(e.label))}
+                    />
+                  ))}
+                </View>
+              </Section>
+            </ScrollView>
+
+            <View style={styles.bottomBar} pointerEvents="box-none">
+              <View style={styles.bottomBarInner}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={this.submit}
+                  style={[styles.submitBtn, s.isSubmitting ? { opacity: 0.75 } : null]}
+                  disabled={s.isSubmitting}
+                >
+                  {s.isSubmitting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <View style={styles.submitRow}>
+                      <Text style={styles.submitTxt}>SUBMIT SURVEY</Text>
+                      <Text style={styles.submitArrow}>➜</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            </View>
+          </>
+        )}
 
-            <TouchableOpacity style={styles.tab} onPress={() => this.onTab('stats')} activeOpacity={0.85}>
-              <Text style={[styles.tabIcon, s.activeTab === 'stats' ? styles.tabOn : null]}>▮▮▮</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.tab} onPress={() => this.onTab('profile')} activeOpacity={0.85}>
-              <Text style={[styles.tabIcon, s.activeTab === 'profile' ? styles.tabOn : null]}>👤</Text>
-            </TouchableOpacity>
-          </View>
-
-          <SafeAreaView style={{ backgroundColor: THEME.paper }} />
-        </View>
+        <ActionSheet
+          ref={(o) => (this.actionSheetRef = o)}
+          title={'Upload Photo'}
+          options={['Camera', 'Gallery', 'Cancel']}
+          cancelButtonIndex={2}
+          onPress={this.onPhotoActionPress}
+        />
       </View>
     );
   }
 }
 
+/** ---------- styles (same as your current UI) ---------- */
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: THEME.paper },
-  safeTop: { backgroundColor: THEME.paper },
+  root: { flex: 1, backgroundColor: THEME.bg },
 
-  header: {
-    backgroundColor: THEME.paper,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 6,
-    flexDirection: 'row',
+  headerWrap: { backgroundColor: THEME.green },
+  headerSafe: { backgroundColor: THEME.green },
+  headerRowNew: { height: 64, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  headerBackBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  backImg: { width: 22, height: 22, tintColor: '#fff' },
+
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    overflow: 'hidden',
   },
-  iconBtn: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
-  iconTxt: { fontSize: 22, color: THEME.greenDark, fontWeight: '900' },
+  headerAvatarImg: { width: 42, height: 42 },
+  headerAvatarTxt: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  headerName: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  headerPhone: { marginTop: 2, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '700' },
 
-  brand: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  brandName: { fontSize: 18, fontWeight: '900', color: THEME.greenDark },
+  scroll: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 140 },
 
-  scroll: { paddingHorizontal: 14, paddingBottom: 16 },
-  screenTitle: { marginTop: 6, fontSize: 18, fontWeight: '900', color: THEME.text, textAlign: 'center' },
+  loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loaderTxt: { marginTop: 10, color: THEME.subText, fontSize: 12, fontWeight: '500' },
 
-  cardWrap: {
-    marginTop: 10,
+  topCard: {
     backgroundColor: THEME.card,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: THEME.border,
-    padding: 12,
+    padding: 14,
+    marginBottom: 12,
   },
-
-  farmerRow: { flexDirection: 'row', alignItems: 'center' },
-  farmerText: { flex: 1, fontSize: 13, fontWeight: '800', color: THEME.text },
-  farmerPhone: { fontWeight: '700', color: THEME.subText },
-  changeBtn: { flexDirection: 'row', alignItems: 'center' },
-  changeText: { fontSize: 12, fontWeight: '800', color: THEME.greenDark },
-  chev: { marginLeft: 6, fontSize: 18, fontWeight: '900', color: THEME.greenDark },
 
   payRow: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: 'rgba(28,138,98,0.10)',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(28,138,98,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(28,138,98,0.18)',
+    borderColor: 'rgba(28,138,98,0.16)',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
+  payLeft: { flexDirection: 'row', alignItems: 'center' },
   checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: THEME.greenDark,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: THEME.green,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   checkTxt: { color: '#fff', fontSize: 14, fontWeight: '900' },
-  payLabel: { fontSize: 13, fontWeight: '800', color: THEME.text, marginRight: 8 },
-  payValue: { fontSize: 16, fontWeight: '900', color: THEME.text },
+  payLabel: { color: THEME.text, fontSize: 13, fontWeight: '600' },
+  payValue: { color: THEME.text, fontSize: 18, fontWeight: '800' },
 
-  divider: { height: 1, backgroundColor: THEME.border, marginVertical: 12 },
+  orderHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  orderTitle: { color: THEME.text, fontSize: 15, fontWeight: '700', marginTop: -5 },
+  orderSub: { marginTop: 3, color: THEME.subText, fontSize: 11, fontWeight: '600' },
 
-  blockTitle: { fontSize: 13, fontWeight: '900', color: THEME.text },
-
-  cropGrid: {
-    marginTop: 10,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  cropTile: {
-    width: (W - 14 * 2 - 12 * 2 - 10) / 3,
-    backgroundColor: THEME.chip,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: THEME.chipBorder,
-    padding: 8,
-    marginBottom: 10,
-    minHeight: 62,
-  },
-  cropTopRow: { flexDirection: 'row', alignItems: 'center' },
-  cropIcon: { marginRight: 6, fontSize: 14 },
-  cropLabel: { flex: 1, fontSize: 12, fontWeight: '900', color: THEME.text },
-  cropSub: { marginTop: 6, fontSize: 11, fontWeight: '800', color: THEME.subText },
-
-  addRowBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-  addPlus: { fontSize: 18, fontWeight: '900', color: THEME.greenDark, marginRight: 8 },
-  addText: { fontSize: 13, fontWeight: '900', color: THEME.greenDark },
-
-  chipRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap' },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  orderTotalPill: {
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: THEME.chip,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(28,138,98,0.08)',
     borderWidth: 1,
-    borderColor: THEME.chipBorder,
-    marginRight: 8,
-    marginBottom: 8,
-    maxWidth: '100%',
+    borderColor: 'rgba(28,138,98,0.16)',
+    alignItems: 'flex-end',
   },
-  chipOn: { backgroundColor: 'rgba(28,138,98,0.12)', borderColor: 'rgba(28,138,98,0.22)' },
-  chipIcon: { marginRight: 8, fontSize: 13 },
-  chipText: { fontSize: 12, fontWeight: '900', color: THEME.text },
-  chipTextOn: { color: THEME.greenDark },
+  orderTotalLbl: { color: '#000', fontSize: 10, fontWeight: '700' },
+  orderTotalVal: { color: THEME.green, fontSize: 18, fontWeight: '800', marginTop: 5 },
 
-  problemRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  problemPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: 'rgba(28,138,98,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(28,138,98,0.22)',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    marginRight: 10,
-  },
-  problemIcon: { marginRight: 8, fontSize: 13 },
-  problemText: { flex: 1, fontSize: 14, fontWeight: '900', color: THEME.greenDark },
-  photoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: THEME.greenDark,
-  },
-  photoIcon: { marginRight: 8, fontSize: 13, color: '#fff' },
-  photoText: { fontSize: 12, fontWeight: '900', color: '#fff' },
-
-  sectionCard: {
-    marginTop: 12,
-    backgroundColor: THEME.card,
-    borderRadius: 12,
+  orderFarmerRow: { marginTop: 12, flexDirection: 'row', alignItems: 'center' },
+  orderAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: THEME.soft,
     borderWidth: 1,
     borderColor: THEME.border,
-    padding: 12,
-  },
-  sectionTitle: { fontSize: 15, fontWeight: '900', color: THEME.text, marginBottom: 8 },
-
-  twoCol: { flexDirection: 'row', justifyContent: 'space-between' },
-  seasonTile: {
-    width: (W - 14 * 2 - 12 * 2 - 10) / 2,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.chipBorder,
-    backgroundColor: THEME.chip,
-    padding: 10,
-  },
-  seasonTop: { flexDirection: 'row', alignItems: 'center' },
-  seasonIcon: { fontSize: 14, marginRight: 8 },
-  seasonName: { flex: 1, fontSize: 13, fontWeight: '900', color: THEME.text },
-  seasonAcres: { fontSize: 12, fontWeight: '900', color: THEME.subText },
-  stageRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
-  stageDot: { color: THEME.greenDark, marginRight: 8, fontSize: 10 },
-  stageText: { fontSize: 12, fontWeight: '900', color: THEME.greenDark },
-
-  cattleRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  cattlePill: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.chipBorder,
-    backgroundColor: THEME.chip,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    marginRight: 8,
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    overflow: 'hidden',
+    alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
   },
-  cattleLabel: { fontSize: 12, fontWeight: '900', color: THEME.text, marginRight: 6 },
-  cattleValue: { fontSize: 14, fontWeight: '900', color: THEME.text },
-  cattleUnit: { marginLeft: 6, fontSize: 12, fontWeight: '900', color: THEME.subText },
+  orderAvatarImg: { width: 42, height: 42 },
+  orderAvatarTxt: { color: THEME.green, fontSize: 14, fontWeight: '800' },
+  orderFarmerName: { color: THEME.text, fontSize: 13, fontWeight: '700' },
+  orderFarmerPhone: { marginTop: 2, color: THEME.subText, fontSize: 12, fontWeight: '600' },
 
-  bottomWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: THEME.paper,
-    paddingHorizontal: 14,
+  itemsHead: { marginTop: 10, flexDirection: 'row', alignItems: 'center' },
+  itemsHeadTxt: { color: THEME.muted, fontSize: 11, fontWeight: '700' },
+
+  itemRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: THEME.border,
   },
-  saveBtn: {
-    height: 46,
+  itemName: { color: THEME.text, fontSize: 12, fontWeight: '700' },
+  itemVariant: { marginTop: 5, color: THEME.subText, fontSize: 11, fontWeight: '500' },
+  itemQty: { color: THEME.text, fontSize: 12, fontWeight: '700' },
+  itemAmt: { color: THEME.text, fontSize: 12, fontWeight: '700' },
+
+  card: {
+    backgroundColor: THEME.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 14,
+    marginBottom: 12,
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  cardHeadLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 },
+  cardHeadEmoji: { fontSize: 16, marginRight: 8 },
+  cardTitle: { color: THEME.text, fontSize: 13, fontWeight: '700' },
+
+  cropRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: THEME.soft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  cropLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  cropIconWrap: {
+    width: 34,
+    height: 34,
     borderRadius: 12,
-    backgroundColor: THEME.greenDark,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: THEME.border,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
   },
-  saveText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  cropEmoji: { fontSize: 18 },
+  cropName: { color: THEME.text, fontSize: 13, fontWeight: '700' },
 
-  tabs: {
-    marginTop: 8,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15,116,81,0.12)',
+  cropInlineFields: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  cropMiniInput: {
+    height: 36,
+    width: 90,
+    borderRadius: 8,
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(15,116,81,0.18)',
+    borderColor: THEME.border,
+    paddingHorizontal: 10,
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  iconBtn: {
+    width: 38,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+    alignSelf: 'center',
+    marginTop: 20,
+  },
+  iconBtnTxt: { fontSize: 14, fontWeight: '900', color: THEME.subText },
+
+  emptyTxt: { color: THEME.subText, fontSize: 12, fontWeight: '500', paddingVertical: 8 },
+
+  chipRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap' },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: THEME.soft,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    marginRight: 8,
+    marginBottom: 8,
   },
-  tab: { width: 52, height: 40, alignItems: 'center', justifyContent: 'center' },
-  tabIcon: { fontSize: 18, opacity: 0.8 },
-  tabOn: { opacity: 1 },
+  chipOn: { backgroundColor: 'rgba(28,138,98,0.10)', borderColor: 'rgba(28,138,98,0.22)' },
+  chipEmoji: { fontSize: 14, marginRight: 7 },
+  chipText: { color: THEME.text, fontSize: 12, fontWeight: '600' },
+  chipTextOn: { color: THEME.green, fontWeight: '700' },
 
-  badge: {
-    position: 'absolute',
-    right: -8,
-    top: -6,
-    minWidth: 22,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: THEME.accent,
+  problemBar: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
+  problemPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(28,138,98,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(28,138,98,0.16)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginRight: 10,
+  },
+  problemEmoji: { fontSize: 14, marginRight: 8 },
+  problemLbl: { color: THEME.green, fontSize: 13, fontWeight: '700' },
+
+  uploadBtn: {
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: THEME.green,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    flexDirection: 'row',
   },
-  badgeText: { fontSize: 11, fontWeight: '900', color: THEME.text },
+  uploadEmoji: { fontSize: 14, marginRight: 8 },
+  uploadTxt: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  photoPreview: {
+    marginTop: 10,
+    height: 140,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.soft,
+  },
+  photoImg: { width: '100%', height: '100%' },
+  photoRemove: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoRemoveTxt: { color: '#fff', fontSize: 14, fontWeight: '900' },
+
+  cattleRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  cattleBox: {
+    flex: 1,
+    backgroundColor: THEME.soft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 10,
+    marginRight: 8,
+  },
+  cattleBoxLast: { marginRight: 0 },
+  cattleLbl: { color: THEME.subText, fontSize: 12, fontWeight: '700' },
+  cattleInput: {
+    marginTop: 6,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingHorizontal: 10,
+    color: THEME.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  submitBtn: {
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: THEME.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 40,
+    marginVertical: 5,
+  },
+  submitTxt: { color: '#fff', fontSize: 13, fontWeight: '800', marginRight: 5 },
+  submitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  submitArrow: { marginLeft: 10, color: '#fff', fontSize: 16, fontWeight: '900' },
+
+  bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  bottomBarInner: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 10,
+    backgroundColor: 'rgba(247,249,250,0.92)',
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+  },
+  orderIdLine: {
+    marginTop: 5,
+    color: '#000',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  orderIdBold: {
+    color: THEME.orange,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  itemLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 10,
+  },
+  itemImg: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    marginRight: 10,
+    backgroundColor: THEME.soft,
+  },
+  itemImgPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    marginRight: 10,
+    backgroundColor: THEME.soft,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
 });

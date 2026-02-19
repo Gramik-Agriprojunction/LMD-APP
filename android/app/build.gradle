@@ -182,7 +182,6 @@ dependencies {
     // Import the Firebase BoM
     implementation platform('com.google.firebase:firebase-bom:32.3.1')
     implementation project(':react-native-view-shot')
-    implementation project(':react-native-audio-jack')
     implementation project(':react-native-fs')
     implementation project(':react-native-view-pdf')
     // TODO: Add the dependencies for Firebase products you want to use

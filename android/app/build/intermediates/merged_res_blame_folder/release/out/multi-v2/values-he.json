@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.app.lmd.app-mergeReleaseResources-53:/values-he/values-he.xml",
+            "outputFile": "com.app.lmd.app-mergeReleaseResources-49:/values-he/values-he.xml",
             "map": [
                 {
                     "source": "/Users/brijesh/Desktop/Projects/GramikLMD/node_modules/react-native-date-picker/android/build/intermediates/packaged_res/release/values-he/values-he.xml",

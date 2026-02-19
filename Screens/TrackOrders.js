@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import constants from './constants';
+import Toast from 'react-native-simple-toast';
+import {NavigationEvents} from 'react-navigation';
 
 const { width } = Dimensions.get('window');
 
@@ -180,6 +182,15 @@ onPressOrder = (item) => {
       <View style={styles.root}>
         <StatusBar barStyle="light-content" backgroundColor="#1C8A62" />
 
+         <NavigationEvents
+                        onWillFocus={() => {
+                          
+                        }}
+                        onDidFocus={() => {
+                             this.ordersListApi(this.state.selectedStatus);
+                        }}
+                      />
+
         {/* ✅ SAFE HEADER */}
         <View style={styles.headerWrap}>
           <SafeAreaView style={styles.headerSafe}>
@@ -280,7 +291,7 @@ onPressOrder = (item) => {
                 {isLoading ? (
                   <ActivityIndicator size="small" color="#1C8A62" />
                 ) : (
-                  <Text style={{ fontSize: 14, color: '#6B7280', fontWeight: '700' }}>
+                  <Text style={{ fontSize: 15, color: '#6B7280', fontWeight: '500',marginTop:20 }}>
                     No order(s) found
                   </Text>
                 )}
@@ -321,13 +332,35 @@ class StatBox extends Component {
 /** Badge color helper */
 function badgeFor(status) {
   const st = String(status || '').toUpperCase();
-  if (st === 'PICKUP') return { backgroundColor: '#EEF2F6', color: '#111827' };
-  if (st === 'PENDING') return { backgroundColor: '#FCEED7', color: '#111827' };
-  if (st === 'DELIVERED') return { backgroundColor: '#DDF4EA', color: '#1C8A62' };
-  if (st === 'INTRANSIT') return { backgroundColor: '#E6F4FF', color: '#0B5CAD' };
-  if (st === 'RESCHEDULE') return { backgroundColor: '#E9E7FF', color: '#4F46E5' };
-  if (st === 'RTO') return { backgroundColor: '#FFE6E6', color: '#B91C1C' };
-  if (st === 'CANCELLED') return { backgroundColor: '#FFE6E6', color: '#B91C1C' };
+
+  if (st === 'PICKUP' || st === 'PICKED UP') {
+    return { backgroundColor: '#EEF2F6', color: '#111827' };
+  }
+
+  if (st === 'PENDING') {
+    return { backgroundColor: '#FCEED7', color: '#997c12' };
+  }
+
+  if (st === 'DELIVERED') {
+    return { backgroundColor: '#beebdb', color: '#457d69' };
+  }
+
+  if (st === 'IN-TRANSIT' || st === 'INTRANSIT' || st === 'IN TRANSIT') {
+    return { backgroundColor: '#E6F4FF', color: '#0B5CAD' };
+  }
+
+  if (st === 'RE-SCHEDULE' || st === 'RESCHEDULE' || st === 'RE SCHEDULE') {
+    return { backgroundColor: '#E9E7FF', color: '#4F46E5' };
+  }
+
+  if (st === 'RTO') {
+    return { backgroundColor: '#FFE6E6', color: '#B91C1C' };
+  }
+
+  if (st === 'CANCELLED' || st === 'CANCELED') {
+    return { backgroundColor: '#FFE6E6', color: '#B91C1C' };
+  }
+
   return { backgroundColor: '#EEF2F6', color: '#111827' };
 }
 
@@ -404,8 +437,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   orderTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  orderIdLabel: { fontSize: 10, fontWeight: '700', color: '#000' },
-  orderId: { fontSize: 11, color: '#F68A20', fontWeight: '700' },
+  orderIdLabel: { fontSize: 9, fontWeight: '700', color: '#000' },
+  orderId: { fontSize: 10, color: '#F68A20', fontWeight: '700' },
 
   badge: { borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, maxWidth: 150 },
   badgeText: { fontSize: 8, fontWeight: '800' },

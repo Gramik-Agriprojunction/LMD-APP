@@ -28,9 +28,9 @@ end
 
 target 'PlasticsHub' do
   
-  pod 'GoogleMaps'
-  pod 'Google-Maps-iOS-Utils'
-  pod 'react-native-maps', :path => '../node_modules/react-native-maps'
+  # pod 'GoogleMaps'
+  # pod 'Google-Maps-iOS-Utils'
+  # pod 'react-native-maps', :path => '../node_modules/react-native-maps'
   
   config = use_native_modules!
 

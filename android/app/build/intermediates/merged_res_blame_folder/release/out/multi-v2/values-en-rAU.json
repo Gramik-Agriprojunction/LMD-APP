@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.app.lmd.app-mergeReleaseResources-53:/values-en-rAU/values-en-rAU.xml",
+            "outputFile": "com.app.lmd.app-mergeReleaseResources-49:/values-en-rAU/values-en-rAU.xml",
             "map": [
                 {
                     "source": "/Users/brijesh/.gradle/caches/transforms-3/bcf7860f0a96e7c7a9ad1866133eae5a/transformed/core-1.9.0/res/values-en-rAU/values-en-rAU.xml",

@@ -11,6 +11,7 @@ import {
   Alert,
   ScrollView,
   Linking,
+  Image
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import constants from './constants';
@@ -25,7 +26,7 @@ export default class LMDDashboard extends Component {
     this.state = {
       isLoading: false,
       dashboard_data: null,
-      notifCount: 2,
+      notifCount: 0,
     };
   }
 
@@ -48,8 +49,12 @@ export default class LMDDashboard extends Component {
         this.setState({ isLoading: false });
         console.log('dashboard response== ', JSON.stringify(responseJson));
 
-        if (responseJson.status) {
-          this.setState({ dashboard_data: responseJson.data });
+       if (responseJson.status) {
+        const data = responseJson.data || {};
+        this.setState({
+            dashboard_data: data,
+            notifCount: Number(data?.notification_count || 0),
+        });
         } else {
           console.log('Error', responseJson.message || 'Failed to load dashboard');
         }
@@ -167,7 +172,6 @@ export default class LMDDashboard extends Component {
     const live = d?.live_orders || {};
     const todayDeliveries = d?.today_deliveries || [];
 
-    // ✅ API earnings/penalties
     const earnings = this.toNum(d?.earnings?.this_month);
     const penalties = this.toNum(d?.penalties?.this_month);
 
@@ -190,9 +194,14 @@ export default class LMDDashboard extends Component {
         <View style={styles.headerWrap}>
           <SafeAreaView style={styles.headerSafe}>
             <View style={styles.headerRow}>
-             <TouchableOpacity style={styles.headerRight} onPress={this.goProfile} activeOpacity={0.85}>
+             <View style={{ width: 42, height: 42 }} />
+              <Image style={{height:60,width:150,resizeMode:'contain',alignSelf:'center'}} source={require('./assets/lmg.png')} />
+              
+              <TouchableOpacity style={styles.headerRight} onPress={this.goProfile} activeOpacity={0.85}>
                 <View style={styles.avatar}>
-                  <Text style={{ fontSize: 16 }}>👤</Text>
+                 
+    <Image source={{ uri: d?.user_image }} style={styles.avatarImg} />
+ 
                 </View>
                 {notifCount > 0 ? (
                   <View style={styles.badge}>
@@ -200,18 +209,16 @@ export default class LMDDashboard extends Component {
                   </View>
                 ) : null}
               </TouchableOpacity>
-
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Gramik LMD 
-              </Text>
-              <View style={{ width: 42, height: 42 }} />
             </View>
           </SafeAreaView>
         </View>
 
         <SafeAreaView style={styles.bodySafe}>
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.welcome}>{`Welcome, ${userName || '-'}`}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center'}}>
+               <Text style={[styles.welcome,{color:'#000',fontWeight:'500',fontSize:12}]}>Welcome, </Text>
+               <Text style={[styles.welcome,{color:'#F37A20',fontSize:16}]}>{`${userName || '-'}`}</Text>
+            </View>
 
             {rule ? (
               <View style={styles.ruleBanner}>
@@ -222,15 +229,15 @@ export default class LMDDashboard extends Component {
             ) : null}
 
              <View style={styles.twoColRow}>
-              <TouchableOpacity disabled activeOpacity={0.9} onPress={this.goEarnings} style={[styles.bigCard, { backgroundColor: '#1C8A62' }]}>
+              <TouchableOpacity disabled activeOpacity={0.9} onPress={this.goEarnings} style={[styles.bigCard, { backgroundColor: '#1C8A62',marginRight:5 }]}>
                 <Text style={styles.bigCardTitle}>My Earnings</Text>
                 <Text style={styles.bigCardValue}>₹ {formatINR(earnings)}</Text>
                 {/* <Text style={styles.bigCardSub}>This Month</Text> */}
               </TouchableOpacity>
 
-              <TouchableOpacity disabled activeOpacity={0.9} onPress={this.goEarnings} style={[styles.bigCard, { backgroundColor: '#D64545' }]}>
+              <TouchableOpacity disabled activeOpacity={0.9} onPress={this.goEarnings} style={[styles.bigCard, { backgroundColor: '#D64545',marginLeft:5 }]}>
                 <Text style={styles.bigCardTitle}>Penalties</Text>
-                <Text style={styles.bigCardValue}> ₹ {formatINR(penalties)}</Text>
+                <Text style={styles.bigCardValue}>₹ {formatINR(penalties)}</Text>
                 {/* <Text style={styles.bigCardSub}>This Month</Text> */}
               </TouchableOpacity>
             </View>
@@ -240,7 +247,7 @@ export default class LMDDashboard extends Component {
               <View style={styles.cardTitleRow}>
                 <Text style={styles.sectionTitle}>Live Orders</Text>
                 <TouchableOpacity onPress={() => this.goOrders('ALL')} style={styles.linkBtn}>
-                  <Text style={styles.linkText}>View</Text>
+                  <Text style={styles.linkText}>View All</Text>
                   <Text style={styles.linkArrow}>›</Text>
                 </TouchableOpacity>
               </View>
@@ -251,21 +258,22 @@ export default class LMDDashboard extends Component {
                   title="Picked Up"
                   value={this.toNum(live?.picked_up)}
                   bg="#EEF2F6" 
-                  valueColor="#111827"
+                  valueColor="#4f5d69"
                   onPress={() => this.goOrders('PICKUP')}
                 />
                 <StatBox
                   title="Pending"
                   value={this.toNum(live?.pending)}
-                  bg="#DDF4EA"
-                  valueColor="#1C8A62"
+                  bg="#FCEED7"
+                  valueColor="#a68b5e"
                   onPress={() => this.goOrders('PENDING')}
                 />
                 <StatBox
                   title="Delivered"
                   value={this.toNum(live?.delivered)}
-                  bg="#FCEED7"
-                  valueColor="#111827"
+                 
+                   bg="#DDF4EA"
+                  valueColor="#1C8A62"
                   onPress={() => this.goOrders('DELIVERED')}
                 />
                 {/* ✅ INTRANSIT exact */}
@@ -304,13 +312,14 @@ export default class LMDDashboard extends Component {
                 </TouchableOpacity>
               </View>
 
-              <FlatList
+             {todayDeliveries!='' && <FlatList
                 data={todayDeliveries}
                 keyExtractor={(item, index) => `${item?.customer_name || 'cust'}-${item?.status || 'st'}-${index}`}
                 renderItem={this.renderDeliveryItem}
                 ItemSeparatorComponent={() => <View style={styles.sep} />}
                 scrollEnabled={false}
-              />
+              /> }
+                {todayDeliveries=='' && <Text style={{textAlign:'center',color:'#4B5563',fontSize:14,paddingVertical:20}}>No deliveries for today</Text>}
             </View>
 
             {/* Earnings + Penalties */}
@@ -318,10 +327,29 @@ export default class LMDDashboard extends Component {
 
             {/* Quick Actions */}
             <View style={styles.actionsRow}>
-              {/* <ActionTile label="Scan POD" icon="📷" bg="#E8F1FF" textColor="#164E8A" onPress={() => console.log('Scan POD', 'Demo action')} /> */}
-              <ActionTile label="Deposit Cash" icon="💸" bg="#E7FAF3" textColor="#0F7A5A" onPress={() =>  this.goOrders('ALL')} />
-              <ActionTile label="Delivery History" icon="📋" bg="#FFF4DA" textColor="#A16207" onPress={() => this.goOrders('ALL')} />
-              <ActionTile label="Support" icon="🎧" bg="#FFE7E7" textColor="#B91C1C" onPress={this.callSupport} />
+<ActionTile
+  label="Deposit"
+  icon={require('./assets/purse.png')}
+  bg="#ebd2bf"
+  textColor="#743508"
+  onPress={() => this.props.navigation.navigate('SettlementList')}
+/>
+
+<ActionTile
+  label="History"
+  icon={require('./assets/dlh.png')}
+   bg="#aee2ce"
+  textColor="#0e4b36"
+  onPress={() => this.goOrders('ALL')}
+/>
+
+<ActionTile
+  label="Support"
+  icon={require('./assets/pn.png')}
+  bg="#c1d2ec"
+  textColor="#0c2a7c"
+  onPress={this.callSupport}
+/>
             </View>
 
             <View style={{ height: 10 }} />
@@ -337,7 +365,7 @@ class StatBox extends Component {
     const { title, value, bg, valueColor, onPress } = this.props;
     return (
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={[styles.statBox, { backgroundColor: bg }]}>
-        <Text style={styles.statTitle} numberOfLines={1}>
+        <Text style={[styles.statTitle,{color:valueColor,fontWeight:'700'}]} numberOfLines={1}>
           {title}
         </Text>
         <Text style={[styles.statValue, { color: valueColor }]}>{String(value)}</Text>
@@ -351,13 +379,13 @@ class ActionTile extends Component {
   render() {
     const { label, icon, bg, textColor, onPress } = this.props;
     return (
-      <TouchableOpacity style={[styles.actionTile, { backgroundColor: bg }]} onPress={onPress} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.actionTile, { backgroundColor: bg,flex:1,margin:3,paddingTop:8 }]} onPress={onPress} activeOpacity={0.85}>
         <View style={styles.actionIconWrap}>
-          <Text style={styles.actionIcon} numberOfLines={1}>
-            {icon}
-          </Text>
+           {icon ? (
+           <Image source={icon} style={[styles.actionImg]} resizeMode="contain" />
+          ) : null}
         </View>
-        <Text style={[styles.actionLabel, { color: textColor }]} numberOfLines={2}>
+        <Text style={[styles.actionLabel, { color: textColor,fontWeight:'500',marginTop:16 }]} numberOfLines={2}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -383,12 +411,12 @@ const styles = StyleSheet.create({
 
   headerWrap: { backgroundColor: '#1C8A62' },
   headerSafe: { backgroundColor: '#1C8A62' },
-  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center',justifyContent:'space-between' },
   headerIconBtn: { width: 42, height: 42, justifyContent: 'center' },
   headerIcon: { fontSize: 26, color: '#fff' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 16, fontWeight: '800' },
   headerRight: { width: 42, height: 42, alignItems: 'flex-end', justifyContent: 'center' },
-  avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   badge: {
     position: 'absolute',
     top: 2,
@@ -408,22 +436,22 @@ const styles = StyleSheet.create({
 
   welcome: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 10 },
 
-  ruleBanner: { backgroundColor: '#2D3A44', borderRadius: 8, paddingVertical: 14, paddingHorizontal: 12, marginBottom: 12 },
-  ruleText: { color: '#F2B01E', fontSize: 12, fontWeight: '700' },
+  ruleBanner: { backgroundColor: '#3f484d', borderRadius: 8, paddingVertical: 14, paddingHorizontal: 20, marginBottom: 12 },
+  ruleText: { color: '#F2B01E', fontSize: 13, fontWeight: '500' },
 
   card: { backgroundColor: '#fff', borderRadius: CARD_RADIUS, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E6EAF0' },
 
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { fontSize: 13, fontWeight: '500', color: '#111827' },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
 
   linkBtn: { flexDirection: 'row', alignItems: 'center' },
   linkText: { color: '#1C5D9E', fontSize: 12, fontWeight: '800' },
   linkArrow: { color: '#1C5D9E', fontSize: 18, marginLeft: 6, marginTop: -2 },
 
   liveRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: GAP },
-  statBox: { width: STAT_BOX_WIDTH, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  statBox: { width: STAT_BOX_WIDTH, borderRadius: 8, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
   statTitle: { fontSize: 10, fontWeight: '500', color: '#4B5563', marginBottom: 6 },
-  statValue: { fontSize: 20, fontWeight: '900' },
+  statValue: { fontSize: 18, fontWeight: '800' },
 
   deliveryRow: { flexDirection: 'row', alignItems: 'center' },
   deliveryName: { fontSize: 13, fontWeight: '500', color: '#111827' },
@@ -434,14 +462,18 @@ const styles = StyleSheet.create({
   sep: { height: 1, backgroundColor: '#EEF2F6', marginVertical: 12 },
 
   twoColRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  bigCard: { width: (width - 14 * 2 - 10) / 2, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 10, justifyContent: 'center' },
-  bigCardTitle: { color: '#fff', fontSize: 11, fontWeight: '700', marginBottom: 6,alignSelf:'center' },
-  bigCardValue: { color: '#fff', fontSize: 18, fontWeight: '800', alignSelf:'center' },
+  bigCard: { flex:1, borderRadius: 8, paddingVertical: 15, paddingHorizontal: 10, justifyContent: 'center' },
+  bigCardTitle: { color: '#fff', fontSize: 11, fontWeight: '600', marginBottom: 6,alignSelf:'center',textAlign:'center' },
+  bigCardValue: { color: '#fff', fontSize: 18, fontWeight: '700',textAlign:'center', alignSelf:'center' },
   bigCardSub: { color: '#EAF7F1', fontSize: 10, fontWeight: '600',alignSelf:'center' },
 
   actionsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionTile: { width: (width - 14 * 2 - 12 * 3) / 4, height: 88, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  actionIconWrap: { height: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  actionIcon: { fontSize: 24, lineHeight: 26, textAlign: 'center', includeFontPadding: false },
-  actionLabel: { textAlign: 'center', fontSize: 10, fontWeight: '800', lineHeight: 12 },
-});
+  actionTile: { width: (width - 14 * 2 - 12 * 3) / 4, height: 100, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  actionIconWrap: { height: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 6,marginTop:4 },
+  actionIcon: { fontSize: 30, lineHeight: 30, textAlign: 'center', includeFontPadding: false },
+  actionLabel: { textAlign: 'center', fontSize: 13, marginTop:10 },
+  actionImg: {
+  width: 50,
+  height: 50,
+},
+avatarImg: { width: 34, height: 34, borderRadius: 17 }});

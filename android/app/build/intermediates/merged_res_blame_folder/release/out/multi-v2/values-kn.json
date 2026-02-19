@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.app.lmd.app-mergeReleaseResources-53:/values-kn/values-kn.xml",
+            "outputFile": "com.app.lmd.app-mergeReleaseResources-49:/values-kn/values-kn.xml",
             "map": [
                 {
                     "source": "/Users/brijesh/.gradle/caches/transforms-3/635f28453997cf443b6459eff1b2048b/transformed/jetified-play-services-base-18.3.0/res/values-kn/values.xml",

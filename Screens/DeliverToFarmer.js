@@ -17,6 +17,8 @@ import {
 import constants from './constants';
 import BottomSheet from '@gorhom/bottom-sheet';
 import Toast from 'react-native-simple-toast';
+import { NavigationEvents } from 'react-navigation';
+
 
 export default class DeliverToFarmer extends Component {
   constructor(props) {
@@ -49,6 +51,12 @@ export default class DeliverToFarmer extends Component {
 
   getOrder = () => this.props?.navigation?.getParam('order', null);
 
+  isAlreadyPaid = (order) => {
+  const ps = String(order?.payment_status || '').toLowerCase(); // "paid"
+  const pm = String(order?.payment_mode || '').toLowerCase();   // "razor pay"
+  return ps === 'paid' && pm && pm !== 'cod' && pm !== 'cash';
+};
+
   componentDidMount() {
     const order = this.getOrder();
     this.setState({ details: order }, () => {
@@ -60,6 +68,42 @@ export default class DeliverToFarmer extends Component {
     this.cancelReasonsApi();
   }
 
+  deliverDetailsAPI = (id) => {
+    const formData = new FormData();
+    formData.append('order_id', String(id));
+
+    this.setState({ isLoading: true, hasError: false });
+    console.log('orderDetails formData== ', id);
+
+    fetch(constants.orderDetails, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+      },
+      body: formData,
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        console.log('orderDetails response =', JSON.stringify(json));
+        this.setState({ isLoading: false });
+
+        if (json?.status && json?.order) {
+          this.setState({ details: json.order }, () => {
+            const oid = json?.order?.id;
+            if (oid) this.getQR(oid);
+            console.log("check status== ",this.state.details?.order_status)
+          });
+        } else {
+          this.setState({ details: null, hasError: true });
+          console.log('orderDetails error =>', json?.message || 'Invalid response');
+        }
+      })
+      .catch((e) => {
+        console.log('orderDetails api error =', e);
+        this.setState({ isLoading: false, details: null, hasError: true });
+      });
+  };
+
   goBack = () => {
     const nav = this.props?.navigation;
     if (nav?.goBack) nav.goBack();
@@ -67,7 +111,7 @@ export default class DeliverToFarmer extends Component {
 
   // ✅ Call Farmer
   onCall = async () => {
-    const o = this.getOrder();
+    const o = this.state.details || this.getOrder();
     const phoneRaw = o?.farmer_data?.phone;
     if (!phoneRaw) return console.log('DeliverToFarmer: farmer_data.phone missing');
 
@@ -85,7 +129,7 @@ export default class DeliverToFarmer extends Component {
 
   // ✅ WhatsApp Farmer
   onWhatsApp = async () => {
-    const o = this.getOrder();
+    const o = this.state.details || this.getOrder();
     const phoneRaw = o?.farmer_data?.phone;
     if (!phoneRaw) return console.log('DeliverToFarmer: farmer_data.phone missing');
 
@@ -199,7 +243,9 @@ export default class DeliverToFarmer extends Component {
           if (responseJson.status) {
             this.setState({ show_sheet: false }, () => {
               const nav = this.props?.navigation;
-              if (nav?.goBack) nav.goBack();
+              // if (nav?.goBack) nav.goBack();
+              if (nav?.goBack) nav.navigate('Survey',{order_data : this.state.details});
+
             });
           }
         })
@@ -332,7 +378,7 @@ export default class DeliverToFarmer extends Component {
   };
 
   render() {
-    const o = this.getOrder();
+    const o = this.state.details || this.getOrder();
     const { statusLoading } = this.state;
 
     const orderCode = o?.order_code || '';
@@ -350,6 +396,10 @@ export default class DeliverToFarmer extends Component {
 
     const isCancel = this.state.popup_type === 'cancel';
     const confirmDisabled = isCancel && !this.state.selectedCancelReason;
+
+    const isPaid = this.isAlreadyPaid(o);
+    const paymentMode = o?.payment_mode || '';
+    const paymentStatus = o?.payment_status || '';
 
     return (
       <View style={styles.root}>
@@ -371,6 +421,13 @@ export default class DeliverToFarmer extends Component {
             </View>
           </SafeAreaView>
         </View>
+
+            <NavigationEvents
+                  onWillFocus={() => {}}
+                  onDidFocus={() => {
+                       this.deliverDetailsAPI(this.state.details?.id);
+                  }}
+                />
 
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           {!o ? (
@@ -413,14 +470,14 @@ export default class DeliverToFarmer extends Component {
 
                     {!!farmerAddress ? (
                       <View style={styles.addrRow}>
-                        <Image style={styles.gpsImg} source={require('./assets/gps.png')} />
+                        {/* <Image style={styles.gpsImg} source={require('./assets/gps.png')} /> */}
                         <Text style={styles.farmerMeta} numberOfLines={2}>
                           {farmerAddress}
                         </Text>
                       </View>
                     ) : null}
 
-                    {!!farmerPhone ? <Text style={styles.phoneMeta}>{farmerPhone}</Text> : null}
+                    {/* {!!farmerPhone ? <Text style={styles.phoneMeta}>{farmerPhone}</Text> : null} */}
                   </View>
 
                   <TouchableOpacity onPress={this.onCall} activeOpacity={0.85}>
@@ -435,59 +492,165 @@ export default class DeliverToFarmer extends Component {
 
               {/* Items header */}
               <View style={styles.itemsHeader}>
-                <Text style={styles.itemsTitle}>{`${(totalItems || items.length) || 0} Item(s) for delivery`}</Text>
-                <Text style={styles.itemsTotal}>{`Total : ₹ ${total}`}</Text>
-              </View>
+                             <Text style={styles.itemsTitle}>
+                               {`${(totalItems || items.length) || 0} Item(s) for delivery`}
+                             </Text>
+                             <Text style={styles.itemsTotal}>{`Total : ₹ ${total}`}</Text>
+                           </View>
 
-              {/* Payment */}
-              <View style={styles.card}>
-                <Text style={styles.receiveTitle}>Collect Payment</Text>
+                           {/* ✅ Order Items */}
+<View style={styles.card}>
 
-                <View style={styles.methodRow}>
-                  <View style={styles.methodIcon}>
-                    {/* <Text style={{ fontSize: 25, fontWeight: '500', color: '#0F7451' }}>₹</Text>  */}
-                    <Image style={{height:30,width:30,resizeMode:'contain'}} source={require('./assets/crn.png')} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.methodTitle}>{this.state.payment_type === 'cash' ? 'Collect Cash' : 'Scan QR Code'}</Text>
-                    <Text style={styles.methodSub}>{`₹ ${total}`}</Text>
-                  </View>
-                </View>
+  {(items || []).length ? (
+    (items || []).map((it, idx) => (
+      <View
+        key={String(it?.product_id ?? it?.variant_id ?? idx)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          borderTopWidth: idx === 0 ? 0 : 1,
+          borderTopColor: '#E6EAF0',
+        }}
+      >
+        {it?.image ? (
+          <Image
+            source={{ uri: String(it.image) }}
+            style={{ width: 44, height: 44, borderRadius: 10, marginRight: 10, backgroundColor: '#F3F5F6' }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={{ width: 40, height: 40, borderRadius: 10, marginRight: 10, backgroundColor: '#F3F5F6' }} />
+        )}
 
-                <View style={styles.payTiles}>
-                  <TouchableOpacity style={[styles.payTile,{borderWidth:this.state.payment_type=='cash' ? 1.3 : 1,borderColor:this.state.payment_type=='cash' ? '#2F7D67' : 'grey'}]} onPress={this.onCollectCash} activeOpacity={0.9}>
-                    <View style={styles.payImg}>
-                      <Image style={{height:80,width:80}} source={require('./assets/crn.png')} />
-                    </View>
-                    <View style={styles.payFooterPrimary}>
-                      <Text style={styles.payTileText}>Collect Cash</Text>
-                    </View>
-                  </TouchableOpacity>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '500', color: '#000' }} numberOfLines={1}>
+            {it?.product_name || it?.name || '-'}
+          </Text>
 
-                  {this.renderQrTile()}
-                </View>
-              </View>
+          {!!it?.variation ? (
+            <Text style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }} numberOfLines={1}>
+              {it.variation}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={{ alignItems: 'flex-end' }}>
+           <Text style={{ fontSize: 15, fontWeight: '600', color: '#0F7451' }}>
+            ₹ {String(it?.price ?? 0)}
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#111827' ,marginTop: 8, }}>
+            Qty: {String(it?.quantity ?? 0)}
+          </Text>
+         
+        </View>
+      </View>
+    ))
+  ) : (
+    <Text style={{ color: '#6B7280', fontWeight: '700' }}>No items found</Text>
+  )}
+</View>
+
+              
+<View style={styles.card}>
+  {isPaid ? (
+    <>
+      <Text style={styles.receiveTitle}>Payment</Text>
+
+      <View style={styles.methodRow}>
+        <View style={[styles.methodIcon, { backgroundColor: '#E7FAF3' }]}>
+          <Text style={{ fontSize: 22, fontWeight: '900', color: '#0F7451' }}>✓</Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.methodTitle, { color: '#0F7451' }]}>
+            {String(paymentStatus || 'Paid').toUpperCase()}
+          </Text>
+
+          {!!paymentMode ? (
+            <Text style={styles.methodSub}>{paymentMode}</Text>
+          ) : (
+            <Text style={styles.methodSub}>Online</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={{ marginTop: 6 }}>
+        <Text style={{ color: '#6B7280', fontWeight: '700', fontSize: 12 }}>
+          Amount : ₹ {total}
+        </Text>
+      </View>
+    </>
+  ) : (
+    <>
+      <Text style={styles.receiveTitle}>Collect Payment</Text>
+
+      <View style={styles.methodRow}>
+        <View style={styles.methodIcon}>
+          <Image style={{ height: 30, width: 30, resizeMode: 'contain' }} source={require('./assets/crn.png')} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.methodTitle}>
+            {this.state.payment_type === 'cash' ? 'Collect Cash' : 'Scan QR Code'}
+          </Text>
+          <Text style={styles.methodSub}>{`₹ ${total}`}</Text>
+        </View>
+      </View>
+
+      <View style={styles.payTiles}>
+        <TouchableOpacity
+          style={[
+            styles.payTile,
+            {
+              borderWidth: this.state.payment_type == 'cash' ? 5 : 1,
+              borderColor: this.state.payment_type == 'cash' ? '#F37A20' : 'grey',
+            },
+          ]}
+          onPress={this.onCollectCash}
+          activeOpacity={0.9}
+        >
+          <View style={styles.payImg}>
+            <Image style={{ height: 80, width: 80 }} source={require('./assets/crn.png')} />
+          </View>
+          <View style={styles.payFooterPrimary}>
+            <Text style={styles.payTileText}>Collect Cash</Text>
+          </View>
+        </TouchableOpacity>
+
+        {this.renderQrTile()}
+      </View>
+    </>
+  )}
+</View>
 
               {/* Footer */}
-              <View style={styles.footerBox}>
+             
+              <View style={{ height: 14 }} />
+            </>
+          )}
+        </ScrollView>
+
+         <View style={styles.footerBox}>
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>Grand Total</Text>
                   <Text style={styles.codValue}>{`₹ ${total}`}</Text>
                 </View>
 
-                <TouchableOpacity style={styles.primaryBtn} onPress={this.onComplete} activeOpacity={0.9}>
+               {this.state.details?.order_status!='delivered' && <View style={{}}>
+                 <TouchableOpacity style={styles.primaryBtn} onPress={this.onComplete} activeOpacity={0.9}>
                   <Text style={styles.primaryText}>COMPLETE DELIVERY</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.dangerBtn, { marginTop: 10 }]} onPress={this.onCancel} activeOpacity={0.9}>
                   <Text style={styles.dangerText}>CANCEL DELIVERY</Text>
                 </TouchableOpacity>
+               </View> }
+              {this.state.details?.order_status=='delivered' && <TouchableOpacity activeOpacity={0.9} onPress={this.openSurvey} style={[styles.primaryBtn, { marginBottom: 12 }]}>
+                             <Text style={styles.primaryText}>SURVEY</Text>
+                           </TouchableOpacity> }
               </View>
 
-              <View style={{ height: 14 }} />
-            </>
-          )}
-        </ScrollView>
 
         {/* ✅ QR Fullscreen Modal */}
         <Modal
@@ -577,6 +740,7 @@ export default class DeliverToFarmer extends Component {
                   marginRight: 24,
                   fontWeight: '450',
                   marginBottom: isCancel ? 0 : 20,
+                  marginTop:10
                 }}
               >
                 {isCancel
@@ -671,7 +835,7 @@ const styles = StyleSheet.create({
   farmerName: { fontSize: 14, fontWeight: '700', color: '#111827' },
   addrRow: { flexDirection: 'row', marginTop: 7 },
   gpsImg: { height: 20, width: 20, resizeMode: 'contain', alignSelf: 'center' },
-  farmerMeta: { fontSize: 13, color: '#4B5563', marginLeft: 3, alignSelf: 'center', flex: 1 },
+  farmerMeta: { fontSize: 13, color: '#4B5563',  alignSelf: 'center', flex: 1,marginRight:15 },
   phoneMeta: { marginTop: 7, fontSize: 12, color: '#111827' },
 
   callIconImg: { width: 28, height: 28, resizeMode: 'contain' },
@@ -702,25 +866,30 @@ const styles = StyleSheet.create({
   payTileText: { color: '#fff', fontSize: 12, fontWeight: '800' },
 
   footerBox: {
-    marginTop: 12,
-    padding: 15,
-    paddingTop: 12,
-    paddingBottom: 12,
+    padding: 20,
+    paddingBottom:30,
+    paddingTop:15,
     backgroundColor: '#FFF',
     width: '100%',
     alignSelf: 'center',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E6EAF0',
-  },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12 },
-  totalLabel: { fontSize: 15, fontWeight: '900', color: '#36454F' },
-  codValue: { fontSize: 18, fontWeight: '900', color: '#F37A20' },
+    elevation: 3,
+  shadowColor: 'grey',
+  shadowOffset: { width: 0, height: -2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 5,
 
-  primaryBtn: { height: 45, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C8A62' },
+  },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 18 },
+  totalLabel: { fontSize: 15, fontWeight: '900', color: '#36454F' },
+  codValue: { fontSize: 20, fontWeight: '800', color: '#F37A20' },
+
+  primaryBtn: { height: 42, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C8A62',marginLeft:5,marginRight:5 },
   primaryText: { color: '#fff', fontSize: 12, fontWeight: '800',},
 
-  dangerBtn: { height: 45, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E35335' },
+  dangerBtn: { height: 42, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E35335',marginLeft:5,marginRight:5 },
   dangerText: { color: '#fff', fontSize: 12, fontWeight: '800',},
 
   qrThumb: { height: '100%', width: '100%' },

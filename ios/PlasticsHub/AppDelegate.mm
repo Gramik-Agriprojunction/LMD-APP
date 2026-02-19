@@ -3,7 +3,7 @@
 #import <React/RCTBundleURLProvider.h>
 #import <UserNotifications/UserNotifications.h>
 #import <RNCPushNotificationIOS.h>
-#import <GoogleMaps/GoogleMaps.h>
+//#import <GoogleMaps/GoogleMaps.h>
 
 
 @implementation AppDelegate
@@ -51,7 +51,7 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
-  [GMSServices provideAPIKey:@"AIzaSyD6BLhCe-6q5A0DMWadE6xDouCOTnxhJ_k"];
+//  [GMSServices provideAPIKey:@"AIzaSyD6BLhCe-6q5A0DMWadE6xDouCOTnxhJ_k"];
   self.moduleName = @"PlasticsHub";
   // You can add your custom initial props in the dictionary below.
   // They will be passed down to the ViewController used by React Native.

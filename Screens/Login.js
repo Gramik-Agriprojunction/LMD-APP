@@ -290,7 +290,7 @@ export default class Login extends React.Component {
               <StatusBar backgroundColor="transparent" translucent={true} barStyle="dark-content" />
                 <TouchableOpacity activeOpacity={1} onPress={()=> Keyboard.dismiss()} style={{flex:1,backgroundColor:'#FFF',padding:20,justifyContent:'center'}}> 
                 {!this.state.show_name && <View style={{flex:1}}>
-                  <Image style={{height:80,width:80,alignSelf:'center',resizeMode:'contain',marginTop:80}} source={require('./assets/lgnew.png')}></Image>
+                  <Image style={{height:130,width:130,alignSelf:'center',resizeMode:'contain',marginTop:80,borderRadius:10}} source={require('./assets/nlg.png')}></Image>
                     <Text style={{color:'#36454F',fontFamily:'Poppins-Bold',fontWeight:'bold',fontSize:20,marginTop:30,textAlign:'left'}}>{global.language == 'English' ? languages.english.wht : languages.hindi.wht}</Text>
                       <View style={{height:50,flexDirection:'row',width:'100%',alignSelf:'center',marginTop:20,borderRadius:5,backgroundColor:'#E8E4E4'}}>
                       <TextInput

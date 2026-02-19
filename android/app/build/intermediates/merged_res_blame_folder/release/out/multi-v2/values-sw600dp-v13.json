@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.app.lmd.app-mergeReleaseResources-53:/values-sw600dp-v13/values-sw600dp-v13.xml",
+            "outputFile": "com.app.lmd.app-mergeReleaseResources-49:/values-sw600dp-v13/values-sw600dp-v13.xml",
             "map": [
                 {
                     "source": "/Users/brijesh/.gradle/caches/transforms-3/f34faffb9cc85c0b800e569e9c8d69f6/transformed/jetified-standard-core-1.7.1/res/values-sw600dp-v13/values-sw600dp-v13.xml",

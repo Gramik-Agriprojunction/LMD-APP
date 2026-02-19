@@ -62,7 +62,7 @@ export default class SettlementList extends Component {
       selectedMap: {}, // { [order_id]: true }
 
       // ✅ top stats from API (todays_order)
-      stats: { todaysOrders: 0, codCollected: 0, cashCollected: 0, upiCollected: 0 },
+      stats: { todaysOrders: 0, codCollected: 0, cashDeposited: 0, upiCollected: 0 },
     };
   }
 
@@ -161,7 +161,7 @@ export default class SettlementList extends Component {
           const td = json?.todays_order || {};
           const todaysOrders = this.toNum(td?.total_order);
           const codCollected = this.toNum(td?.cod_collected);
-          const cashCollected = this.toNum(td?.cash_collected);
+          const cashDeposited = this.toNum(td?.cash_collected);
           const upiCollected = this.toNum(td?.upi_collected);
 
           this.setState({
@@ -169,7 +169,7 @@ export default class SettlementList extends Component {
             list: rows,
             counts: { all, pending, settled },
             selectedMap: keep,
-            stats: { todaysOrders, codCollected, cashCollected, upiCollected },
+            stats: { todaysOrders, codCollected, cashDeposited, upiCollected },
           });
         })
         .catch((e) => {
@@ -180,7 +180,7 @@ export default class SettlementList extends Component {
             list: [],
             counts: { all: 0, pending: 0, settled: 0 },
             selectedMap: {},
-            stats: { todaysOrders: 0, codCollected: 0, cashCollected: 0, upiCollected: 0 },
+            stats: { todaysOrders: 0, codCollected: 0, cashDeposited: 0, upiCollected: 0 },
           });
         });
     });
@@ -317,7 +317,6 @@ export default class SettlementList extends Component {
       <View style={[styles.rowCard, index === 0 ? styles.rowCardFirst : null]}>
         <View style={styles.rowTop}>
           <Text style={styles.orderLine} numberOfLines={1}>
-            <Text style={styles.orderMuted}>ID : </Text>
             <Text style={styles.orderStrong}>{orderCode || 'N/A'}</Text>
           </Text>
 
@@ -394,8 +393,8 @@ export default class SettlementList extends Component {
           <View style={[styles.summaryGrid, { marginTop: 10 }]}>
             <View style={styles.summaryCol}>
               <View style={styles.summaryDot} />
-              <Text style={styles.summaryLabel}>Cash Collected :</Text>
-              <Text style={[styles.summaryValue,{color:'#1C8A62'}]}>{`₹${this.money(stats?.cashCollected)}`}</Text>
+              <Text style={styles.summaryLabel}>Cash Deposited :</Text>
+              <Text style={[styles.summaryValue,{color:'#1C8A62'}]}>{`₹${this.money(stats?.cashDeposited)}`}</Text>
             </View>
 
             <View style={styles.summaryCol}>
@@ -668,7 +667,7 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   orderLine: { fontSize: 14, fontWeight: '800', color: THEME.text, paddingTop: 2, flex: 1 },
   orderMuted: { color: THEME.subText, fontWeight: '800', fontSize: 10 },
-  orderStrong: { color: THEME.orange, fontWeight: '700', fontSize: 11 },
+  orderStrong: { color: THEME.orange, fontWeight: '400', fontSize: 10 },
 
   amountCols: { flexDirection: 'row', alignItems: 'flex-start' },
   amountCol: { width: 80, alignItems: 'flex-end' },

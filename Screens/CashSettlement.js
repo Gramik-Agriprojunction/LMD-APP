@@ -29,6 +29,7 @@ import Toast from 'react-native-simple-toast';
 import ImageCropPicker from 'react-native-image-crop-picker';
 import moment from 'moment';
 
+
 const THEME = {
   green: '#1C8A62',
   greenDark: '#2F7D67',
@@ -45,6 +46,7 @@ const THEME = {
   radioBorder: '#CBD5E1',
   grayDot: '#36454F',
 };
+
 
 export default class CashSettlement extends Component {
   constructor(props) {
@@ -73,6 +75,9 @@ export default class CashSettlement extends Component {
   componentDidMount() {
     this.checkSettleApi();
   }
+
+  wait = (ms) => new Promise((r) => setTimeout(r, ms));
+pickLock = false;
 
   // navigation
   getSettlement = () => this.props?.navigation?.getParam?.('settlement', null);
@@ -164,48 +169,60 @@ export default class CashSettlement extends Component {
 
   closePicker = () => this.setState({ pickerVisible: false });
 
-  cancelConfirm = () => this.setState({ confirmVisible: false, pickingFor: null });
+  cancelConfirm = () => this.setState({ confirmVisible: false, pickingFor: null,pickerVisible : false });
 
-  pickImage = (source) => {
-    this.setState({ pickerVisible: false }, () => {
-      InteractionManager.runAfterInteractions(() => {
-        setTimeout(async () => {
-          try {
-            const img =
-              source === 'camera'
-                ? await ImageCropPicker.openCamera({
-                    mediaType: 'photo',
-                    cropping: false,
-                    compressImageQuality: 0.85,
-                    forceJpg: true,
-                  })
-                : await ImageCropPicker.openPicker({
-                    mediaType: 'photo',
-                    cropping: false,
-                    compressImageQuality: 0.85,
-                    forceJpg: true,
-                  });
+ pickImage = async (source) => {
+  if (this.pickLock) return;           // ✅ prevent double trigger
+  this.pickLock = true;
 
-            if (!img?.path) return;
+  const pickingForNow = this.state.pickingFor; // ✅ capture before setState
 
-            const file = {
-              uri: img.path,
-              type: img?.mime || 'image/jpeg',
-              name: img?.filename || `${source}_${Date.now()}.jpg`,
-            };
+  this.setState({ pickerVisible: false }, async () => {
+    try {
+      await this.wait(Platform.OS === 'ios' ? 700 : 300);
 
-            const { pickingFor } = this.state;
-            if (pickingFor === 'upi') this.setState({ upiImage: file, confirmVisible: true });
-            else if (pickingFor === 'bank') this.setState({ bankImage: file, confirmVisible: true });
-          } catch (e) {
-            const msg = String(e?.message || '').toLowerCase();
-            if (msg.includes('cancel')) return;
-            Toast.show('Unable to open picker', Toast.SHORT);
-          }
-        }, Platform.OS === 'ios' ? 450 : 200);
-      });
-    });
-  };
+      // ✅ close any previous session (helps iOS)
+      if (ImageCropPicker?.clean) {
+        try { await ImageCropPicker.clean(); } catch (e) {}
+      }
+
+      const img =
+        source === 'camera'
+          ? await ImageCropPicker.openCamera({
+              mediaType: 'photo',
+              cropping: false,
+              compressImageQuality: 0.85,
+              forceJpg: true,
+            })
+          : await ImageCropPicker.openPicker({
+              mediaType: 'photo',
+              cropping: false,
+              compressImageQuality: 0.85,
+              forceJpg: true,
+            });
+
+      if (!img?.path) return;
+
+      const file = {
+        uri: img.path,
+        type: img?.mime || 'image/jpeg',
+        name: img?.filename || `${source}_${Date.now()}.jpg`,
+      };
+
+      if (pickingForNow === 'upi') this.setState({ upiImage: file, confirmVisible: true });
+      if (pickingForNow === 'bank') this.setState({ bankImage: file, confirmVisible: true });
+    } catch (e) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('cancel')) return;
+      Toast.show('Unable to open picker', Toast.SHORT);
+    } finally {
+      // ✅ unlock after a little delay to avoid iOS race
+      setTimeout(() => {
+        this.pickLock = false;
+      }, Platform.OS === 'ios' ? 800 : 400);
+    }
+  });
+};
 
   // ✅ UPI Pay Now (requires API key: checkSettle.data.upi_vpa)
   onPayNow = async () => {
@@ -485,7 +502,7 @@ export default class CashSettlement extends Component {
                     {!!upiImage?.uri ? <Image style={styles.tickImg} source={require('./assets/tick.png')} /> : null}
                   </View>
 
-                  {!!upiImage?.uri ? <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="contain" /> : null}
+                  {!!upiImage?.uri ? <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="cover" /> : null}
 
                   <View style={{ flexDirection: 'row', marginTop: 10 }}>
                     {/* <TouchableOpacity
@@ -553,7 +570,7 @@ export default class CashSettlement extends Component {
 
               </View>
 
-              <View style={{ height: 50 }} />
+              <View style={{ height: 170 }} />
             </ScrollView>
 
             {/* Fixed Footer */}
@@ -568,32 +585,34 @@ export default class CashSettlement extends Component {
                 <Image style={styles.callImg} source={require('./assets/phone.png')} />
                 <Text style={styles.callText}>Call Support</Text>
               </TouchableOpacity>
-
-              <SafeAreaView style={{ backgroundColor: THEME.bg }} />
             </View>
           </View>
         </SafeAreaView>
 
         {/* Picker Modal */}
         <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={this.closePicker}>
-          <TouchableOpacity activeOpacity={1} onPress={this.closePicker} style={styles.modalBackdrop}>
-            <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
-              <Text style={styles.modalTitle}>{this.state.pickingFor === 'bank' ? 'Upload Bank Receipt' : 'Upload UPI Screenshot'}</Text>
+  <View style={styles.modalBackdrop}>
+    <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={this.closePicker} />
 
-              <TouchableOpacity activeOpacity={0.9} onPress={() => this.pickImage('camera')} style={styles.modalBtn}>
-                <Text style={styles.modalBtnText}>Camera</Text>
-              </TouchableOpacity>
+    <View style={styles.modalCard}>
+      <Text style={styles.modalTitle}>
+        {this.state.pickingFor === 'bank' ? 'Upload Bank Receipt' : 'Upload UPI Screenshot'}
+      </Text>
 
-              <TouchableOpacity activeOpacity={0.9} onPress={() => this.pickImage('gallery')} style={styles.modalBtn}>
-                <Text style={styles.modalBtnText}>Gallery</Text>
-              </TouchableOpacity>
+      <TouchableOpacity activeOpacity={0.9} onPress={() => this.pickImage('camera')} style={styles.modalBtn}>
+        <Text style={styles.modalBtnText}>Camera</Text>
+      </TouchableOpacity>
 
-              <TouchableOpacity activeOpacity={0.9} onPress={this.closePicker} style={styles.modalCancelBtn}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
+      <TouchableOpacity activeOpacity={0.9} onPress={() => this.pickImage('gallery')} style={styles.modalBtn}>
+        <Text style={styles.modalBtnText}>Gallery</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity activeOpacity={0.9} onPress={this.closePicker} style={styles.modalCancelBtn}>
+        <Text style={styles.modalCancelText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
         {/* Confirm Modal */}
         <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={this.cancelConfirm}>
@@ -786,18 +805,31 @@ const styles = StyleSheet.create({
   receiptImg: { width: '100%', height: 90, borderRadius: 10, backgroundColor: THEME.bg },
   receiptPlaceholder: { fontSize: 12, fontWeight: '600', color: THEME.subText, textAlign: 'center' },
 
-  noteText: { marginTop: 12, fontSize: 12, fontWeight: '400', color: 'grey', textAlign: 'center',marginBottom:10 },
+  noteText: { marginTop: 5, fontSize: 12, fontWeight: '400', color: 'grey', textAlign: 'center',marginBottom:10 },
 
   // Footer
   footerWrap: {
-    backgroundColor: THEME.bg,
-    paddingHorizontal: 10,
-    paddingBottom: Platform.OS === 'ios' ? 6 : 15,
-    backgroundColor:'#E7FAF3',
-    borderTopLeftRadius:20,
-    borderTopRightRadius:20,
-    elevation: 10,shadowColor: '#000',shadowOffset: {width: 0, height: 2},shadowOpacity: 0.5,shadowRadius: 5
-  },
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: '#E7FAF3',
+  paddingHorizontal: 10,
+  paddingTop: 12,
+
+  // remove extra gap
+  paddingBottom: 30,
+  marginBottom: -25,
+
+  borderTopLeftRadius: 20,
+  borderTopRightRadius: 20,
+
+  elevation: 3,
+  shadowColor: 'grey',
+  shadowOffset: { width: 0, height: -2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 5,
+},
   submitBtn: {
     height: 48,
     width: '95%',

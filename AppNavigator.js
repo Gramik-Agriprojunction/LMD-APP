@@ -32,14 +32,11 @@ const RootStack = createStackNavigator(
     Profile: { screen: Profile, navigationOptions: { headerShown: false } },
     SettlementHistory: { screen: SettlementHistory, navigationOptions: { headerShown: false } },
     CashSettlement: { screen: CashSettlement, navigationOptions: { headerShown: false } },
-	SettleList: { screen: SettlementList, navigationOptions: { headerShown: false } },
-	
-	Survey: { screen: Survey, navigationOptions: { headerShown: false } },
-
-
+    SettlementList: { screen: SettlementList, navigationOptions: { headerShown: false } },
+    Survey: { screen: Survey, navigationOptions: { headerShown: false }},
   },
   {
-    initialRouteName: 'Splash', // You can change to 'LMDDashboard' for direct demo entry
+    initialRouteName: 'Splash', 
   }
 );
 

@@ -1,4 +1,4 @@
-const baseurl = 'https://b2c.gramik.in/public/api'
+const baseurl = 'https://b2c.gramik.in/public/api/lmd/'
 
 
 // const baseurl = 'https://uatb2c.gramik.in/api/lmd/'
@@ -19,5 +19,8 @@ const strings = {
   checkSettle : baseurl + 'check-settlement',
   settleList : baseurl + 'cash-settlement-list',
   confirmSettle : baseurl + 'cash-settlement?status=',
+  rejectReasons : baseurl + 'reject-list',
+  farmerSurveyForm : baseurl + 'farmer-survey/',
+  fillSurvey : baseurl + 'create-farmer-survey',
 };
 export default strings;

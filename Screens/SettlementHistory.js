@@ -1,13 +1,3 @@
-// SettlementHistory.js
-// ✅ Screenshot-like layout (Search → Tabs → Cards → Fixed bottom submit bar)
-// ✅ Uses API data only (no dummy text)
-// ✅ Shows settlement_id (e.g., GMT00001) as ID
-// ✅ Upload Screenshot per card (Camera/Gallery) using react-native-image-crop-picker
-// ✅ iOS FIX: Gallery/Camera now opens reliably (no auto-close / no not-opening) by:
-//    1) Using Pressable backdrop to avoid touch bubbling
-//    2) Presenting picker after modal closes + InteractionManager + timeout
-// ✅ Tabs counts come from API list_count
-
 import React, { Component } from 'react';
 import {
   View,
@@ -503,8 +493,8 @@ export default class SettlementHistory extends Component {
               ) : rows.length ? (
                 rows.map(this.renderRow)
               ) : (
-                <View style={{ paddingVertical: 28, alignItems: 'center' }}>
-                  <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '600' }}>No settlements found</Text>
+                <View style={{ paddingVertical: 80, alignItems: 'center' }}>
+                  <Text style={{ color: '#6B7280', fontSize: 15, fontWeight: '400' }}>No settlements found</Text>
                 </View>
               )}
 
@@ -515,7 +505,7 @@ export default class SettlementHistory extends Component {
             <View style={styles.footerWrap}>
               <Text style={styles.noteText}>Note: Verification by Gramik Finance team takes up to 24 hours.</Text>
 
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
                   if (!selectedImage?.uri) {
@@ -532,7 +522,7 @@ export default class SettlementHistory extends Component {
                 ) : (
                   <ActivityIndicator size="small" color="#FFF" />
                 )}
-              </TouchableOpacity>
+              </TouchableOpacity> */}
 
               <SafeAreaView style={{ backgroundColor: '#F3F5F7' }} />
             </View>
@@ -703,7 +693,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E6EAF0',
   },
-  noteText: { fontSize: 12, color: 'grey', textAlign: 'center', marginBottom: 10 },
+  noteText: { fontSize: 12, color: 'grey', textAlign: 'center' },
   submitBtn: {
     height: 45,
     width: '95%',

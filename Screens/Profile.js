@@ -72,7 +72,7 @@ export default class Profile extends Component {
 
   goToCashSettlement = () => {
     // this.props?.navigation?.navigate('CashSettlement');
-    this.props?.navigation?.navigate('SettleList');
+    this.props?.navigation?.navigate('SettlementList');
 
   };
 
@@ -257,9 +257,7 @@ export default class Profile extends Component {
 
           {/* ✅ Finance buttons */}
           <TouchableOpacity style={styles.actionCard} activeOpacity={0.92} onPress={this.goToSettlementHistory}>
-            <View style={styles.actionIcon}>
-              <Text style={{ fontSize: 18 }}>📄</Text>
-            </View>
+            <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/flow.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Settlement History</Text>
               <Text style={styles.actionSub}>View all settlements & status</Text>
@@ -268,9 +266,7 @@ export default class Profile extends Component {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.actionCard} activeOpacity={0.92} onPress={this.goToCashSettlement}>
-            <View style={styles.actionIcon}>
-              <Text style={{ fontSize: 18 }}>💰</Text>
-            </View>
+             <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/purse.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Cash Settlement</Text>
               <Text style={styles.actionSub}>Upload proof & submit for verification</Text>
@@ -279,9 +275,7 @@ export default class Profile extends Component {
           </TouchableOpacity>
 
            <TouchableOpacity onPress={()=> this.setState({show_login : true})} style={styles.actionCard} activeOpacity={0.92}>
-            <View style={styles.actionIcon}>
-               <Image style={{height:20,width:20,marginLeft:5,tintColor:'#F88379',alignSelf:'center'}} source={require('./assets/logout.png')} />
-            </View>
+                <Image style={{height:35,width:38,marginRight:20,resizeMode:'contain'}} source={require('./assets/exit.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Logout</Text>
               <Text style={styles.actionSub}>Account Logout</Text>
@@ -314,11 +308,9 @@ export default class Profile extends Component {
                   > 
                     <TouchableOpacity activeOpacity={1} onPress={()=> this.setState({show_login : false})} style={{flex:1,backgroundColor:'rgba(0, 0, 0, 0.6)',justifyContent:'center'}}>
                       <TouchableOpacity activeOpacity={1} onPress={()=> this.setState({show_login : true})} style={{width:'90%',padding:30,backgroundColor:'#FFF',alignSelf:'center',borderRadius:10}}>
-                        <View style={{height:60,width:60,borderRadius:30,justifyContent:'center',alignSelf:'center',backgroundColor:'#FFF',marginTop:-60}}>  
-                                                <Image animation="zoomIn" iterationCount={1} duration={1000} style={{width:60,height:60,alignSelf:'center',resizeMode:'cover'}} source={require('./assets/lgnew.png')}></Image>       
-                                                </View>  
-                        <Text style={{color:'#000',fontFamily:'Poppins-Bold',alignSelf:'center',fontSize:18,marginTop:20,textAlign:'center'}}>Logout</Text> 
-                        <Text style={{color:'#000',fontFamily:'Poppins',alignSelf:'center',fontSize:13,textAlign:'center'}}>Are you sure to logout of this account?</Text>  
+                                                <Image animation="zoomIn" iterationCount={1} duration={1000} style={{width:60,height:60,alignSelf:'center',resizeMode:'cover',marginTop:-60}} source={require('./assets/exit.png')}></Image>       
+                        <Text style={{color:'#cf574e',fontFamily:'Poppins-Bold',alignSelf:'center',fontSize:20,marginTop:20,textAlign:'center'}}>Logout</Text> 
+                        <Text style={{color:'#000',fontFamily:'Poppins',alignSelf:'center',fontSize:14,textAlign:'center',marginTop:7}}>Are you sure to logout of this account?</Text>  
                         <TouchableOpacity onPress={()=> this.setState({show_login:false},()=> this.onLogout())} style={{height:40,width:150,marginTop:30,borderRadius:10,justifyContent:'center',alignSelf:'center',backgroundColor:'#F68A20'}}>
                         <Text style={{color:'#FFF',fontFamily:'Poppins-Bold',fontSize:13,alignSelf:'center'}}>Logout</Text> 
                         </TouchableOpacity> 
@@ -341,8 +333,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: '#1C8A62' },
   headerSafe: { backgroundColor: '#1C8A62' },
   headerRow: {  paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center',paddingBottom:12 },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center',alignSelf:'center',paddingTop:10 },
+  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF',alignSelf:'center' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
   container: { padding:8, paddingBottom: 20 },

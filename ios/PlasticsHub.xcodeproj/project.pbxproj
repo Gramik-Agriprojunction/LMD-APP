@@ -654,7 +654,7 @@
 				CODE_SIGN_ENTITLEMENTS = PlasticsHub/PlasticsHub.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = R8AHFL944Y;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -693,7 +693,7 @@
 				CODE_SIGN_ENTITLEMENTS = PlasticsHub/PlasticsHub.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = R8AHFL944Y;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
