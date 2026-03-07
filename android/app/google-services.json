@@ -1,0 +1,150 @@
+{
+  "project_info": {
+    "project_number": "388649303207",
+    "project_id": "agri-junction-a4f9c",
+    "storage_bucket": "agri-junction-a4f9c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388649303207:android:d20d09e4c193896feb2f82",
+        "android_client_info": {
+          "package_name": "com.agri.junction"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "388649303207-6cveq7movkrpqpinise4jkgue5ie5of1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.agri.junction",
+            "certificate_hash": "4c79051d440f873dfe8c8c3c8eab9beb5a36c522"
+          }
+        },
+        {
+          "client_id": "388649303207-6vseei63ao3ccm4gp7sqskd8ba5e5qq9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.agri.junction",
+            "certificate_hash": "47ff52743cc92326622d4513f7de042ea4e8d824"
+          }
+        },
+        {
+          "client_id": "388649303207-bv5q5p0fer7750hbvabg5ui472mqpcb8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.agri.junction",
+            "certificate_hash": "ab409990a6afb606fdfe3abaf279d1b00479f3f8"
+          }
+        },
+        {
+          "client_id": "388649303207-e4o7n9je6uajqaiumj6sgrbcnb1deacl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.agri.junction",
+            "certificate_hash": "b1b4ef7cdecfce978c5090869354f63c8080ef6c"
+          }
+        },
+        {
+          "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxg47guhudqIELAqjaMfBACaplG111v4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "388649303207-6dm51sfljcvpne3qtdb8v344271fbkv1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.app.darkstore"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388649303207:android:ae88f7333a62a887eb2f82",
+        "android_client_info": {
+          "package_name": "com.app.gramikretailer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxg47guhudqIELAqjaMfBACaplG111v4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "388649303207-6dm51sfljcvpne3qtdb8v344271fbkv1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.app.darkstore"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:388649303207:android:853e764122bce431eb2f82",
+        "android_client_info": {
+          "package_name": "com.app.darkstore"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCxg47guhudqIELAqjaMfBACaplG111v4g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "388649303207-9jvucptevqeviev76bd0i522nt1q6j4l.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "388649303207-6dm51sfljcvpne3qtdb8v344271fbkv1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.app.darkstore"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

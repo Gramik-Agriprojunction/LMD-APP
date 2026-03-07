@@ -1,0 +1,38 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.app.darkstore.app-mergeReleaseResources-49:/values-v16/values-v16.xml",
+            "map": [
+                {
+                    "source": "/Users/brijesh/.gradle/caches/transforms-3/fba966a15ef37c2d503259fd4c1f962e/transformed/appcompat-1.6.1/res/values-v16/values-v16.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "5",
+                        "endColumns": "12",
+                        "endOffsets": "223"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "121",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "289"
+                    }
+                },
+                {
+                    "source": "/Users/brijesh/.gradle/caches/transforms-3/bcf7860f0a96e7c7a9ad1866133eae5a/transformed/core-1.9.0/res/values-v16/values-v16.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "65",
+                        "endOffsets": "116"
+                    }
+                }
+            ]
+        }
+    ]
+}

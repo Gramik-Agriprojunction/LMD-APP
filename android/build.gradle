@@ -1,0 +1,64 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+allprojects {
+    repositories {
+        mavenCentral()
+        maven { url "https://jitpack.io" }
+        jcenter()
+        flatDir {
+            dirs 'libs'
+        }
+    }
+    configurations.all {
+        resolutionStrategy {
+            dependencySubstitution {
+                substitute module('com.github.barteksc:android-pdf-viewer') using module('com.github.mhiew:android-pdf-viewer:3.2.0-beta.3')
+            }
+        }
+    }
+}
+
+//plugins {
+//    // ...
+//
+//    // Add the dependency for the Google services Gradle plugin
+//    id 'com.google.gms.google-services' version '4.3.15' apply false
+//
+//}
+
+buildscript {
+    ext {
+        kotlin_version = '1.8.0'
+        buildToolsVersion = "33.0.0"
+        minSdkVersion = 21
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+
+        // We use NDK 23 which has both M1 support and is the side-by-side NDK version from AGP.
+        ndkVersion = "26.1.10909125"
+        googlePlayServicesVersion = "21.1.0" // default: "+"
+        firebaseMessagingVersion = "21.1.0"
+    }
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://maven.google.com' }
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
+        jcenter() // Although deprecated, it might still have the required artifact.
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.3.1")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath('com.google.gms:google-services:4.3.3')
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+    }
+    allprojects {
+        repositories {
+            flatDir {
+                dirs 'libs'
+            }
+        }
+    }
+}

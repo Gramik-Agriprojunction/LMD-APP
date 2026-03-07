@@ -1,0 +1,26 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.app.darkstore.app-mergeDebugResources-49:/values-fil/values-fil.xml",
+            "map": [
+                {
+                    "source": "/Users/brijesh/.gradle/caches/transforms-3/f420e2eed704ef4286f6f22ded19f52f/transformed/jetified-play-services-wallet-18.1.3/res/values-fil/values.xml",
+                    "from": {
+                        "startLines": "4",
+                        "startColumns": "0",
+                        "startOffsets": "203",
+                        "endColumns": "78",
+                        "endOffsets": "281"
+                    },
+                    "to": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "82",
+                        "endOffsets": "133"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,2 @@
+#- File Locator -
+listingFile=../../../../../../../../Desktop/Projects/GramikLMD/android/app/release/release/output-metadata.json
