@@ -13,7 +13,7 @@ const BG = '#5D3FD3';
 class OrderOtpVerify extends Component {
   constructor(props) {
     super(props);
-    this.state = { otp: '', isLoading: false };
+    this.state = { otp: '', isLoading: false, verified: false };
     this.iconScale = new Animated.Value(0.5);
     this.iconFade = new Animated.Value(0);
     this.titleFade = new Animated.Value(0);
@@ -22,6 +22,8 @@ class OrderOtpVerify extends Component {
     this.formY = new Animated.Value(30);
     this.pulse = new Animated.Value(1);
     this.arrowX = new Animated.Value(0);
+    this.checkScale = new Animated.Value(0);
+    this.checkOpacity = new Animated.Value(0);
   }
 
   getOrderId = () => this.props?.navigation?.getParam('orderId', null);
@@ -70,12 +72,13 @@ class OrderOtpVerify extends Component {
     arrowLoop();
   };
 
-  verifyOtp = () => {
+  verifyOtp = (code) => {
     const orderId = this.getOrderId();
-    const otp = this.state.otp;
+    const otp = code || this.state.otp;
     if (!otp || otp.length < 5) { Toast.show('Please enter 5-digit OTP', Toast.SHORT); return; }
+    if (this.state.isLoading) return;
 
-    this.setState({ isLoading: true });
+    this.setState({ isLoading: true, otp });
     const body = { orderId: String(orderId), otp: otp };
     console.log('Order Verify OTP payload== ', body);
 
@@ -87,24 +90,47 @@ class OrderOtpVerify extends Component {
       .then(r => r.json())
       .then(json => {
         console.log('Order Verify OTP response== ', JSON.stringify(json));
-        this.setState({ isLoading: false });
-        if (json?.status) { Toast.show(json?.message || 'OTP Verified', Toast.SHORT); this.onOtpSuccess(); }
-        else { Toast.show(json?.message || 'Invalid OTP', Toast.SHORT); }
+        if (json?.status || json?.success) {
+          this.showVerifiedAnimation();
+        } else {
+          this.setState({ isLoading: false });
+          Toast.show(json?.message || 'Invalid OTP', Toast.SHORT);
+        }
       })
       .catch(e => { this.setState({ isLoading: false }); Toast.show('Something went wrong', Toast.SHORT); });
+  };
+
+  componentWillUnmount() {
+    this._unmounted = true;
+    if (this._navTimer) clearTimeout(this._navTimer);
+  }
+
+  showVerifiedAnimation = () => {
+    this.setState({ verified: true }, () => {
+      Animated.parallel([
+        Animated.spring(this.checkScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
+        Animated.timing(this.checkOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ]).start(() => {
+        this._navTimer = setTimeout(() => {
+          if (!this._unmounted) this.onOtpSuccess();
+        }, 1200);
+      });
+    });
   };
 
   onOtpSuccess = () => {
     const actionType = this.getActionType();
     const order = this.getOrder();
     const orderId = this.getOrderId();
-    if (actionType === 'deliver') { this.props.navigation.replace('DeliverToFarmer', { order: order }); }
-    else { this.updateOrderStatus(orderId, actionType); }
+    if (actionType === 'deliver') {
+      this.props.navigation.replace('DeliverToFarmer', { order: order });
+    } else {
+      this.updateOrderStatus(orderId, actionType);
+    }
   };
 
   updateOrderStatus = (orderId, status) => {
     const body = { status, order_id: orderId, type: '', reason: '' };
-    this.setState({ isLoading: true });
     console.log('Update Status (post OTP) payload== ', body);
 
     fetch(constants.updateStatus, {
@@ -114,11 +140,17 @@ class OrderOtpVerify extends Component {
     })
       .then(r => r.json())
       .then(json => {
-        this.setState({ isLoading: false });
+        console.log('Update Status (post OTP) response== ', JSON.stringify(json));
+        if (this._unmounted) return;
         Toast.show(json?.message || 'Status updated', Toast.SHORT);
-        if (json?.status) this.props.navigation.goBack();
+        this.props.navigation.goBack();
       })
-      .catch(e => { this.setState({ isLoading: false }); Toast.show('Something went wrong', Toast.SHORT); });
+      .catch(e => {
+        console.log('Update Status (post OTP) error== ', e);
+        if (this._unmounted) return;
+        this.setState({ isLoading: false });
+        Toast.show('Something went wrong', Toast.SHORT);
+      });
   };
 
   render() {
@@ -126,6 +158,7 @@ class OrderOtpVerify extends Component {
     const order = this.getOrder();
     const isPickup = actionType === 'pickup';
     const disabled = this.state.isLoading || this.state.otp.length < 5;
+    const { verified } = this.state;
 
     return (
       <View style={s.root}>
@@ -144,34 +177,51 @@ class OrderOtpVerify extends Component {
               <View style={{ width: 38 }} />
             </View>
 
-            {/* Title + OTP first */}
-            <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
-              <Text style={s.title}>Enter OTP</Text>
-              <Text style={s.subtitle}>Enter the 5-digit code shared by the {isPickup ? 'warehouse' : 'farmer'}</Text>
-            </Animated.View>
+            {verified ? (
+              <Animated.View style={[s.verifiedWrap, { opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
+                <View style={s.checkCircle}>
+                  <Text style={s.checkMark}>✓</Text>
+                </View>
+                <Text style={s.verifiedTitle}>Verified!</Text>
+                <Text style={s.verifiedSub}>{isPickup ? 'Updating pickup status...' : 'Proceeding to delivery...'}</Text>
+              </Animated.View>
+            ) : (
+              <>
+                {/* Title + OTP */}
+                <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
+                  <Text style={s.title}>Enter OTP</Text>
+                  <Text style={s.subtitle}>Enter the 5-digit code shared by the {isPickup ? 'warehouse' : 'farmer'}</Text>
+                </Animated.View>
 
-            <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
-              <OTPInputView
-                style={s.otpView}
-                pinCount={5}
-                autoFocusOnLoad={false}
-                codeInputFieldStyle={s.otpField}
-                codeInputHighlightStyle={s.otpActive}
-                onCodeFilled={(code) => this.setState({ otp: code })}
-              />
+                <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
+                  <OTPInputView
+                    style={s.otpView}
+                    pinCount={5}
+                    autoFocusOnLoad={false}
+                    codeInputFieldStyle={s.otpField}
+                    codeInputHighlightStyle={s.otpActive}
+                    onCodeFilled={(code) => {
+                      this.setState({ otp: code }, () => this.verifyOtp(code));
+                    }}
+                  />
 
-              <TouchableOpacity onPress={this.verifyOtp} disabled={disabled} activeOpacity={0.85}
-                style={[s.btn, { opacity: disabled ? 0.4 : 1 }]}>
-                {this.state.isLoading ? (
-                  <ActivityIndicator size="small" color={BG} />
-                ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={s.btnT}>VERIFY & {isPickup ? 'PICKUP' : 'DELIVER'}</Text>
-                    <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { transform: [{ translateX: this.arrowX }] }]} />
-                  </View>
-                )}
-              </TouchableOpacity>
-            </Animated.View>
+                  <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
+                    style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
+                    {this.state.isLoading ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={BG} />
+                        <Text style={[s.btnT, { marginLeft: 10 }]}>Verifying...</Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={s.btnT}>VERIFY & {isPickup ? 'PICKUP' : 'DELIVER'}</Text>
+                        <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { transform: [{ translateX: this.arrowX }] }]} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </Animated.View>
+              </>
+            )}
 
             {/* Order details card — below verify */}
             <Animated.View style={[s.orderCard, { opacity: this.formFade }]}>
@@ -191,7 +241,7 @@ class OrderOtpVerify extends Component {
                 <TouchableOpacity onPress={() => { const p = order?.farmer_mobile || order?.farmer_data?.phone; if(p) Linking.openURL(`tel:${String(p).replace(/\s+/g,'')}`).catch(()=>{}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
                   <Image source={require('./assets/call.png')} style={s.orderCallIco} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { const p = order?.farmer_mobile || order?.farmer_data?.phone; if(p) { const c = String(p).replace(/[^\d]/g,''); Linking.openURL(`https://wa.me/${c}`).catch(()=>{}); } }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 8 }}>
+                <TouchableOpacity onPress={() => { const p = order?.farmer_mobile || order?.farmer_data?.phone; if(p) { const c = String(p).replace(/[^\d]/g,''); Linking.openURL(`https://wa.me/${c}`).catch(()=>{}); } }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 12 }}>
                   <Image source={require('./assets/whatsapp.png')} style={s.orderIco} />
                 </TouchableOpacity>
               </View>
@@ -255,17 +305,23 @@ const s = StyleSheet.create({
   btnT: { fontSize: 15, fontWeight: '800', color: BG, letterSpacing: 0.3 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
 
+  verifiedWrap: { alignItems: 'center', marginTop: 40 },
+  checkCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
+  checkMark: { fontSize: 44, fontWeight: '900', color: '#FFF', marginTop: -2 },
+  verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 8 },
+  verifiedSub: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
+
   // Order card (white on purple)
   orderCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, marginTop: 20, overflow: 'hidden' },
   orderHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, paddingBottom: 8 },
   orderOid: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   orderAmt: { fontSize: 16, fontWeight: '700', color: '#FCD34D' },
   orderPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  orderAvt: { width: 32, height: 32, borderRadius: 16, resizeMode: 'cover', marginRight: 10 },
+  orderAvt: { width: 24, height: 24, borderRadius: 12, resizeMode: 'cover', marginRight: 8 },
   orderName: { fontSize: 13, fontWeight: '600', color: '#FFF' },
   orderPhone: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.5)', marginTop: 1 },
-  orderIco: { width: 26, height: 26, resizeMode: 'contain' },
-  orderCallIco: { width: 26, height: 26, resizeMode: 'contain', tintColor: '#F97316' },
+  orderIco: { width: 30, height: 30, resizeMode: 'contain' },
+  orderCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
   orderRoute: { paddingHorizontal: 12, paddingVertical: 10 },
   orderRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
   orderTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },

@@ -322,7 +322,6 @@ class Profile extends Component {
           <BottomSheet
             visible={this.state.show_login}
             onSheetClose={() => this.setState({ show_login: false })}
-            snapPoints={[280, 280]}
             enablePanDownToClose={true}
             onChange={(status) => status === -1 ? this.setState({ show_login: false }) : null}
           >

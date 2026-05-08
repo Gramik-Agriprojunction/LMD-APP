@@ -893,11 +893,11 @@ class DeliveryDetails extends Component {
             ref={r => this.bottomSheetRef = r}
             visible={this.state.show_pickup_confirm}
             onSheetClose={() => this.setState({ show_pickup_confirm: false })}
-            snapPoints={this.state.popup_type == 'cancel' || this.state.popup_type == 'reject' ? [420] : [200]}
             enablePanDownToClose={true}
             onChange={(status) => (status == -1 ? this.setState({ show_pickup_confirm: false }) : '')}
           >
             <View style={styles.bsContent}>
+              {/* Header */}
               <View style={styles.bsHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.bsTitle, { color: this.state.popup_type == 'reject' || this.state.popup_type == 'cancel' ? '#DC2626' : '#5D3FD3' }]}>
@@ -908,7 +908,7 @@ class DeliveryDetails extends Component {
                       ? 'Select a cancel reason to proceed'
                       : this.state.popup_type == 'reject'
                       ? 'Select a reject reason to proceed'
-                      : `Confirm order pickup?`}
+                      : 'Confirm order pickup?'}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => this.bottomSheetRef?.close()} style={styles.bsCloseBtn} activeOpacity={0.7}>
@@ -916,32 +916,50 @@ class DeliveryDetails extends Component {
                 </TouchableOpacity>
               </View>
 
-              {this.state.popup_type == 'cancel' ? this.renderCancelReasons() : null}
-              {this.state.popup_type == 'reject' ? this.renderRejectReasons() : null}
+              {/* Reasons list */}
+              {(this.state.popup_type == 'cancel' || this.state.popup_type == 'reject') ? (
+                <>
+                  <View style={styles.bsDivider} />
+                  <ScrollView
+                    style={{ maxHeight: Dimensions.get('window').height * 0.38 }}
+                    bounces={false}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
+                    {this.state.popup_type == 'cancel' ? this.renderCancelReasons() : null}
+                    {this.state.popup_type == 'reject' ? this.renderRejectReasons() : null}
+                  </ScrollView>
+                </>
+              ) : null}
 
-              <TouchableOpacity
-                disabled={
-                  ((this.state.popup_type == 'cancel' && !this.state.selectedCancelReason) ||
-                    (this.state.popup_type == 'reject' && !this.state.selectedRejectReason)) ||
-                  this.state.isLoading
-                }
-                onPress={() => {
-                  if (this.state.popup_type == 'cancel') this.orderStatusApi(this.state.popup_type, this.state.selectedCancelReason);
-                  else if (this.state.popup_type == 'reject') this.orderStatusApi(this.state.popup_type, this.state.selectedRejectReason);
-                  else this.orderStatusApi(this.state.popup_type);
-                }}
-                style={[styles.bsConfirmBtn, {
-                  backgroundColor: this.state.popup_type == 'reject' || this.state.popup_type == 'cancel' ? '#DC2626' : '#5D3FD3',
-                  opacity: ((this.state.popup_type == 'cancel' && !this.state.selectedCancelReason) ||
-                    (this.state.popup_type == 'reject' && !this.state.selectedRejectReason)) || this.state.isLoading ? 0.4 : 1,
-                }]}
-              >
-                {!this.state.isLoading ? (
-                  <Text style={styles.bsConfirmT}>{this.state.popup_type == 'reject' ? 'Reject Order' : this.state.popup_type == 'cancel' ? 'Cancel Order' : 'Confirm Pickup'}</Text>
-                ) : (
-                  <ActivityIndicator size="small" color="#FFF" />
-                )}
-              </TouchableOpacity>
+              {/* Action button */}
+              <View style={styles.bsDivider} />
+              <View style={styles.bsBtnWrap}>
+                <TouchableOpacity
+                  disabled={
+                    ((this.state.popup_type == 'cancel' && !this.state.selectedCancelReason) ||
+                      (this.state.popup_type == 'reject' && !this.state.selectedRejectReason)) ||
+                    this.state.isLoading
+                  }
+                  onPress={() => {
+                    if (this.state.popup_type == 'cancel') this.orderStatusApi(this.state.popup_type, this.state.selectedCancelReason);
+                    else if (this.state.popup_type == 'reject') this.orderStatusApi(this.state.popup_type, this.state.selectedRejectReason);
+                    else this.orderStatusApi(this.state.popup_type);
+                  }}
+                  style={[styles.bsConfirmBtn, {
+                    backgroundColor: this.state.popup_type == 'reject' || this.state.popup_type == 'cancel' ? '#DC2626' : '#5D3FD3',
+                    opacity: ((this.state.popup_type == 'cancel' && !this.state.selectedCancelReason) ||
+                      (this.state.popup_type == 'reject' && !this.state.selectedRejectReason)) || this.state.isLoading ? 0.35 : 1,
+                  }]}
+                  activeOpacity={0.85}
+                >
+                  {!this.state.isLoading ? (
+                    <Text style={styles.bsConfirmT}>{this.state.popup_type == 'reject' ? 'Reject Order' : this.state.popup_type == 'cancel' ? 'Cancel Order' : 'Confirm Pickup'}</Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </BottomSheet>
         ) : null}
@@ -1084,21 +1102,23 @@ const styles = StyleSheet.create({
   emptyItemsText: { fontSize: 12, fontWeight: '700', color: '#6B7280', textAlign: 'center', paddingVertical: 10 },
 
   // Bottom sheet
-  bsContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16, flex: 1 },
-  bsHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 },
-  bsTitle: { fontSize: 17, fontWeight: '700', marginBottom: 3 },
-  bsSub: { fontSize: 12, fontWeight: '400', color: '#94A3B8' },
-  bsCloseBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-  bsCloseX: { fontSize: 15, fontWeight: '700', color: '#64748B', marginTop: -1 },
-  bsConfirmBtn: { height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 10, alignSelf: 'center', paddingHorizontal: 32 },
-  bsConfirmT: { color: '#FFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  bsContent: { paddingHorizontal: 20, paddingBottom: 20 },
+  bsHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 6, paddingBottom: 2 },
+  bsTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  bsSub: { fontSize: 13, fontWeight: '400', color: '#94A3B8', lineHeight: 18 },
+  bsCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2 },
+  bsCloseX: { fontSize: 16, fontWeight: '700', color: '#94A3B8' },
+  bsDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  bsBtnWrap: { alignItems: 'center', paddingTop: 4 },
+  bsConfirmBtn: { height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, minWidth: 160 },
+  bsConfirmT: { color: '#FFF', fontSize: 14, fontWeight: '700', letterSpacing: 0.2 },
 
-  reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, marginBottom: 2 },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, marginBottom: 3 },
   reasonRowActive: { backgroundColor: '#FEF2F2' },
-  radioOuter: { height: 20, width: 20, borderRadius: 10, borderWidth: 2, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  radioOuterActive: { borderColor: '#DC2626' },
-  radioInner: { height: 10, width: 10, borderRadius: 5, backgroundColor: '#DC2626' },
-  reasonText: { flex: 1, color: '#1E293B', fontWeight: '500', fontSize: 14 },
+  radioOuter: { height: 22, width: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  radioOuterActive: { borderColor: '#DC2626', borderWidth: 2 },
+  radioInner: { height: 12, width: 12, borderRadius: 6, backgroundColor: '#DC2626' },
+  reasonText: { flex: 1, color: '#334155', fontWeight: '500', fontSize: 14 },
   reasonTextActive: { color: '#DC2626', fontWeight: '600' },
 
   // ✅ Payment styles (added)
