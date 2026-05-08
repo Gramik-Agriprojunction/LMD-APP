@@ -190,6 +190,7 @@ class Profile extends Component {
     return (
       <View style={styles.root}>
         <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.profileApi()} />
 
         {/* ✅ Header (same as other screens) */}
         <View style={styles.headerWrap}>

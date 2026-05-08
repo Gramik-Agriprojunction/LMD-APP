@@ -24,6 +24,11 @@ import {
   ActivityIndicator,
   Platform,
   FlatList,
+  Linking,
+  Animated,
+  RefreshControl,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -51,18 +56,21 @@ const THEME = {
 class SettlementList extends Component {
   constructor(props) {
     super(props);
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
     this.state = {
       loading: false,
       submitting: false,
       search: '',
-      activeTab: 'all', // all | pending | settled
+      activeTab: 'all', // all | pending | settled | disputed
       list: [],
-      counts: { all: 0, pending: 0, settled: 0 },
+      counts: { all: 0, pending: 0, settled: 0, disputed: 0 },
 
       // selection
       selectedMap: {}, // { [order_id]: true }
 
-      // ✅ top stats from API (todays_order)
+      showCall: true,
       stats: { todaysOrders: 0, codCollected: 0, cashDeposited: 0, upiCollected: 0 },
     };
   }
@@ -115,8 +123,8 @@ class SettlementList extends Component {
 
   mapTabFromStatus = (statusRaw) => {
     const st = this.normalize(statusRaw);
-    if (st.includes('settled')) return 'settled';
-    if (st.includes('success')) return 'settled';
+    if (st.includes('settled') || st.includes('success')) return 'settled';
+    if (st.includes('disputed')) return 'disputed';
     return 'pending';
   };
 
@@ -130,9 +138,15 @@ class SettlementList extends Component {
   // ------------------------
   // API: constants.settleList (GET)
   // ------------------------
-  fetchList = () => {
-    this.setState({ loading: true }, () => {
-      fetch(constants.settleList, {
+  fetchList = (status) => {
+    const tab = status || this.state.activeTab;
+    let url = constants.settleList;
+    if (tab && tab !== 'all') url += `?status=${tab}`;
+
+    console.log('Settlement List API url== ', url);
+    this.setState({ loading: true, search: '' }, () => {
+      console.log('Settlement List API calling== ', url);
+      fetch(url, {
         method: 'GET',
         headers: {
           Authorization: 'Bearer ' + global.token,
@@ -148,9 +162,9 @@ class SettlementList extends Component {
           const lc = json?.list_count || {};
           const pending = Number(lc?.pending_count ?? 0) || 0;
           const settled = Number(lc?.settled_count ?? 0) || 0;
+          const disputed = Number(lc?.disputed_count ?? 0) || 0;
           const all = Number(lc?.total ?? rows.length) || rows.length;
 
-          // keep selection only for existing order_ids
           const keep = {};
           const old = this.state.selectedMap || {};
           rows.forEach((it) => {
@@ -158,18 +172,18 @@ class SettlementList extends Component {
             if (id && old[id]) keep[id] = true;
           });
 
-          // ✅ STRICT: read top stats ONLY from todays_order (no dummy)
           const td = json?.todays_order || {};
           const todaysOrders = this.toNum(td?.total_order);
           const codCollected = this.toNum(td?.cod_collected);
-          const cashDeposited = this.toNum(td?.cash_collected);
+          const cashDeposited = this.toNum(td?.cash_deposited || td?.cash_collected);
           const upiCollected = this.toNum(td?.upi_collected);
 
           this.setState({
             loading: false,
             list: rows,
-            counts: { all, pending, settled },
+            counts: { all, pending, settled, disputed },
             selectedMap: keep,
+            showCall: json?.show_call !== false,
             stats: { todaysOrders, codCollected, cashDeposited, upiCollected },
           });
         })
@@ -179,12 +193,17 @@ class SettlementList extends Component {
           this.setState({
             loading: false,
             list: [],
-            counts: { all: 0, pending: 0, settled: 0 },
+            counts: { all: 0, pending: 0, settled: 0, disputed: 0 },
             selectedMap: {},
             stats: { todaysOrders: 0, codCollected: 0, cashDeposited: 0, upiCollected: 0 },
           });
         });
     });
+  };
+
+  onTabChange = (tab) => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(250, 'easeInEaseOut', 'opacity'));
+    this.setState({ activeTab: tab, search: '' }, () => this.fetchList(tab));
   };
 
   // ------------------------
@@ -202,26 +221,26 @@ class SettlementList extends Component {
     const q = this.normalize(search).trim();
 
     return (Array.isArray(list) ? list : []).filter((it) => {
-      const tab = this.mapTabFromStatus(it?.status);
-      const matchTab = activeTab === 'all' ? true : tab === activeTab;
-
-      if (!q) return matchTab;
+      if (!q) return true;
 
       const orderId = this.normalize(this.getOrderId(it));
       const orderCode = this.normalize(this.getOrderCode(it));
       const farmer = this.normalize(this.getFarmerName(it));
+      const farmerPhone = this.normalize(this.getFarmerObj(it)?.phone);
       const village = this.normalize(this.getVillage(it));
       const amt = this.normalize(this.money(this.getCodAmount(it)));
       const collected = this.normalize(this.money(this.getCollectedAmount(it)));
+      const dsName = this.normalize(it?.dark_store?.name);
 
       return (
-        matchTab &&
-        (orderCode.includes(q) ||
-          orderId.includes(q) ||
-          farmer.includes(q) ||
-          village.includes(q) ||
-          amt.includes(q) ||
-          collected.includes(q))
+        orderCode.includes(q) ||
+        orderId.includes(q) ||
+        farmer.includes(q) ||
+        farmerPhone.includes(q) ||
+        village.includes(q) ||
+        amt.includes(q) ||
+        collected.includes(q) ||
+        dsName.includes(q)
       );
     });
   };
@@ -263,107 +282,141 @@ class SettlementList extends Component {
   // ------------------------
   // Tabs UI (status boxes) - UPDATED COLORS
   // ------------------------
+  tabColors = { all: { bg: '#E6F4FF', border: THEME.blue, text: THEME.blue }, pending: { bg: '#FEF3C7', border: '#B45309', text: '#B45309' }, settled: { bg: '#DCFCE7', border: '#16A34A', text: '#16A34A' }, disputed: { bg: '#FEE2E2', border: '#DC2626', text: '#DC2626' } };
+
   tabStyle = (key) => {
     const active = this.state.activeTab === key;
-
-    // ALL -> Blue
-    if (key === 'all') {
-      return [
-        styles.statusTab,
-        { backgroundColor: '#E6F4FF' },
-        active ? [styles.statusTabActive, { borderColor: THEME.blue }] : null,
-      ];
-    }
-
-    // Pending -> Orange
-    if (key === 'pending') {
-      return [
-        styles.statusTab,
-        { backgroundColor: THEME.pendingBg },
-        active ? [styles.statusTabActive, { borderColor: THEME.orange }] : null,
-      ];
-    }
-
-    // Settled -> Green (old all color)
-    return [
-      styles.statusTab,
-      { backgroundColor: THEME.settledGreenBg },
-      active ? [styles.statusTabActive, { borderColor: THEME.green }] : null,
-    ];
+    const c = this.tabColors[key] || this.tabColors.all;
+    return [styles.statusTab, { backgroundColor: c.bg }, active ? [styles.statusTabActive, { borderColor: c.border }] : null];
   };
 
   tabValueStyle = (key) => {
-    if (key === 'all') return [styles.statusTabValue, { color: THEME.blue }];
-    if (key === 'pending') return [styles.statusTabValue, { color: THEME.orange }];
-    return [styles.statusTabValue, { color: THEME.green }];
+    const c = this.tabColors[key] || this.tabColors.all;
+    return [styles.statusTabValue, { color: c.text }];
   };
 
   // ------------------------
   // Row
   // ------------------------
-  renderRow = ({ item, index }) => {
+  onCall = (phone) => {
+    if (!phone) return;
+    Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
+  };
+
+  onWhatsApp = (phone) => {
+    if (!phone) return;
+    const p = String(phone).replace(/[^\d]/g, '');
+    Linking.openURL(`https://wa.me/${p}`).catch(() => {});
+  };
+
+  renderRow = ({ item }) => {
     const orderId = this.getOrderId(item);
     const orderCode = this.getOrderCode(item);
-    const farmer = this.getFarmerName(item);
-    const village = this.getVillage(item);
+    const codeDisplay = orderCode.includes(' ') ? orderCode.split(' ')[0] : orderCode;
+    const farmer = this.getFarmerObj(item);
+    const farmerName = this.getFarmerName(item);
+    const farmerPhone = farmer?.phone || '';
+    const farmerAddr = item?.farmer_address || {};
+    const ds = item?.dark_store || {};
     const slot = this.getTimeSlot(item);
+    const statusRaw = String(item?.status || '').toLowerCase();
+    const isPending = statusRaw.includes('pending');
 
-    const cod = this.money(this.getCodAmount(item));
+    const orderAmt = this.money(this.getCodAmount(item));
     const collected = this.money(this.getCollectedAmount(item));
+    const deposited = this.money(item?.deposite_amount);
+    const payType = String(item?.type || '').toUpperCase();
 
-    const collectedOk = this.isCollectedOk(item);
     const selected = !!this.state.selectedMap?.[orderId];
 
     return (
-      <View style={[styles.rowCard, index === 0 ? styles.rowCardFirst : null]}>
-        <View style={styles.rowTop}>
-          <Text style={styles.orderLine} numberOfLines={1}>
-            <Text style={styles.orderStrong}>{orderCode || 'N/A'}</Text>
-          </Text>
-
-          <View style={styles.amountCols}>
-            <View style={styles.amountCol}>
-              <Text style={[styles.amountText, { color: THEME.orange }]}>{cod ? `₹${cod}` : '-'}</Text>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => { if (isPending) this.toggleSelect(orderId); }}
+        style={[styles.rowCard, selected && styles.rowCardSelected]}
+      >
+        {/* Header */}
+        <View style={styles.rowHead}>
+          <Text style={styles.rowOid}>#{codeDisplay || orderId || 'N/A'}</Text>
+          <View style={{ flex: 1 }} />
+          <View style={[styles.rowStatusPill, { backgroundColor: isPending ? '#FEF3C7' : '#DCFCE7' }]}>
+            <Text style={[styles.rowStatusT, { color: isPending ? '#B45309' : '#16A34A' }]}>{isPending ? 'Pending' : 'Settled'}</Text>
+          </View>
+          {isPending ? (
+            <View style={[styles.checkBox, selected ? styles.checkBoxOn : null]}>
+              {selected ? <Text style={styles.checkTick}>{'✓'}</Text> : null}
             </View>
+          ) : null}
+        </View>
 
-            <View style={styles.amountColRight}>
-              <View style={styles.collectedWrap}>
-                <Text style={[styles.amountText, collectedOk ? styles.amountGreen : null]}>
-                  {collected ? `₹${collected}` : '-'}
-                </Text>
+        {/* Farmer + call/whatsapp */}
+        <View style={styles.rowFarmer}>
+          <Image source={require('./assets/farmer.png')} style={styles.rowAvt} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowFarmerName}>{farmerName || '-'}</Text>
+            {!!farmerPhone ? <Text style={styles.rowAddr}>{farmerPhone}</Text> : null}
+          </View>
+          {this.state.showCall ? (
+            <>
+              <TouchableOpacity onPress={() => this.onCall(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+                <Image source={require('./assets/call.png')} style={styles.rowIco} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => this.onWhatsApp(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 10 }}>
+                <Image source={require('./assets/whatsapp.png')} style={styles.rowIco} />
+              </TouchableOpacity>
+            </>
+          ) : null}
+        </View>
 
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => this.toggleSelect(orderId)}
-                  style={[styles.checkBox, selected ? styles.checkBoxOn : null]}
-                >
-                  {selected ? <Text style={styles.checkTick}>✓</Text> : null}
-                </TouchableOpacity>
-              </View>
+        {/* Route: Pickup -> Drop */}
+        <View style={styles.rowRoute}>
+          <View style={styles.rowRouteR}>
+            <View style={styles.rowTl}><View style={[styles.rowDot, { backgroundColor: '#0DA60D' }]} /><View style={styles.rowLine} /></View>
+            <View style={styles.rowRouteBody}>
+              <Text style={[styles.rowRouteLbl, { color: '#0DA60D' }]}>Pickup</Text>
+              <Text style={styles.rowRouteTitle}>{ds?.name || '-'}</Text>
+              {ds?.mobile ? <Text style={styles.rowRouteVal}>{ds.mobile}</Text> : null}
+              <Text style={styles.rowRouteVal}>{ds?.location || `${ds?.city || ''}${ds?.pincode ? `, ${ds.pincode}` : ''}`}</Text>
+            </View>
+          </View>
+          <View style={styles.rowRouteR}>
+            <View style={styles.rowTl}><View style={[styles.rowDot, { backgroundColor: '#EF4444' }]} /></View>
+            <View style={[styles.rowRouteBody, { paddingBottom: 0 }]}>
+              <Text style={[styles.rowRouteLbl, { color: '#EF4444' }]}>Drop</Text>
+              <Text style={styles.rowRouteVal}>
+                {farmerAddr?.address || farmer?.address || '-'}
+                {farmerAddr?.block ? `, ${farmerAddr.block}` : ''}
+                {farmerAddr?.city ? `, ${farmerAddr.city}` : ''}
+                {farmerAddr?.state ? `, ${farmerAddr.state}` : ''}
+              </Text>
             </View>
           </View>
         </View>
 
-        {!!farmer ? <Text style={styles.farmerName}>{farmer}</Text> : null}
-
-        {!!slot ? (
-          <View style={styles.slotRow}>
-            <Text style={styles.slotText} numberOfLines={1}>
-              {slot}
-            </Text>
+        {/* Amounts */}
+        <View style={styles.rowAmounts}>
+          <View style={styles.rowAmtItem}>
+            <Text style={styles.rowAmtLabel}>Order</Text>
+            <Text style={styles.rowAmtVal}>{'₹'}{orderAmt || '0'}</Text>
           </View>
-        ) : null}
-
-        {!!village ? (
-          <View style={{ flexDirection: 'row', marginTop: 6 }}>
-            <Image
-              style={{ width: 22, height: 22, resizeMode: 'contain', alignSelf: 'center', marginRight: 2, marginLeft: -6 }}
-              source={require('./assets/gps.png')}
-            />
-            <Text style={styles.villageText}>{`${village}`}</Text>
+          <View style={styles.rowAmtItem}>
+            <Text style={styles.rowAmtLabel}>Collected</Text>
+            <Text style={[styles.rowAmtVal, { color: '#16A34A' }]}>{'₹'}{collected || '0'}</Text>
           </View>
-        ) : null}
-      </View>
+          <View style={styles.rowAmtItem}>
+            <Text style={styles.rowAmtLabel}>Deposited</Text>
+            <Text style={[styles.rowAmtVal, { color: '#5D3FD3' }]}>{'₹'}{deposited || '0'}</Text>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.rowFooter}>
+          {!!payType ? <View style={styles.rowTypePill}><Text style={styles.rowTypeT}>{payType}</Text></View> : null}
+          {!!slot ? <Text style={styles.rowSlot}>{slot}</Text> : null}
+          <View style={{ flex: 1 }} />
+          <Text style={styles.rowAmtTotal}>{'₹'}{orderAmt}</Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -373,86 +426,52 @@ class SettlementList extends Component {
   renderListHeader = () => {
     const { search, counts, stats } = this.state;
 
+    const activeTab = this.state.activeTab;
+
     return (
       <View>
-        {/* ✅ Summary card: 2 rows, 2 columns, aligned */}
+        {/* Summary - colored stats */}
         <View style={styles.summaryCard}>
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryCol}>
-              <View style={styles.summaryDot} />
-              <Text style={styles.summaryLabel}>Today Orders :</Text>
-              <Text style={styles.summaryValue}>{this.toNum(stats?.todaysOrders)}</Text>
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryItem, { backgroundColor: '#EEF2FF' }]}>
+              <Text style={styles.summaryItemVal}>{this.toNum(stats?.todaysOrders)}</Text>
+              <Text style={styles.summaryItemLbl}>Orders</Text>
             </View>
-
-            <View style={styles.summaryCol}>
-              <View style={styles.summaryDot} />
-              <Text style={styles.summaryLabel}>COD Collected :</Text>
-              <Text style={styles.summaryValue}>{`₹${this.money(stats?.codCollected)}`}</Text>
+            <View style={[styles.summaryItem, { backgroundColor: '#FFF7ED' }]}>
+              <Text style={[styles.summaryItemVal, { color: '#EA580C' }]}>{'₹'}{this.money(stats?.codCollected)}</Text>
+              <Text style={styles.summaryItemLbl}>COD</Text>
             </View>
-          </View>
-
-          <View style={[styles.summaryGrid, { marginTop: 10 }]}>
-            <View style={styles.summaryCol}>
-              <View style={styles.summaryDot} />
-              <Text style={styles.summaryLabel}>Cash Deposited :</Text>
-              <Text style={[styles.summaryValue,{color:'#1C8A62'}]}>{`₹${this.money(stats?.cashDeposited)}`}</Text>
+            <View style={[styles.summaryItem, { backgroundColor: '#F0FDF4' }]}>
+              <Text style={[styles.summaryItemVal, { color: '#16A34A' }]}>{'₹'}{this.money(stats?.cashDeposited)}</Text>
+              <Text style={styles.summaryItemLbl}>Deposited</Text>
             </View>
-
-            <View style={styles.summaryCol}>
-              <View style={styles.summaryDot} />
-              <Text style={styles.summaryLabel}>UPI Collected :</Text>
-              <Text style={[styles.summaryValue,{color:'#1C8A62'}]}>{`₹${this.money(stats?.upiCollected)}`}</Text>
+            <View style={[styles.summaryItem, { backgroundColor: '#EDE9FE' }]}>
+              <Text style={[styles.summaryItemVal, { color: '#7C3AED' }]}>{'₹'}{this.money(stats?.upiCollected)}</Text>
+              <Text style={styles.summaryItemLbl}>UPI</Text>
             </View>
           </View>
         </View>
 
-        {/* ✅ Status box tabs */}
+        {/* Status tabs */}
         <View style={styles.tabsOuter}>
-          <TouchableOpacity activeOpacity={0.9} onPress={() => this.setState({ activeTab: 'all' })} style={this.tabStyle('all')}>
-            <Text style={styles.statusTabTitle}>All</Text>
-            <Text style={this.tabValueStyle('all')}>{counts.all}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => this.setState({ activeTab: 'pending' })}
-            style={this.tabStyle('pending')}
-          >
-            <Text style={styles.statusTabTitle}>Pending</Text>
-            <Text style={this.tabValueStyle('pending')}>{counts.pending}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => this.setState({ activeTab: 'settled' })}
-            style={this.tabStyle('settled')}
-          >
-            <Text style={styles.statusTabTitle}>Settled</Text>
-            <Text style={this.tabValueStyle('settled')}>{counts.settled}</Text>
-          </TouchableOpacity>
+          {[
+            { key: 'all', label: 'All', count: counts.all },
+            { key: 'pending', label: 'Pending', count: counts.pending },
+            { key: 'settled', label: 'Settled', count: counts.settled },
+            { key: 'disputed', label: 'Disputed', count: counts.disputed },
+          ].map(t => {
+            const c = this.tabColors[t.key] || this.tabColors.all;
+            const isActive = activeTab === t.key;
+            return (
+              <TouchableOpacity key={t.key} activeOpacity={0.8} onPress={() => this.onTabChange(t.key)}
+                style={[styles.statusTab, isActive && { backgroundColor: c.bg, borderColor: c.border }]}>
+                <Text style={[styles.statusTabTitle, isActive && { color: c.text, fontWeight: '700' }]}>{t.label} ({t.count})</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        <Text style={styles.instructionText}>Please verify and mark cash orders as settled</Text>
-
-        {/* Search */}
-        <View style={styles.searchBox}>
-          <Image style={styles.searchImg} source={require('./assets/search.png')} />
-          <TextInput
-            value={search}
-            onChangeText={(t) => this.setState({ search: t })}
-            placeholder="Search here.."
-            placeholderTextColor={THEME.muted}
-            style={styles.searchInput}
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* Table header */}
-        <View style={styles.tableHeader}>
-          <Text style={styles.thLeft}>ORDER</Text>
-          <Text style={styles.thMid}>COD</Text>
-          <Text style={styles.thRight}>COLLECTED</Text>
-        </View>
+        <Text style={styles.instructionText}>Verify and mark cash orders as settled</Text>
       </View>
     );
   };
@@ -475,35 +494,47 @@ class SettlementList extends Component {
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
               </TouchableOpacity>
 
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Cash Settlement
-              </Text>
-
-              <View style={{ width: 42, height: 42 }} />
+              <View style={styles.headerSearch}>
+                <Image style={styles.headerSearchIco} source={require('./assets/search.png')} />
+                <TextInput
+                  value={this.state.search}
+                  onChangeText={(t) => this.setState({ search: t })}
+                  placeholder="Search orders..."
+                  placeholderTextColor="rgba(255,255,255,0.45)"
+                  style={styles.headerSearchInput}
+                  returnKeyType="search"
+                />
+                {this.state.search ? (
+                  <TouchableOpacity onPress={() => this.setState({ search: '' })} activeOpacity={0.7} style={styles.headerCrossBtn}>
+                    <Image source={require('./assets/cross.png')} style={styles.headerCrossIco} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
           </SafeAreaView>
         </View>
 
-        <SafeAreaView style={styles.bodySafe}>
-          <View style={{ flex: 1 }}>
-            {loading ? (
-              <View style={{ paddingTop: 22 }}>
-                {this.renderListHeader()}
-                <View style={{ paddingVertical: 26 }}>
-                  <ActivityIndicator size="large" color={THEME.green} />
+        <View style={{ flex: 1 }}>
+            <FlatList
+              data={loading ? [] : rows}
+              keyExtractor={(it, idx) => `${this.getOrderId(it) || idx}-${idx}`}
+              renderItem={this.renderRow}
+              ListHeaderComponent={this.renderListHeader}
+              ListEmptyComponent={() => (
+                <View style={styles.emptyWrap}>
+                  {loading ? <ActivityIndicator size="large" color={THEME.green} /> : (
+                    <>
+                      <Image source={require('./assets/dlh.png')} style={{ width: 70, height: 70, resizeMode: 'contain', marginBottom: 14 }} />
+                      <Text style={styles.emptyTitle}>No orders found</Text>
+                      <Text style={styles.emptySub}>{this.state.search ? 'Try a different search' : 'No settlement orders for this filter'}</Text>
+                    </>
+                  )}
                 </View>
-              </View>
-            ) : (
-              <FlatList
-                data={rows}
-                keyExtractor={(it, idx) => `${this.getOrderId(it) || idx}-${idx}`}
-                renderItem={this.renderRow}
-                ListHeaderComponent={this.renderListHeader}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              />
-            )}
+              )}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            />
 
             {/* Fixed bottom */}
             <View style={styles.footerWrap}>
@@ -530,10 +561,8 @@ class SettlementList extends Component {
                 </TouchableOpacity>
               </View>
 
-              <SafeAreaView style={{ backgroundColor: THEME.bg }} />
             </View>
           </View>
-        </SafeAreaView>
       </View>
     );
   }
@@ -549,155 +578,90 @@ const styles = StyleSheet.create({
   headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
   backImg: { width: 24, height: 24, resizeMode: 'contain', tintColor: '#fff' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
+  headerSearch: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, height: 38, paddingHorizontal: 10, marginRight: 8 },
+  headerSearchIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },
+  headerSearchInput: { flex: 1, fontSize: 13, color: '#FFF', paddingVertical: 0 },
+  headerCrossBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  headerCrossIco: { width: 10, height: 10, resizeMode: 'contain', tintColor: '#FFF' },
 
   bodySafe: { flex: 1, backgroundColor: THEME.bg },
 
-  listContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 170 },
+  listContent: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 170 },
 
-  // ✅ Summary card (aligned)
-  summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    padding: 12,
-    marginBottom: 10,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  summaryCol: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  summaryDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#36454F',
-    marginRight: 7,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontWeight: '350',
-    color: '#000',
-    marginRight: 6,
-  },
-  summaryValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#F37A20',
-  },
+  // Summary
+  summaryCard: { marginBottom: 8 },
+  summaryRow: { flexDirection: 'row' },
+  summaryItem: { flex: 1, borderRadius: 8, padding: 8, marginHorizontal: 2, alignItems: 'center' },
+  summaryItemVal: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  summaryItemLbl: { fontSize: 9, fontWeight: '500', color: '#64748B', marginTop: 2 },
 
   // Tabs
-  tabsOuter: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 0,
-    padding: 10,
-    marginBottom: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statusTab: {
-    width: '32%',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-  },
-  statusTabActive: { borderWidth: 1.3 },
-  statusTabTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#111827',
-    alignSelf: 'center',
-  },
-  statusTabValue: {
-    marginTop: 6,
-    fontSize: 20,
-    fontWeight: '800',
-    alignSelf: 'center',
-  },
+  tabsOuter: { backgroundColor: '#FFF', borderRadius: 12, flexDirection: 'row', padding: 4, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  statusTab: { flex: 1, borderRadius: 10, paddingVertical: 10, marginHorizontal: 2, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
+  statusTabTitle: { fontSize: 12, fontWeight: '600', color: '#64748B' },
 
-  instructionText: { fontSize: 12, fontWeight: '400', color: '#000' },
+  instructionText: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginBottom: 4 },
 
-  // Search
-  searchBox: {
-    marginTop: 10,
-    height: 46,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchImg: { width: 18, height: 18, resizeMode: 'contain', marginRight: 10, tintColor: THEME.muted },
-  searchInput: { flex: 1, fontSize: 14, color: THEME.text },
+  emptyWrap: { alignItems: 'center', paddingVertical: 60 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#475569', marginBottom: 6 },
+  emptySub: { fontSize: 13, fontWeight: '400', color: '#94A3B8' },
 
-  // Table header
-  tableHeader: {
-    marginTop: 10,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    paddingVertical: 15,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  thLeft: { flex: 1, fontSize: 11, fontWeight: '700', color: THEME.subText },
-  thMid: { width: 80, textAlign: 'right', fontSize: 11, fontWeight: '700', color: THEME.subText },
-  thRight: { width: 140, textAlign: 'right', fontSize: 11, fontWeight: '700', color: THEME.subText },
 
-  // Row
+  // Row card
   rowCard: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderTopWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    marginTop: 8,
   },
-  rowCardFirst: {},
-  rowTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  orderLine: { fontSize: 14, fontWeight: '800', color: THEME.text, paddingTop: 2, flex: 1 },
-  orderMuted: { color: THEME.subText, fontWeight: '800', fontSize: 10 },
-  orderStrong: { color: THEME.orange, fontWeight: '400', fontSize: 10 },
+  rowCardSelected: { borderColor: '#5D3FD3', backgroundColor: '#FAFAFF' },
+  rowHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  rowOid: { fontSize: 13, fontWeight: '700', color: '#5D3FD3' },
+  rowStatusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, marginRight: 8 },
+  rowStatusT: { fontSize: 10, fontWeight: '700' },
 
-  amountCols: { flexDirection: 'row', alignItems: 'flex-start' },
-  amountCol: { width: 80, alignItems: 'flex-end' },
-  amountColRight: { width: 140, alignItems: 'flex-end' },
+  rowFarmer: { flexDirection: 'row', alignItems: 'center', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  rowAvt: { width: 28, height: 28, borderRadius: 14, resizeMode: 'cover', marginRight: 8 },
+  rowFarmerName: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  rowAddr: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 1 },
+  rowIco: { width: 28, height: 28, resizeMode: 'contain' },
 
-  amountText: { fontSize: 13, fontWeight: '700', color: THEME.text },
-  amountGreen: { color: THEME.greenDark, fontSize: 13, fontWeight: '700' },
+  rowRoute: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  rowRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
+  rowTl: { width: 12, alignItems: 'center', marginRight: 8, paddingTop: 3 },
+  rowDot: { width: 7, height: 7, borderRadius: 4 },
+  rowLine: { width: 1.5, flex: 1, minHeight: 6, backgroundColor: '#D1D5DB', marginVertical: 2 },
+  rowRouteBody: { flex: 1, paddingBottom: 6 },
+  rowRouteLbl: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, marginBottom: 2 },
+  rowRouteTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  rowRouteVal: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
 
-  collectedWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  rowAmounts: { flexDirection: 'row', paddingTop: 8, paddingBottom: 8 },
+  rowAmtItem: { flex: 1, alignItems: 'center' },
+  rowAmtLabel: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginBottom: 2 },
+  rowAmtVal: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+
+  rowFooter: { flexDirection: 'row', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  rowTypePill: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, marginRight: 8 },
+  rowTypeT: { fontSize: 10, fontWeight: '600', color: '#475569' },
+  rowSlot: { fontSize: 11, fontWeight: '400', color: '#94A3B8' },
+  rowAmtTotal: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
 
   checkBox: {
-    marginLeft: 10,
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 1,
+    marginLeft: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
     borderColor: '#CBD5E1',
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkBoxOn: { backgroundColor: THEME.greenDark, borderColor: THEME.greenDark },
-  checkTick: { color: '#fff', fontSize: 12, fontWeight: '500', marginTop: -1 },
-
-  farmerName: { marginTop: 10, fontSize: 13, fontWeight: '600', color: THEME.text },
-  villageText: { fontSize: 12, fontWeight: '500', color: '#000', alignSelf: 'center' },
-
-  slotRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  slotText: { fontSize: 12, color: 'grey' },
+  checkBoxOn: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
+  checkTick: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: -1 },
 
   // Footer fixed
   footerWrap: {
@@ -705,12 +669,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: THEME.bg,
+    backgroundColor: '#FFF',
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 6 : 10,
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
+    paddingTop: 10,
+    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 8,
   },
   footerTopRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 5 },
 
@@ -720,7 +687,7 @@ const styles = StyleSheet.create({
   settleBtn: {
     height: 45,
     borderRadius: 10,
-    backgroundColor: '#0F7451',
+    backgroundColor: '#16A34A',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,

@@ -27,23 +27,24 @@ import {
 
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
-import ImageCropPicker from 'react-native-image-crop-picker';
+let ImageCropPicker = null;
+try { ImageCropPicker = require('react-native-image-crop-picker').default || require('react-native-image-crop-picker'); } catch(e) { console.log('ImageCropPicker not available'); }
 import moment from 'moment';
 
 
 const THEME = {
   green: '#5D3FD3',
-  greenDark: '#2F7D67',
-  greenPill: '#0F7451',
-  bg: '#E8ECF4',
+  greenDark: '#5D3FD3',
+  greenPill: '#5D3FD3',
+  bg: '#F0F3F8',
   card: '#FFFFFF',
-  border: '#E6EAF0',
-  text: '#111827',
-  subText: '#6B7280',
+  border: '#E2E8F0',
+  text: '#1E293B',
+  subText: '#64748B',
   orange: '#F37A20',
-  soft: '#E7FAF3',
-  pillBg: '#EAF4F0',
-  pillBorder: '#CFE6DC',
+  soft: '#EEF2FF',
+  pillBg: '#EEF2FF',
+  pillBorder: '#C7D2FE',
   radioBorder: '#CBD5E1',
   grayDot: '#36454F',
 };
@@ -165,6 +166,8 @@ pickLock = false;
       pickerVisible: true,
       pickingFor: forType,
       selectedType: forType === 'upi' ? 'upi' : 'bank',
+    }, () => {
+      console.log('Open picker for:', forType);
     });
   };
 
@@ -173,34 +176,34 @@ pickLock = false;
   cancelConfirm = () => this.setState({ confirmVisible: false, pickingFor: null,pickerVisible : false });
 
  pickImage = async (source) => {
-  if (this.pickLock) return;           // ✅ prevent double trigger
+  if (this.pickLock) return;
   this.pickLock = true;
 
-  const pickingForNow = this.state.pickingFor; // ✅ capture before setState
+  if (!ImageCropPicker) {
+    this.pickLock = false;
+    this.setState({ pickerVisible: false });
+    Toast.show('Image picker not available on this device', Toast.SHORT);
+    return;
+  }
+
+  const pickingForNow = this.state.pickingFor;
 
   this.setState({ pickerVisible: false }, async () => {
     try {
       await this.wait(Platform.OS === 'ios' ? 700 : 300);
 
-      // ✅ close any previous session (helps iOS)
-      if (ImageCropPicker?.clean) {
-        try { await ImageCropPicker.clean(); } catch (e) {}
-      }
+      try { if (ImageCropPicker.clean) await ImageCropPicker.clean(); } catch (e) {}
 
-      const img =
-        source === 'camera'
-          ? await ImageCropPicker.openCamera({
-              mediaType: 'photo',
-              cropping: false,
-              compressImageQuality: 0.85,
-              forceJpg: true,
-            })
-          : await ImageCropPicker.openPicker({
-              mediaType: 'photo',
-              cropping: false,
-              compressImageQuality: 0.85,
-              forceJpg: true,
-            });
+      const opts = { mediaType: 'photo', cropping: false, compressImageQuality: 0.85, forceJpg: true };
+      let img = null;
+
+      try {
+        img = source === 'camera' ? await ImageCropPicker.openCamera(opts) : await ImageCropPicker.openPicker(opts);
+      } catch (pickErr) {
+        const msg = String(pickErr?.message || '').toLowerCase();
+        if (!msg.includes('cancel')) Toast.show(pickErr?.message || 'Unable to pick image', Toast.SHORT);
+        return;
+      }
 
       if (!img?.path) return;
 
@@ -213,14 +216,10 @@ pickLock = false;
       if (pickingForNow === 'upi') this.setState({ upiImage: file, confirmVisible: true });
       if (pickingForNow === 'bank') this.setState({ bankImage: file, confirmVisible: true });
     } catch (e) {
-      const msg = String(e?.message || '').toLowerCase();
-      if (msg.includes('cancel')) return;
-      Toast.show(e?.message || String(e), Toast.SHORT);
+      console.log('pickImage error:', e);
+      Toast.show('Something went wrong', Toast.SHORT);
     } finally {
-      // ✅ unlock after a little delay to avoid iOS race
-      setTimeout(() => {
-        this.pickLock = false;
-      }, Platform.OS === 'ios' ? 800 : 400);
+      setTimeout(() => { this.pickLock = false; }, Platform.OS === 'ios' ? 800 : 400);
     }
   });
 };
@@ -401,6 +400,8 @@ pickLock = false;
 
     const previewUri = pickingFor === 'upi' ? upiImage?.uri : pickingFor === 'bank' ? bankImage?.uri : null;
 
+    const supportPhone = String(checkData?.support_phone || '').trim();
+
     return (
       <View style={styles.root}>
         <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
@@ -412,183 +413,95 @@ pickLock = false;
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
               </TouchableOpacity>
-
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Cash Settlement
-              </Text>
-
-              <View style={{ width: 42 }} />
+              <Text style={styles.headerTitle} numberOfLines={1}>Cash Settlement</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {!!supportPhone ? (
+                  <>
+                    <TouchableOpacity onPress={() => { Linking.openURL(`tel:${supportPhone}`).catch(() => {}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+                      <Image source={require('./assets/call.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { Linking.openURL(`https://wa.me/${supportPhone.replace(/[^\d]/g,'')}`).catch(() => {}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 8 }}>
+                      <Image source={require('./assets/whatsapp.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                    </TouchableOpacity>
+                  </>
+                ) : <View style={{ width: 42 }} />}
+              </View>
             </View>
           </SafeAreaView>
         </View>
 
-        <SafeAreaView style={styles.bodySafe}>
-          <View style={{ flex: 1 }}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-              {/* Hero */}
-              <View style={styles.heroCard}>
-                <View style={{ flexDirection: 'row' }}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <View style={{ flex: 1, flexDirection: 'row', alignSelf: 'center' }}>
-                        <View style={styles.heroIcon}>
-                          <Text style={styles.heroIconText}>₹</Text>
-                        </View>
-                        <Text style={styles.heroTitle}>Cash Settlement</Text>
+        <View style={{ flex: 1 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            {loading ? <ActivityIndicator size="large" color={THEME.green} style={{ marginTop: 40 }} /> : (
+              <>
+                {/* Amount hero */}
+                <View style={styles.heroCard}>
+                  <Text style={styles.heroLabel}>Settlement Amount</Text>
+                  <Text style={styles.heroAmt}>{'₹'}{amountStr || '0'}</Text>
+                  <Text style={styles.heroSub}>{orderCount || 0} order(s) selected</Text>
+
+                  {!!farmerName ? (
+                    <View style={styles.lmdPill}>
+                      <View style={styles.lmdAvatar}>
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 11 }}>{(farmerName || 'L').charAt(0).toUpperCase()}</Text>
                       </View>
-
-                      <Image style={{ height: 40, width: 40, resizeMode: 'contain' }} source={require('./assets/crn.png')} />
+                      <Text style={styles.lmdText} numberOfLines={1}>{farmerName}</Text>
+                      {!!farmerPhone ? <Text style={styles.lmdPhone}>{farmerPhone}</Text> : null}
                     </View>
-
-                    {!!amountStr ? (
-                      <Text style={styles.heroLine}>
-                        You have settled : <Text style={styles.heroBold}>{`₹${amountStr}`}</Text>
-                      </Text>
-                    ) : null}
-
-                    {orderCount ? (
-                      <Text style={styles.heroLine}>
-                        Cash for <Text style={styles.heroBold}>{`${orderCount}`}</Text> orders.
-                      </Text>
-                    ) : null}
-
-                    <Text style={[styles.heroLine, { marginTop: 6 }]}>
-                      Upload proof of cash deposit via <Text style={styles.heroBold}>UPI</Text> or bank deposit slip.
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Collection pill */}
-                {!!dateStr || !!timeStr ? (
-                  <View style={styles.collectionPill}>
-                    <Text style={styles.collectionText}>
-                      Collection Date :{' '}
-                      {!!dateStr ? <Text style={styles.collectionStrong}>{dateStr}</Text> : null}
-                      {!!timeStr ? (
-                        <>
-                          <Text style={styles.collectionDot}>  •  </Text>
-                          <Text style={styles.collectionStrong}>{timeStr}</Text>
-                        </>
-                      ) : null}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {/* LMD pill */}
-                {!!farmerName || !!farmerPhone ? (
-                  <View style={styles.lmdPill}>
-                    <View style={styles.lmdAvatar}>
-                      {farmerImg ? <Image source={{ uri: farmerImg }} style={styles.lmdAvatarImg} /> : <Text style={{ color: '#fff', fontWeight: '800' }}>L</Text>}
-                    </View>
-
-                    <Text style={styles.lmdText} numberOfLines={1}>
-                      {`LMD : `}
-                      <Text style={styles.lmdStrong}>{farmerName || '-'}</Text>
-                      {!!farmerPhone ? `  (${farmerPhone})` : ''}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {/* UPI Screenshot */}
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>UPI Screenshot</Text>
-
-                <View style={styles.innerCard}>
-                  <View style={styles.innerTopRow}>
-                    <Text style={styles.innerTitle} numberOfLines={1}>
-                      Upload UPI Transfer
-                    </Text>
-                    {!!amountStr ? <Text style={styles.innerAmt}>{`₹ ${amountStr}`}</Text> : null}
-                    {!!upiImage?.uri ? <Image style={styles.tickImg} source={require('./assets/tick.png')} /> : null}
-                  </View>
-
-                  {!!upiImage?.uri ? <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="cover" /> : null}
-
-                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
-                    {/* <TouchableOpacity
-                      style={[styles.bigUploadBtn, { flex: .5, marginRight: 10, justifyContent: 'center' }]}
-                      onPress={this.onPayNow}
-                      activeOpacity={0.92}
-                    >
-                      <Text style={styles.bigUploadText}>Pay Now</Text>
-                    </TouchableOpacity> */}
-
-                    <TouchableOpacity
-                      style={[styles.bigUploadBtn, { flex: 1, backgroundColor: THEME.green,marginTop:5 }]}
-                      onPress={() => this.openPicker('upi')}
-                      activeOpacity={0.92}
-                    >
-                      <Image style={styles.camIcon} source={require('./assets/cam.png')} />
-                      <Text style={styles.bigUploadText}>Upload</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-
-              {/* Bank Receipt */}
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Bank Receipt</Text>
-
-                <View style={{ marginTop: 8 }}>
-                  {loading ? (
-                    <View style={{ paddingVertical: 10 }}>
-                      <ActivityIndicator size="small" color={THEME.green} />
-                    </View>
-                  ) : Array.isArray(banks) && banks.length ? (
-                    banks.map((b) => {
-                      const selected = String(this.state.selectedBankId) === String(b?.id);
-
-                      return (
-                        <View key={String(b?.id)} style={{ marginBottom: 10 }}>
-                          {this.renderBankRow(b)}
-
-                          {selected ? (
-                            <View style={{ marginTop: 10 }}>
-                              <View style={[styles.receiptBox, { marginLeft: 0 }]}>
-                                <Text style={styles.receiptTitle}>RECEIPT</Text>
-
-                                {!!bankImage?.uri ? (
-                                  <Image source={{ uri: bankImage.uri }} style={styles.receiptImg} resizeMode="contain" />
-                                ) : (
-                                  <Text style={styles.receiptPlaceholder} numberOfLines={2}>
-                                    No receipt selected
-                                  </Text>
-                                )}
-                              </View>
-
-                              <TouchableOpacity style={styles.smallUploadBtn} onPress={() => this.openPicker('bank')} activeOpacity={0.92}>
-                                <Image style={styles.camIcon} source={require('./assets/cam.png')} />
-                                <Text style={styles.smallUploadText}>Upload Receipt</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })
                   ) : null}
+
+                  <Text style={styles.heroHint}>Upload proof via UPI or bank deposit slip</Text>
                 </View>
 
-              </View>
+                {/* UPI Upload */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>UPI Screenshot</Text>
+                    {!!upiImage?.uri ? <View style={styles.uploadedBadge}><Text style={styles.uploadedBadgeT}>Uploaded</Text></View> : null}
+                  </View>
 
-              <View style={{ height: 170 }} />
-            </ScrollView>
+                  {!!upiImage?.uri ? (
+                    <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="cover" />
+                  ) : null}
 
-            {/* Fixed Footer */}
-            <View style={styles.footerWrap}>
-                <Text style={styles.noteText}>Note : Verification by Gramik Finance team takes up to 24 hours</Text>
+                  <TouchableOpacity style={styles.uploadBtn} onPress={() => this.openPicker('upi')} activeOpacity={0.85}>
+                    <Image style={styles.camIcon} source={require('./assets/cam.png')} />
+                    <Text style={styles.uploadBtnText}>{upiImage?.uri ? 'Re-upload' : 'Upload UPI Screenshot'}</Text>
+                  </TouchableOpacity>
+                </View>
 
-              <TouchableOpacity activeOpacity={0.92} onPress={this.onSubmit} style={[styles.submitBtn, submitting ? { opacity: 0.75 } : null]} disabled={submitting}>
-                {!submitting ? <Text style={styles.submitText}>SUBMIT FOR VERIFICATION</Text> : <ActivityIndicator size="small" color="#FFF" />}
-              </TouchableOpacity>
+                {/* Bank Receipt */}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Bank Receipt</Text>
+                    {!!bankImage?.uri ? <View style={styles.uploadedBadge}><Text style={styles.uploadedBadgeT}>Uploaded</Text></View> : null}
+                  </View>
 
-              <TouchableOpacity style={styles.callSupportRow} onPress={this.onCallSupport} activeOpacity={0.92}>
-                <Image style={styles.callImg} source={require('./assets/phone.png')} />
-                <Text style={styles.callText}>Call Support</Text>
-              </TouchableOpacity>
-            </View>
+                  {Array.isArray(banks) && banks.length ? banks.map((b) => this.renderBankRow(b)) : null}
+
+                  {!!bankImage?.uri ? (
+                    <Image source={{ uri: bankImage.uri }} style={styles.previewImgInline} resizeMode="cover" />
+                  ) : null}
+
+                  <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#F1F5F9' }]} onPress={() => this.openPicker('bank')} activeOpacity={0.85}>
+                    <Image style={[styles.camIcon, { tintColor: '#475569' }]} source={require('./assets/cam.png')} />
+                    <Text style={[styles.uploadBtnText, { color: '#475569' }]}>{bankImage?.uri ? 'Re-upload' : 'Upload Bank Receipt'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ height: 120 }} />
+              </>
+            )}
+          </ScrollView>
+
+          {/* Footer */}
+          <View style={styles.footerWrap}>
+            <Text style={styles.noteText}>Verification by Gramik Finance team takes up to 24 hours</Text>
+            <TouchableOpacity activeOpacity={0.85} onPress={this.onSubmit} style={[styles.submitBtn, submitting ? { opacity: 0.6 } : null]} disabled={submitting}>
+              {!submitting ? <Text style={styles.submitText}>Submit for Verification</Text> : <ActivityIndicator size="small" color="#FFF" />}
+            </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
 
         {/* Picker Modal */}
         <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={this.closePicker}>
@@ -650,29 +563,19 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
 
   bodySafe: { flex: 1, backgroundColor: THEME.bg },
-  scrollContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 16 },
+  scrollContent: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 170 },
 
   // Hero card
   heroCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    padding: 12,
-  },
-  heroIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: THEME.soft,
+    backgroundColor: '#5D3FD3',
+    borderRadius: 16,
+    padding: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
   },
-  heroIconText: { fontWeight: '500', color: THEME.greenPill, fontSize: 22 },
-  heroTitle: { fontSize: 15, fontWeight: '700', color: THEME.text, alignSelf: 'center' },
-  heroLine: { marginTop: 6, fontSize: 12, fontWeight: '500', color: '#000', lineHeight: 18 },
-  heroBold: { fontWeight: '800', color: '#F37A20', fontSize: 14 },
+  heroLabel: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
+  heroAmt: { fontSize: 38, fontWeight: '800', color: '#FFF' },
+  heroSub: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  heroHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.4)', marginTop: 14 },
 
   collectionPill: {
     marginTop: 10,
@@ -688,38 +591,43 @@ const styles = StyleSheet.create({
   collectionDot: { color: THEME.orange, fontWeight: '900' },
 
   lmdPill: {
-    marginTop: 10,
-    backgroundColor: '#1C8A62',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    marginTop: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 12,
+    alignSelf: 'center',
   },
   lmdAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#0F7451',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   lmdAvatarImg: { width: 30, height: 30, resizeMode: 'cover' },
   lmdText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600' },
-  lmdStrong: { fontWeight: '800', fontSize: 13 },
+  lmdPhone: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '400', marginLeft: 6 },
 
   sectionCard: {
-    marginTop: 12,
+    marginTop: 10,
     backgroundColor: THEME.card,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.border,
-    padding: 12,
+    padding: 14,
   },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: THEME.text },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: THEME.text },
+  uploadedBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
+  uploadedBadgeT: { fontSize: 10, fontWeight: '700', color: '#16A34A' },
+  uploadBtn: { height: 44, borderRadius: 10, backgroundColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  uploadBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 
   innerCard: {
     marginTop: 10,
@@ -731,12 +639,12 @@ const styles = StyleSheet.create({
   },
   innerTopRow: { flexDirection: 'row', alignItems: 'center' },
   innerTitle: { flex: 1, fontSize: 12, fontWeight: '500', color: '#000' },
-  innerAmt: { fontSize: 16, fontWeight: '800', color: '#1C8A62' },
+  innerAmt: { fontSize: 16, fontWeight: '800', color: '#16A34A' },
   tickImg: { width: 22, height: 22, resizeMode: 'contain',marginLeft:10 },
 
   bigUploadBtn: {
-    backgroundColor: '#1C8A62',
-    borderRadius: 8,
+    backgroundColor: '#5D3FD3',
+    borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 10,
     flexDirection: 'row',
@@ -806,7 +714,7 @@ const styles = StyleSheet.create({
   receiptImg: { width: '100%', height: 90, borderRadius: 10, backgroundColor: THEME.bg },
   receiptPlaceholder: { fontSize: 12, fontWeight: '600', color: THEME.subText, textAlign: 'center' },
 
-  noteText: { marginTop: 5, fontSize: 12, fontWeight: '400', color: 'grey', textAlign: 'center',marginBottom:10 },
+  noteText: { fontSize: 11, fontWeight: '400', color: '#94A3B8', textAlign: 'center', marginBottom: 8 },
 
   // Footer
   footerWrap: {
@@ -814,49 +722,24 @@ const styles = StyleSheet.create({
   left: 0,
   right: 0,
   bottom: 0,
-  backgroundColor: '#E7FAF3',
-  paddingHorizontal: 10,
-  paddingTop: 12,
-
-  // remove extra gap
-  paddingBottom: 30,
-  marginBottom: -25,
-
-  borderTopLeftRadius: 20,
-  borderTopRightRadius: 20,
-
-  elevation: 3,
-  shadowColor: 'grey',
-  shadowOffset: { width: 0, height: -2 },
-  shadowOpacity: 0.2,
-  shadowRadius: 5,
+  backgroundColor: '#FFF',
+  paddingHorizontal: 14,
+  paddingTop: 10,
+  paddingBottom: 34,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: -3 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 8,
 },
   submitBtn: {
     height: 48,
-    width: '95%',
-    alignSelf: 'center',
-    borderRadius: 8,
-    backgroundColor: THEME.orange,
+    borderRadius: 12,
+    backgroundColor: '#F37A20',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-
-  callSupportRow: {
-    marginTop: 10,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: '#EEF7F3',
-    borderWidth:.5,
-    borderColor: '#53bb9a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    width: '95%',
-    alignSelf: 'center',
-  },
-  callImg: { width: 20, height: 20, resizeMode: 'contain', tintColor: THEME.greenPill, marginRight: 10 },
-  callText: { fontSize: 13, fontWeight: '500', color: THEME.greenPill },
+  submitText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   // Modals
   modalBackdrop: {
@@ -882,18 +765,18 @@ const styles = StyleSheet.create({
     borderColor: THEME.border,
     padding: 14,
   },
-  modalTitle: { fontSize: 15, fontWeight: '800', color: '#F37A20', textAlign: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#5D3FD3', textAlign: 'center', marginBottom: 14 },
   modalBtn: {
-    height: 44,
+    height: 46,
     borderRadius: 12,
-    backgroundColor: THEME.soft,
+    backgroundColor: '#EEF2FF',
     borderWidth: 1,
-    borderColor: '#D6F3E8',
+    borderColor: '#C7D2FE',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  modalBtnText: { fontSize: 13, fontWeight: '800', color: THEME.greenPill },
+  modalBtnText: { fontSize: 14, fontWeight: '700', color: '#5D3FD3' },
   modalCancelBtn: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
   modalCancelText: { fontSize: 13, fontWeight: '800', color: THEME.text },
 

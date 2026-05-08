@@ -106,7 +106,7 @@ class TrackOrders extends Component {
         <View style={s.dlvHead}>
           <Text style={s.dlvOid}>#{item?.order_id}</Text>
           <View style={{ flex: 1 }} />
-          <View style={[s.chip, { backgroundColor: b.bg }]}><Text style={s.chipT}>{st}</Text></View>
+          <View style={[s.chip, { backgroundColor: b.bg }]}><Text style={s.chipT}>{({PENDING:'Pending',DELIVERED:'Delivered',PICKUP:'Picked Up',INTRANSIT:'In Transit',RESCHEDULE:'Reschedule',RTO:'RTO',CANCELLED:'Cancelled'})[st] || st}</Text></View>
         </View>
 
         {/* Farmer */}
@@ -164,12 +164,12 @@ class TrackOrders extends Component {
     const { loading, refreshing, query, selected, live } = this.state;
     const data = this.filtered();
     const stats = [
-      { k: 'PICKUP', l: 'Picked Up', v: live?.picked_up, bg: '#F1F5F9', c: '#475569' },
-      { k: 'PENDING', l: 'Pending', v: live?.pending, bg: '#FFF7ED', c: '#EA580C' },
-      { k: 'DELIVERED', l: 'Delivered', v: live?.delivered, bg: '#F0FDF4', c: '#16A34A' },
-      { k: 'IN_TRANSIT', l: 'In-Transit', v: live?.in_transit, bg: '#EFF6FF', c: '#2563EB' },
-      { k: 'RESCHEDULE', l: 'Reschedule', v: live?.reschedule_order, bg: '#F5F3FF', c: '#7C3AED' },
-      { k: 'RTO', l: 'RTO', v: live?.rto, bg: '#FEF2F2', c: '#DC2626' },
+      { k: 'PICKUP', l: 'Picked Up', v: live?.picked_up, bg: '#E2E8F0', c: '#334155' },
+      { k: 'PENDING', l: 'Pending', v: live?.pending, bg: '#FFEDD5', c: '#C2410C' },
+      { k: 'DELIVERED', l: 'Delivered', v: live?.delivered, bg: '#DCFCE7', c: '#15803D' },
+      { k: 'IN_TRANSIT', l: 'In-Transit', v: live?.in_transit, bg: '#DBEAFE', c: '#1D4ED8' },
+      { k: 'RESCHEDULE', l: 'Reschedule', v: live?.reschedule_order, bg: '#EDE9FE', c: '#6D28D9' },
+      { k: 'RTO', l: 'RTO', v: live?.rto, bg: '#FEE2E2', c: '#B91C1C' },
     ];
 
     return (
@@ -264,7 +264,7 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 10 },
 
   sg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: G },
-  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'transparent' },
+  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
   sbV: { fontSize: 18, fontWeight: '700' },
   sbL: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 
@@ -298,7 +298,7 @@ const s = StyleSheet.create({
   routePhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
   routeAddr: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
   dsCall: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 4 },
-  dsCallIco: { width: 26, height: 26, resizeMode: 'contain', tintColor: '#EA580C' },
+  dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#EA580C' },
 
   dlvFoot: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   pill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, marginRight: 6 },

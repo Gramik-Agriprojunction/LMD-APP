@@ -13,11 +13,19 @@ import {
   Dimensions,
   Modal,
   Platform,
+  Animated,
+  RefreshControl,
+  LayoutAnimation,
+  UIManager,
+  PanResponder,
 } from 'react-native';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
+import ShimmerLoader from '../components/ShimmerLoader';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
+
+const BG = '#5D3FD3';
 
 
 class DeliverToFarmer extends Component {
@@ -46,8 +54,88 @@ class DeliverToFarmer extends Component {
       // cancel reasons
       cancelReasons: {}, // {key: label}
       selectedCancelReason: '', // key
+      refreshing: false,
+      showSuccessModal: false,
+      completingDelivery: false,
     };
+    this.fadeAnim = new Animated.Value(0);
+    this.slideAnim = new Animated.Value(24);
+    this.qrModalY = new Animated.Value(0);
+    this.qrBackdropOp = new Animated.Value(1);
+    this.successScale = new Animated.Value(0);
+    this.successOpacity = new Animated.Value(0);
+    this.successRing = new Animated.Value(0.5);
+    this.successRingOp = new Animated.Value(0);
+    this.successModalY = new Animated.Value(0);
+
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+
+    const SH = Dimensions.get('window').height;
+
+    this.successPan = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) this.successModalY.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 100 || g.vy > 0.4) {
+          Animated.timing(this.successModalY, { toValue: SH, duration: 250, useNativeDriver: true }).start(() => {
+            this.setState({ showSuccessModal: false });
+            this.successModalY.setValue(0);
+            const nav = this.props?.navigation;
+            nav?.navigate('TrackOrders');
+          });
+        } else {
+          Animated.spring(this.successModalY, { toValue: 0, friction: 8, useNativeDriver: true }).start();
+        }
+      },
+    });
+
+    this.qrPan = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 8,
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) {
+          this.qrModalY.setValue(g.dy);
+          this.qrBackdropOp.setValue(Math.max(0, 1 - g.dy / (SH * 0.5)));
+        }
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 100 || g.vy > 0.4) {
+          Animated.parallel([
+            Animated.timing(this.qrModalY, { toValue: SH, duration: 300, useNativeDriver: true }),
+            Animated.timing(this.qrBackdropOp, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ]).start(() => {
+            this.setState({ qrModalVisible: false });
+            this.qrModalY.setValue(0);
+            this.qrBackdropOp.setValue(1);
+          });
+        } else {
+          Animated.parallel([
+            Animated.spring(this.qrModalY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
+            Animated.timing(this.qrBackdropOp, { toValue: 1, duration: 200, useNativeDriver: true }),
+          ]).start();
+        }
+      },
+    });
   }
+
+  mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0,2) + '****' + s.slice(-2); };
+
+  runEntryAnim = () => {
+    this.fadeAnim.setValue(0);
+    this.slideAnim.setValue(24);
+    Animated.parallel([
+      Animated.timing(this.fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(this.slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+    ]).start();
+  };
+
+  onRefresh = () => {
+    const id = this.state.details?.id;
+    if (id) { this.setState({ refreshing: true }); this.deliverDetailsAPI(id); }
+  };
 
   getOrder = () => this.props?.navigation?.getParam('order', null);
 
@@ -63,6 +151,7 @@ class DeliverToFarmer extends Component {
       const id = order?.id;
       if (id) this.getQR(id);
       else console.log('DeliverToFarmer: navigation order.id missing');
+      this.runEntryAnim();
     });
 
     this.cancelReasonsApi();
@@ -89,19 +178,19 @@ class DeliverToFarmer extends Component {
         this.setState({ isLoading: false });
 
         if (json?.status && json?.order) {
-          this.setState({ details: json.order }, () => {
+          this.setState({ details: json.order, refreshing: false }, () => {
             const oid = json?.order?.id;
             if (oid) this.getQR(oid);
-            console.log("check status== ",this.state.details?.order_status)
+            this.runEntryAnim();
           });
         } else {
-          this.setState({ details: null, hasError: true });
+          this.setState({ details: null, hasError: true, refreshing: false });
           console.log('Order Details API error== ', json?.message || 'Invalid response');
         }
       })
       .catch((e) => {
         console.log('Order Details API error== ', e);
-        this.setState({ isLoading: false, details: null, hasError: true });
+        this.setState({ isLoading: false, refreshing: false, details: null, hasError: true });
       });
   };
 
@@ -154,17 +243,43 @@ class DeliverToFarmer extends Component {
   };
 
   onCollectCash = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
     this.setState({ payment_type: 'cash' });
   };
 
   onScanQR = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
     this.setState({ payment_type: 'qr' });
-    // open modal only if qr exists
-    if (this.state.qr) this.setState({ qrModalVisible: true });
+    this.openQrModal();
+  };
+
+  openQrModal = () => {
+    this.qrModalY.setValue(Dimensions.get('window').height);
+    this.qrBackdropOp.setValue(0);
+    this.setState({ qrModalVisible: true }, () => {
+      Animated.parallel([
+        Animated.spring(this.qrModalY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
+        Animated.timing(this.qrBackdropOp, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ]).start();
+    });
+  };
+
+  closeQrModal = () => {
+    const SH = Dimensions.get('window').height;
+    Animated.parallel([
+      Animated.timing(this.qrModalY, { toValue: SH, duration: 300, useNativeDriver: true }),
+      Animated.timing(this.qrBackdropOp, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => {
+      this.setState({ qrModalVisible: false });
+      this.qrModalY.setValue(0);
+      this.qrBackdropOp.setValue(1);
+    });
   };
 
   onComplete = () => {
-    this.setState({ popup_type: 'complete', show_sheet: true });
+    if (this.state.completingDelivery) return;
+    this.setState({ completingDelivery: true });
+    this.orderStatusApi('deliver', '');
   };
 
   onCancel = () => {
@@ -241,18 +356,23 @@ class DeliverToFarmer extends Component {
           this.setState({ statusLoading: false });
           Toast.show(responseJson.message, Toast.SHORT);
 
-          if (responseJson.status) {
-            this.setState({ show_sheet: false }, () => {
-              const nav = this.props?.navigation;
-              // if (nav?.goBack) nav.goBack();
-              if (nav?.goBack) nav.navigate('Survey',{order_data : this.state.details});
-
-            });
+          if (responseJson.status || responseJson.success) {
+            const st = String(body?.status || '').toLowerCase();
+            if (st === 'delivered' || st === 'deliver') {
+              this.setState({ completingDelivery: false, show_sheet: false }, () => this.showDeliverySuccess());
+            } else {
+              this.setState({ show_sheet: false, completingDelivery: false }, () => {
+                if (this.props?.navigation?.goBack) this.props.navigation.goBack();
+              });
+            }
+          } else {
+            this.setState({ completingDelivery: false });
           }
         })
         .catch((error) => {
           console.log('Update Status API error== ', error);
-          this.setState({ statusLoading: false });
+          this.setState({ statusLoading: false, completingDelivery: false });
+          Toast.show('Something went wrong', Toast.SHORT);
         });
     });
   };
@@ -287,16 +407,7 @@ class DeliverToFarmer extends Component {
   getQrImageSource = () => {
     const { qr } = this.state;
     if (!qr) return null;
-
-    // Cache bust to avoid stale blank image on iOS sometimes
-    const bust = qr.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-
-    return {
-      uri: qr + bust,
-      headers: {
-        Authorization: 'Bearer ' + global.token,
-      },
-    };
+    return { uri: qr };
   };
 
   renderQrTile = () => {
@@ -378,21 +489,77 @@ class DeliverToFarmer extends Component {
     );
   };
 
+  showDeliverySuccess = () => {
+    this.successScale.setValue(0);
+    this.successOpacity.setValue(0);
+    this.successRing.setValue(0.5);
+    this.successRingOp.setValue(0);
+    this.successModalY.setValue(0);
+    this.setState({ showSuccessModal: true }, () => {
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(this.successScale, { toValue: 1.15, friction: 3, tension: 80, useNativeDriver: true }),
+          Animated.timing(this.successOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        ]),
+        Animated.spring(this.successScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
+      ]).start();
+
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(this.successRing, { toValue: 2, duration: 800, useNativeDriver: true }),
+          Animated.timing(this.successRingOp, { toValue: 0, duration: 800, useNativeDriver: true }),
+        ]).start();
+      }, 200);
+
+      this._successTimer = setTimeout(() => {
+        this.setState({ showSuccessModal: false });
+        this.props?.navigation?.navigate('TrackOrders');
+      }, 2500);
+    });
+  };
+
+  closeSuccessModal = () => {
+    if (this._successTimer) clearTimeout(this._successTimer);
+    const SH = Dimensions.get('window').height;
+    Animated.timing(this.successModalY, { toValue: SH, duration: 250, useNativeDriver: true }).start(() => {
+      this.setState({ showSuccessModal: false });
+      this.successModalY.setValue(0);
+      this.props?.navigation?.navigate('TrackOrders');
+    });
+  };
+
+  getStatusColors = (s) => {
+    const v = String(s || '').toLowerCase();
+    if (v === 'pending') return { bg: '#EA580C' };
+    if (v === 'pickup' || v === 'pickedup') return { bg: '#7C3AED' };
+    if (v === 'delivered' || v === 'deliver') return { bg: '#16A34A' };
+    if (v === 'cancelled' || v === 'canceled') return { bg: '#DC2626' };
+    return { bg: '#475569' };
+  };
+
+  openSurvey = () => {
+    this.props?.navigation?.navigate('Survey', { order_data: this.state.details });
+  };
+
   render() {
     const o = this.state.details || this.getOrder();
     const { statusLoading } = this.state;
 
-    const orderCode = o?.order_code || '';
+    const rawCode = o?.order_code || '';
+    const orderIdText = rawCode.includes(' ') ? rawCode.split(' ')[0] : rawCode;
     const orderDate = o?.order_date || '';
     const statusText = o?.order_status || '';
+    const sc = this.getStatusColors(statusText);
     const totalItems = this.toNum(o?.total_items);
 
     const farmerName = o?.farmer_data?.name || '';
     const farmerPhone = o?.farmer_data?.phone || '';
     const farmerAddress = o?.farmer_data?.address || '';
-    const farmerImage = o?.farmer_data?.image || '';
+    const farmerFullAddress = o?.farmer_address || {};
+    const darkStore = o?.dark_store || {};
 
     const total = this.toNum(o?.grand_total);
+    const codAmount = this.toNum(o?.cod_amount);
     const items = Array.isArray(o?.order_items) ? o.order_items : [];
 
     const isCancel = this.state.popup_type === 'cancel';
@@ -404,380 +571,321 @@ class DeliverToFarmer extends Component {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="#5D3FD3" />
+        <StatusBar barStyle="light-content" backgroundColor={BG} />
 
-        {/* Header */}
         <View style={styles.headerWrap}>
           <SafeAreaView style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
               </TouchableOpacity>
-
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Deliver To Farmer
-              </Text>
-
+              <Text style={styles.headerTitle} numberOfLines={1}>Deliver To Farmer</Text>
               <View style={{ width: 42, height: 42 }} />
             </View>
           </SafeAreaView>
         </View>
 
-            <NavigationEvents
-                  onWillFocus={() => {}}
-                  onDidFocus={() => {
-                       this.deliverDetailsAPI(this.state.details?.id);
-                  }}
-                />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { if (this.state.details?.id) this.deliverDetailsAPI(this.state.details.id); }} />
 
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          {!o ? (
-            <View style={styles.pageBox}>
-              <Text style={styles.pageErrorText}>Missing navigation param: order</Text>
-            </View>
-          ) : (
-            <>
-              {/* Top meta */}
-              <View style={styles.topMeta}>
-                <View style={{ flex: 1 }}>
-                  {!!orderCode ? (
-                    <Text style={styles.orderIdLine}>
-                      ORDER : <Text style={styles.orderIdBold}>{orderCode}</Text>
-                    </Text>
-                  ) : null}
-                  {!!orderDate ? <Text style={styles.smallMeta}>{orderDate}</Text> : null}
-                </View>
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={!!this.state.refreshing} onRefresh={this.onRefresh} />}>
+          {this.state.isLoading && !this.state.refreshing ? <ShimmerLoader /> : null}
 
-                {!!statusText ? (
-                  <View style={[styles.statusPill, { alignSelf: 'center' }]}>
-                    <Text style={styles.statusPillText}>{String(statusText).toUpperCase()}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {/* Farmer card */}
-              <View style={styles.card}>
-                <View style={styles.farmerRow}>
-                  <View style={styles.avatar}>
-                    {!!farmerImage ? (
-                      <Image style={styles.avatarImg} source={{ uri: farmerImage }} />
-                    ) : (
-                      <View style={styles.avatarFallback} />
-                    )}
-                  </View>
-
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    {!!farmerName ? <Text style={styles.farmerName}>{farmerName}</Text> : null}
-
-                    {!!farmerAddress ? (
-                      <View style={styles.addrRow}>
-                        {/* <Image style={styles.gpsImg} source={require('./assets/gps.png')} /> */}
-                        <Text style={styles.farmerMeta} numberOfLines={2}>
-                          {farmerAddress}
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {/* {!!farmerPhone ? <Text style={styles.phoneMeta}>{farmerPhone}</Text> : null} */}
-                  </View>
-
-                  <TouchableOpacity onPress={this.onCall} activeOpacity={0.85}>
-                    <Image source={require('./assets/call.png')} style={styles.callIconImg} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={this.onWhatsApp} activeOpacity={0.85} style={{ marginLeft: 25 }}>
-                    <Image source={require('./assets/whatsapp.png')} style={styles.waIconImg} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Items header */}
-              <View style={styles.itemsHeader}>
-                             <Text style={styles.itemsTitle}>
-                               {`${(totalItems || items.length) || 0} Item(s) for delivery`}
-                             </Text>
-                             <Text style={styles.itemsTotal}>{`Total : ₹ ${total}`}</Text>
-                           </View>
-
-                           {/* ✅ Order Items */}
-<View style={styles.card}>
-
-  {(items || []).length ? (
-    (items || []).map((it, idx) => (
-      <View
-        key={String(it?.product_id ?? it?.variant_id ?? idx)}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingVertical: 10,
-          borderTopWidth: idx === 0 ? 0 : 1,
-          borderTopColor: '#E6EAF0',
-        }}
-      >
-        {it?.image ? (
-          <Image
-            source={{ uri: String(it.image) }}
-            style={{ width: 44, height: 44, borderRadius: 10, marginRight: 10, backgroundColor: '#F3F5F6' }}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={{ width: 40, height: 40, borderRadius: 10, marginRight: 10, backgroundColor: '#F3F5F6' }} />
-        )}
-
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: '500', color: '#000' }} numberOfLines={1}>
-            {it?.product_name || it?.name || '-'}
-          </Text>
-
-          {!!it?.variation ? (
-            <Text style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }} numberOfLines={1}>
-              {it.variation}
-            </Text>
+          {!this.state.isLoading && !o ? (
+            <View style={styles.pageBox}><Text style={styles.pageErrorText}>Unable to load details</Text></View>
           ) : null}
-        </View>
 
-        <View style={{ alignItems: 'flex-end' }}>
-           <Text style={{ fontSize: 15, fontWeight: '600', color: '#0F7451' }}>
-            ₹ {String(it?.price ?? 0)}
-          </Text>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: '#111827' ,marginTop: 8, }}>
-            Qty: {String(it?.quantity ?? 0)}
-          </Text>
-         
-        </View>
-      </View>
-    ))
-  ) : (
-    <Text style={{ color: '#6B7280', fontWeight: '700' }}>No items found</Text>
-  )}
-</View>
-
-              
-<View style={styles.card}>
-  {isPaid ? (
-    <>
-      <Text style={styles.receiveTitle}>Payment</Text>
-
-      <View style={styles.methodRow}>
-        <View style={[styles.methodIcon, { backgroundColor: '#E7FAF3' }]}>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#0F7451' }}>✓</Text>
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.methodTitle, { color: '#0F7451' }]}>
-            {String(paymentStatus || 'Paid').toUpperCase()}
-          </Text>
-
-          {!!paymentMode ? (
-            <Text style={styles.methodSub}>{paymentMode}</Text>
-          ) : (
-            <Text style={styles.methodSub}>Online</Text>
-          )}
-        </View>
-      </View>
-
-      <View style={{ marginTop: 6 }}>
-        <Text style={{ color: '#6B7280', fontWeight: '700', fontSize: 12 }}>
-          Amount : ₹ {total}
-        </Text>
-      </View>
-    </>
-  ) : (
-    <>
-      <Text style={styles.receiveTitle}>Collect Payment</Text>
-
-      <View style={styles.methodRow}>
-        <View style={styles.methodIcon}>
-          <Image style={{ height: 30, width: 30, resizeMode: 'contain' }} source={require('./assets/crn.png')} />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.methodTitle}>
-            {this.state.payment_type === 'cash' ? 'Collect Cash' : 'Scan QR Code'}
-          </Text>
-          <Text style={styles.methodSub}>{`₹ ${total}`}</Text>
-        </View>
-      </View>
-
-      <View style={styles.payTiles}>
-        <TouchableOpacity
-          style={[
-            styles.payTile,
-            {
-              borderWidth: this.state.payment_type == 'cash' ? 5 : 1,
-              borderColor: this.state.payment_type == 'cash' ? '#F37A20' : 'grey',
-            },
-          ]}
-          onPress={this.onCollectCash}
-          activeOpacity={0.9}
-        >
-          <View style={styles.payImg}>
-            <Image style={{ height: 80, width: 80 }} source={require('./assets/crn.png')} />
-          </View>
-          <View style={styles.payFooterPrimary}>
-            <Text style={styles.payTileText}>Collect Cash</Text>
-          </View>
-        </TouchableOpacity>
-
-        {this.renderQrTile()}
-      </View>
-    </>
-  )}
-</View>
-
-              {/* Footer */}
-             
-              <View style={{ height: 14 }} />
-            </>
-          )}
-        </ScrollView>
-
-         <View style={styles.footerBox}>
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Grand Total</Text>
-                  <Text style={styles.codValue}>{`₹ ${total}`}</Text>
+          {o ? (
+            <Animated.View style={{ opacity: this.fadeAnim, transform: [{ translateY: this.slideAnim }] }}>
+              {/* Hero Card — Order + Farmer + Payment */}
+              <View style={styles.ddCard}>
+                <View style={styles.ddHero}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ddOid}>#{orderIdText}</Text>
+                    <Text style={styles.ddDate}>{orderDate || '-'}</Text>
+                  </View>
+                  <View style={[styles.ddChip, { backgroundColor: sc.bg }]}>
+                    <Text style={styles.ddChipT}>{String(statusText).toUpperCase()}</Text>
+                  </View>
                 </View>
 
-               {this.state.details?.order_status!='delivered' && <View style={{}}>
-                 <TouchableOpacity style={styles.primaryBtn} onPress={this.onComplete} activeOpacity={0.9}>
-                  <Text style={styles.primaryText}>COMPLETE DELIVERY</Text>
-                </TouchableOpacity>
+                <View style={styles.ddPerson}>
+                  <Image source={require('./assets/farmer.png')} style={styles.ddAvt} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ddName}>{farmerName || '-'}</Text>
+                    <Text style={styles.ddPhone}>{this.mask(farmerPhone)}</Text>
+                  </View>
+                  <TouchableOpacity onPress={this.onCall} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+                    <Image source={require('./assets/call.png')} style={styles.ddIco} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={this.onWhatsApp} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 10 }}>
+                    <Image source={require('./assets/whatsapp.png')} style={styles.ddIco} />
+                  </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity style={[styles.dangerBtn, { marginTop: 10 }]} onPress={this.onCancel} activeOpacity={0.9}>
-                  <Text style={styles.dangerText}>CANCEL DELIVERY</Text>
-                </TouchableOpacity>
-               </View> }
-              {this.state.details?.order_status=='delivered' && <TouchableOpacity activeOpacity={0.9} onPress={this.openSurvey} style={[styles.primaryBtn, { marginBottom: 12 }]}>
-                             <Text style={styles.primaryText}>SURVEY</Text>
-                           </TouchableOpacity> }
+                <View style={styles.ddPayRow}>
+                  <View style={[styles.ddPill, { backgroundColor: '#475569' }]}><Text style={styles.ddPillT}>{paymentMode.toUpperCase() || '-'}</Text></View>
+                  <View style={[styles.ddPill, { backgroundColor: paymentStatus === 'paid' ? '#16A34A' : '#B45309' }]}><Text style={styles.ddPillT}>{paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}</Text></View>
+                  <View style={{ flex: 1 }} />
+                  <Text style={styles.ddHeroAmt}>{'₹'}{codAmount || total}</Text>
+                </View>
               </View>
 
+              {/* Route: Pickup -> Drop */}
+              <View style={styles.ddCard}>
+                <View style={{ padding: 12 }}>
+                  <View style={styles.ddRouteRow}>
+                    <View style={styles.ddTl}><View style={[styles.ddDot, { backgroundColor: '#0DA60D' }]} /><View style={styles.ddLine} /></View>
+                    <View style={styles.ddRouteBody}>
+                      <Text style={[styles.ddRouteLbl, { color: '#0DA60D' }]}>Pickup</Text>
+                      <Text style={styles.ddRouteTitle}>{darkStore?.name || '-'}</Text>
+                      {darkStore?.mobile ? <Text style={styles.ddRouteSub}>{darkStore.mobile}</Text> : null}
+                      <Text style={styles.ddRouteSub}>{darkStore?.location || `${darkStore?.city || ''}${darkStore?.pincode ? `, ${darkStore.pincode}` : ''}`}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.ddRouteRow}>
+                    <View style={styles.ddTl}><View style={[styles.ddDot, { backgroundColor: '#EF4444' }]} /></View>
+                    <View style={[styles.ddRouteBody, { paddingBottom: 0 }]}>
+                      <Text style={[styles.ddRouteLbl, { color: '#EF4444' }]}>Drop</Text>
+                      <Text style={styles.ddRouteSub}>
+                        {farmerFullAddress?.address || farmerAddress || '-'}
+                        {farmerFullAddress?.block ? `, ${farmerFullAddress.block}` : ''}
+                        {farmerFullAddress?.city ? `, ${farmerFullAddress.city}` : ''}
+                        {farmerFullAddress?.state ? `, ${farmerFullAddress.state}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
 
-        {/* ✅ QR Fullscreen Modal */}
-        <Modal
-          visible={this.state.qrModalVisible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => this.setState({ qrModalVisible: false })}
-        >
-          <View style={styles.qrModalWrap}>
-            <View style={styles.qrModalHeader}>
-              <TouchableOpacity
-                onPress={() => this.setState({ qrModalVisible: false })}
-                activeOpacity={0.85}
-                style={styles.qrCloseBtn}
-              >
-                <Text style={styles.qrCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
+              {/* Items */}
+              <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>{'₹'} {total}</Text></Text>
+              {items.length ? items.map((it, idx) => (
+                <View key={`${it?.variant_id || it?.product_id || idx}`} style={styles.ddCard}>
+                  <View style={styles.ddItemRow}>
+                    <View style={styles.ddItemImg}>
+                      {it?.image ? <Image source={{ uri: it.image }} style={styles.ddProductImg} /> : null}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.ddItemName}>{String(it?.product_name || '-')}</Text>
+                      <View style={styles.ddItemMeta}>
+                        {it?.variation ? <View style={styles.ddItemVarPill}><Text style={styles.ddItemVar}>{it.variation}</Text></View> : null}
+                        <Text style={styles.ddItemQty}>Qty: {this.toNum(it?.quantity)}</Text>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.ddItemPrice}>{'₹'}{this.toNum(it?.total_price || it?.price)}</Text>
+                      {it?.price && it?.quantity > 1 ? <Text style={styles.ddItemUnit}>{'₹'}{this.toNum(it?.price)} each</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              )) : <View style={styles.ddCard}><Text style={styles.emptyTxt}>No items</Text></View>}
 
-            <View style={styles.qrModalBody}>
-              <Image
-                source={this.getQrImageSource()}
-                resizeMode="contain"
-                style={styles.qrModalImage}
-                onError={(e) => {
-                  const msg = JSON.stringify(e?.nativeEvent || {});
-                  console.log('QR MODAL onError =>', msg);
-                  this.setState({ qrFailed: true, qrErrorText: msg });
-                }}
-              />
+              {/* Payment */}
+              {!isPaid ? (
+                <View style={styles.ddCard}>
+                  <View style={{ padding: 12 }}>
+                    <Text style={styles.payTitle}>Collect Payment  <Text style={{ color: '#16A34A', fontSize: 16, fontWeight: '800' }}>{'₹'}{total}</Text></Text>
 
-              {!!this.state.qrErrorText ? (
-                <View style={{ marginTop: 14, paddingHorizontal: 18 }}>
-                  <Text style={{ color: '#fff', fontWeight: '800', textAlign: 'center' }}>
-                    QR failed to load
-                  </Text>
-                  <Text style={{ color: '#cbd5e1', fontWeight: '700', textAlign: 'center', marginTop: 6, fontSize: 11 }}>
-                    {this.state.qrErrorText}
-                  </Text>
-                  {Platform.OS === 'ios' && this.state.qr?.startsWith('http://') ? (
-                    <Text style={{ color: '#fca5a5', fontWeight: '800', textAlign: 'center', marginTop: 8, fontSize: 11 }}>
-                      iOS ATS may block HTTP. Use HTTPS or allow ATS for this domain.
-                    </Text>
-                  ) : null}
+                    <TouchableOpacity onPress={this.onCollectCash} activeOpacity={0.8} style={[styles.payCard, this.state.payment_type === 'cash' && styles.payCardActive]}>
+                      <View style={[styles.payRadio, this.state.payment_type === 'cash' && styles.payRadioOn]}>
+                        {this.state.payment_type === 'cash' ? <View style={styles.payRadioDot} /> : null}
+                      </View>
+                      <Image style={{ height: 30, width: 30, resizeMode: 'contain' }} source={require('./assets/crn.png')} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.payCardTitle, this.state.payment_type === 'cash' && { color: '#16A34A' }]}>Collect Cash</Text>
+                        <Text style={styles.payCardSub}>Collect amount from farmer</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={this.onScanQR} activeOpacity={0.8} style={[styles.payCard, { marginBottom: 0 }, this.state.payment_type === 'qr' && styles.payCardActive]}>
+                      <View style={[styles.payRadio, this.state.payment_type === 'qr' && styles.payRadioOn]}>
+                        {this.state.payment_type === 'qr' ? <View style={styles.payRadioDot} /> : null}
+                      </View>
+                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: BG }}>QR</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.payCardTitle, this.state.payment_type === 'qr' && { color: BG }]}>Scan QR Code</Text>
+                        <Text style={styles.payCardSub}>Pay via UPI / QR scan</Text>
+                      </View>
+                      {this.state.payment_type === 'qr' && this.state.qr ? (
+                        <TouchableOpacity onPress={this.openQrModal} activeOpacity={0.85} style={styles.payQrThumbWrap}>
+                          <Image source={this.getQrImageSource()} style={styles.payQrThumb} resizeMode="contain" onError={() => this.setState({ qrFailed: true })} />
+                        </TouchableOpacity>
+                      ) : this.state.payment_type === 'qr' ? (
+                        <View style={styles.payQrThumbWrap}>
+                          {this.state.qrLoading ? <ActivityIndicator size="small" color={BG} /> : <Text style={{ fontSize: 9, fontWeight: '600', color: '#94A3B8' }}>N/A</Text>}
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : null}
+
+              <View style={{ height: 14 }} />
+            </Animated.View>
+          ) : null}
+        </ScrollView>
+
+        {/* Bottom Panel */}
+        <View style={styles.bottomPanel}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Grand Total</Text>
+            <Text style={styles.codValue}>{'₹'} {total}</Text>
+          </View>
+
+          {statusText === 'delivered' ? (
+            <View style={{ height: 48, borderRadius: 10, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
             </View>
+          ) : statusText !== 'cancelled' ? (
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#DC2626', marginRight: 6 }]} onPress={this.onCancel} activeOpacity={0.85}>
+                <Text style={styles.actionBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16A34A', marginLeft: 6, opacity: this.state.completingDelivery ? 0.6 : 1 }]} onPress={this.onComplete} activeOpacity={0.85} disabled={this.state.completingDelivery}>
+                {this.state.completingDelivery ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.actionBtnText}>Complete Delivery</Text>}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 13, color: '#DC2626', alignSelf: 'center', fontWeight: '600' }}>This order has been cancelled</Text>
+          )}
+        </View>
+
+        {/* Success Modal */}
+        <Modal visible={this.state.showSuccessModal} transparent animationType="none" onRequestClose={this.closeSuccessModal}>
+          <Animated.View style={[styles.successWrap, { transform: [{ translateY: this.successModalY }] }]} {...this.successPan.panHandlers}>
+            <View style={styles.successContent}>
+              <View style={styles.successCheckArea}>
+                <Animated.View style={[styles.successRing, { opacity: this.successRingOp.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.successRing }] }]} />
+                <Animated.View style={[styles.successCircle, { opacity: this.successOpacity, transform: [{ scale: this.successScale }] }]}>
+                  <Text style={styles.successCheck}>{'✓'}</Text>
+                </Animated.View>
+              </View>
+              <Animated.View style={{ opacity: this.successOpacity, alignItems: 'center' }}>
+                <Text style={styles.successTitle}>Delivery Complete!</Text>
+                <Text style={styles.successSub}>Order delivered successfully</Text>
+                <View style={styles.successInfo}>
+                  <Text style={styles.successOid}>#{(o?.order_code || '').split(' ')[0]}</Text>
+                  <Text style={styles.successDot}>{'·'}</Text>
+                  <Text style={styles.successName}>{o?.farmer_data?.name || '-'}</Text>
+                  <Text style={styles.successDot}>{'·'}</Text>
+                  <Text style={styles.successAmt}>{'₹'}{this.toNum(o?.grand_total)}</Text>
+                </View>
+                <Text style={styles.successHint}>Swipe down or wait...</Text>
+              </Animated.View>
+            </View>
+          </Animated.View>
+        </Modal>
+
+        {/* QR Modal */}
+        <Modal visible={this.state.qrModalVisible} transparent animationType="none" onRequestClose={this.closeQrModal}>
+          <View style={{ flex: 1 }}>
+            {/* Backdrop */}
+            <Animated.View style={[styles.qrBackdrop, { opacity: this.qrBackdropOp }]} />
+
+            {/* Sheet */}
+            <Animated.View style={[styles.qrSheet, { transform: [{ translateY: this.qrModalY }] }]} {...this.qrPan.panHandlers}>
+              <SafeAreaView style={{ backgroundColor: 'transparent' }} />
+
+              {/* Drag handle */}
+              <View style={styles.qrSheetHandle}><View style={styles.qrDragHandle} /></View>
+
+              {/* Header */}
+              <View style={styles.qrModalHeader}>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity onPress={this.closeQrModal} activeOpacity={0.7} style={styles.qrCloseBtn}>
+                  <Text style={styles.qrCloseText}>{'✕'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Content */}
+              <View style={{ flex: 1, paddingHorizontal: 16 }}>
+                <Text style={styles.qrTitle}>Scan & Pay</Text>
+                <Text style={styles.qrSubtitle}>Ask farmer to scan this QR code</Text>
+
+                {/* QR Image — no card background */}
+                <View style={styles.qrImgWrap}>
+                  {this.state.qr ? (
+                    <Image source={this.getQrImageSource()} resizeMode="contain" style={styles.qrModalImage} onError={() => this.setState({ qrFailed: true })} />
+                  ) : (
+                    <View style={styles.qrModalPlaceholder}>
+                      {this.state.qrLoading ? <ActivityIndicator size="large" color="#FFF" /> : (
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)' }}>QR not available</Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.qrCardAmt}>{'₹'} {total}</Text>
+
+                {/* Compact Order Info */}
+                <View style={styles.qrOrderCard}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.qrOrderOid}>#{orderIdText}</Text>
+                    <View style={{ flex: 1 }} />
+                    <View style={[styles.qrInfoPill, { backgroundColor: 'rgba(255,255,255,0.15)' }]}><Text style={styles.qrInfoPillT}>{paymentMode.toUpperCase() || 'COD'}</Text></View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                    <Image source={require('./assets/farmer.png')} style={{ width: 20, height: 20, borderRadius: 10, marginRight: 8 }} />
+                    <Text style={styles.qrOrderName}>{farmerName || '-'}</Text>
+                    <View style={{ flex: 1 }} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#FCD34D' }}>{totalItems || items.length || 0} item(s)</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.qrInfoHint}>Swipe down to close</Text>
+              </View>
+
+              <SafeAreaView style={{ backgroundColor: BG }} />
+            </Animated.View>
           </View>
         </Modal>
 
-        {/* ✅ BottomSheet Confirm + Cancel Reasons */}
+        {/* Bottom Sheet */}
         {this.state.show_sheet ? (
           <BottomSheet
+            ref={r => this.bsRef = r}
             visible={this.state.show_sheet}
             onSheetClose={() => this.setState({ show_sheet: false })}
-            snapPoints={isCancel ? [680, 680] : [290, 290]}
-            backgroundStyle={{ backgroundColor: '#FFF', borderRadius: 24 }}
             enablePanDownToClose={true}
-            animateOnMount={true}
             onChange={(status) => (status === -1 ? this.setState({ show_sheet: false }) : '')}
           >
-            <View style={{ padding: 20, paddingTop: 10, flex: 1, backgroundColor: '#FFF' }}>
-              <Text
-                style={{
-                  fontSize: 20,
-                  alignSelf: 'center',
-                  fontFamily: 'Poppins-Bold',
-                  textAlign: 'center',
-                  fontWeight: '900',
-                  lineHeight: 25,
-                  color: isCancel ? '#E35335' : '#1C8A62',
-                }}
-              >
-                {isCancel ? 'Cancel' : 'Complete'} Delivery
-              </Text>
+            <View style={styles.bsContent}>
+              <View style={styles.bsHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bsTitle, { color: '#DC2626' }]}>Cancel Delivery</Text>
+                  <Text style={styles.bsSub}>Select a cancel reason to proceed</Text>
+                </View>
+                <TouchableOpacity onPress={() => this.bsRef?.close()} style={styles.bsCloseBtn} activeOpacity={0.7}>
+                  <Text style={styles.bsCloseX}>{'✕'}</Text>
+                </TouchableOpacity>
+              </View>
 
-              <Text
-                style={{
-                  color: '#000',
-                  fontSize: 14,
-                  alignSelf: 'center',
-                  fontFamily: 'Poppins',
-                  textAlign: 'center',
-                  lineHeight: 22,
-                  marginLeft: 24,
-                  marginRight: 24,
-                  fontWeight: '450',
-                  marginBottom: isCancel ? 0 : 20,
-                  marginTop:10
-                }}
-              >
-                {isCancel
-                  ? 'Please select a cancel reason and confirm.'
-                  : 'Are you sure you want to mark this order as complete?'}
-              </Text>
+              <View style={styles.bsDivider} />
+              <ScrollView style={{ maxHeight: Dimensions.get('window').height * 0.35 }} bounces={false} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                {this.renderCancelReasons()}
+              </ScrollView>
 
-              {/* ✅ Cancel reasons list */}
-              {isCancel ? this.renderCancelReasons() : null}
-
-              <TouchableOpacity
-                disabled={confirmDisabled || statusLoading}
-                onPress={() => {
-                  if (isCancel) {
-                    this.orderStatusApi('cancel', this.state.selectedCancelReason);
-                  } else {
-                    this.orderStatusApi('deliver', '');
-                  }
-                }}
-                style={[
-                  styles.confirmBtn,
-                  {
-                    backgroundColor: isCancel ? '#E35335' : '#1C8A62',
-                    opacity: confirmDisabled || statusLoading ? 0.6 : 1,
-                  },
-                ]}
-              >
-                {statusLoading ? (
-                  <ActivityIndicator style={{ alignSelf: 'center' }} size="small" color="#FFF" />
-                ) : (
-                  <Text style={styles.confirmText}>Confirm</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => this.setState({ show_sheet: false })} style={{ alignSelf: 'center', padding: 16 }}>
-                <Text style={{ color: '#000', fontFamily: 'Poppins', alignSelf: 'center', fontSize: 14 }}>Close</Text>
-              </TouchableOpacity>
+              <View style={styles.bsDivider} />
+              <View style={styles.bsBtnWrap}>
+                <TouchableOpacity
+                  disabled={!this.state.selectedCancelReason || statusLoading}
+                  onPress={() => this.orderStatusApi('cancel', this.state.selectedCancelReason)}
+                  style={[styles.bsConfirmBtn, {
+                    backgroundColor: '#DC2626',
+                    opacity: !this.state.selectedCancelReason || statusLoading ? 0.35 : 1,
+                  }]}
+                  activeOpacity={0.85}
+                >
+                  {statusLoading ? <ActivityIndicator size="small" color="#FFF" /> : (
+                    <Text style={styles.bsConfirmT}>Cancel Order</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </BottomSheet>
         ) : null}
@@ -787,159 +895,151 @@ class DeliverToFarmer extends Component {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#E8ECF4' },
+  root: { flex: 1, backgroundColor: '#F0F3F8' },
 
-  headerWrap: { backgroundColor: '#5D3FD3' },
-  headerSafe: { backgroundColor: '#5D3FD3' },
+  headerWrap: { backgroundColor: BG },
+  headerSafe: { backgroundColor: BG },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
   headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain',tintColor:'#FFF'},
-  headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
+  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '600' },
 
-  container: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 16 },
+  container: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
 
-  pageBox: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
-    padding: 14,
-    marginBottom: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pageErrorText: { fontSize: 12, fontWeight: '800', color: '#6B7280' },
+  pageBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, alignItems: 'center', justifyContent: 'center' },
+  pageErrorText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
 
-  topMeta: { marginBottom: 10, flexDirection: 'row' },
-  statusPill: { backgroundColor: '#F37A20', borderRadius: 60, paddingHorizontal: 18, paddingVertical: 5 },
-  statusPillText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3, color: '#FFF' },
-  orderIdLine: { marginTop: 8, fontSize: 11, fontWeight: '800', color: '#111827' },
-  orderIdBold: { fontSize: 12, fontWeight: '800', color: '#F68A20'},
-  smallMeta: { fontSize: 14, color: '#111827', marginTop: 7, fontWeight: '600' },
+  // Hero card (same as DeliveryDetails)
+  ddCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
+  ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 8 },
+  ddOid: { fontSize: 14, fontWeight: '700', color: BG },
+  ddDate: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
+  ddChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
+  ddChipT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
 
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
-    padding: 12,
-    marginBottom: 12,
-    marginTop: 10,
-  },
+  ddPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
+  ddAvt: { width: 36, height: 36, borderRadius: 18, resizeMode: 'cover', marginRight: 10 },
+  ddName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  ddPhone: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 1 },
+  ddIco: { width: 30, height: 30, resizeMode: 'contain' },
 
-  farmerRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 10, overflow: 'hidden', backgroundColor: '#F3F5F6' },
-  avatarImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  avatarFallback: { flex: 1, backgroundColor: '#F3F5F6' },
+  ddPayRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 6, paddingBottom: 12 },
+  ddHeroAmt: { fontSize: 16, fontWeight: '700', color: '#16A34A' },
+  ddPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, alignSelf: 'flex-start', marginRight: 6 },
+  ddPillT: { fontSize: 10, fontWeight: '600', color: '#FFF' },
 
-  farmerName: { fontSize: 14, fontWeight: '700', color: '#111827' },
-  addrRow: { flexDirection: 'row', marginTop: 7 },
-  gpsImg: { height: 20, width: 20, resizeMode: 'contain', alignSelf: 'center' },
-  farmerMeta: { fontSize: 13, color: '#4B5563',  alignSelf: 'center', flex: 1,marginRight:15 },
-  phoneMeta: { marginTop: 7, fontSize: 12, color: '#111827' },
+  // Route
+  ddRouteRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  ddTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
+  ddDot: { width: 8, height: 8, borderRadius: 4 },
+  ddLine: { width: 1.5, flex: 1, minHeight: 10, backgroundColor: '#D1D5DB', marginVertical: 3 },
+  ddRouteBody: { flex: 1, paddingBottom: 10 },
+  ddRouteLbl: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, marginBottom: 3 },
+  ddRouteTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  ddRouteSub: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
+  ddInfoLabel: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginBottom: 4 },
+  ddSlot: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, marginRight: 6, marginBottom: 4 },
+  ddSlotT: { fontSize: 11, fontWeight: '500', color: '#475569' },
 
-  callIconImg: { width: 28, height: 28, resizeMode: 'contain' },
-  waIconImg: { width: 28, height: 28, resizeMode: 'contain' },
+  ddSecTitle: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 6 },
 
-  itemsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 10 },
-  itemsTitle: { fontSize: 12, fontWeight: '700', color: '#111827' },
-  itemsTotal: { fontSize: 13, fontWeight: '800', color: '#0F7451' },
+  ddItemRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  ddItemImg: { marginRight: 12 },
+  ddProductImg: { width: 46, height: 46, borderRadius: 8, resizeMode: 'cover', backgroundColor: '#F1F5F9' },
+  ddItemName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
+  ddItemMeta: { flexDirection: 'row', alignItems: 'center' },
+  ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+  ddItemVar: { fontSize: 12, fontWeight: '600', color: '#EA580C' },
+  ddItemQty: { fontSize: 12, fontWeight: '500', color: '#64748B' },
+  ddItemPrice: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
+  ddItemUnit: { fontSize: 10, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
 
-  receiveTitle: { fontSize: 13, fontWeight: '700', color: '#000', marginBottom: 15 },
+  emptyTxt: { fontSize: 12, fontWeight: '600', color: '#64748B', textAlign: 'center', paddingVertical: 10 },
 
-  methodRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  methodIcon: { width: 50, height: 50, borderRadius: 5, backgroundColor: '#E7FAF3', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  methodTitle: { fontSize: 12, fontWeight: '600', color: '#F37A20' },
-  methodSub: { marginTop: 4, fontSize: 18, fontWeight: '800', color: '#0F7451' },
+  // Payment section
+  payTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 10 },
+  payCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0', marginBottom: 8 },
+  payCardActive: { backgroundColor: '#FAFBFF', borderColor: BG },
+  payRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  payRadioOn: { borderColor: BG },
+  payRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: BG },
+  payCardTitle: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  payCardSub: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
+  payQrThumbWrap: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  payQrThumb: { width: 38, height: 38 },
 
-  payTiles: { flexDirection: 'row', justifyContent: 'space-between' },
-  payTile: {
-    width: (Dimensions.get('window').width - 14 * 2 - 12 * 2 - 10) / 2,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
-    backgroundColor: '#F9FAFB',
-    overflow: 'hidden',
-  },
-  payImg: { flex:1,minHeight: 120,alignItems: 'center', justifyContent: 'center', backgroundColor: '#E7FAF3' },
-  payFooterPrimary: { height: 40, backgroundColor: '#2F7D67', alignItems: 'center', justifyContent: 'center' },
-  payTileText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  paidRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  paidCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  paidCheck: { fontSize: 18, fontWeight: '900', color: '#16A34A' },
+  paidLabel: { fontSize: 14, fontWeight: '600', color: '#16A34A' },
+  paidMode: { fontSize: 12, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
+  paidAmt: { fontSize: 16, fontWeight: '700', color: '#16A34A' },
 
-  footerBox: {
-    padding: 20,
-    paddingBottom:30,
-    paddingTop:15,
-    backgroundColor: '#FFF',
-    width: '100%',
-    alignSelf: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
-    elevation: 3,
-  shadowColor: 'grey',
-  shadowOffset: { width: 0, height: -2 },
-  shadowOpacity: 0.2,
-  shadowRadius: 5,
+  // Bottom Panel
+  bottomPanel: { paddingHorizontal: 14, paddingBottom: 30, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 8 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8 },
+  totalLabel: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  codValue: { fontSize: 16, fontWeight: '700', color: '#F37A20' },
 
-  },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 18 },
-  totalLabel: { fontSize: 15, fontWeight: '900', color: '#36454F' },
-  codValue: { fontSize: 20, fontWeight: '800', color: '#F37A20' },
-
-  primaryBtn: { height: 42, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C8A62',marginLeft:5,marginRight:5 },
-  primaryText: { color: '#fff', fontSize: 12, fontWeight: '800',},
-
-  dangerBtn: { height: 42, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E35335',marginLeft:5,marginRight:5 },
-  dangerText: { color: '#fff', fontSize: 12, fontWeight: '800',},
+  actionRow: { flexDirection: 'row' },
+  actionBtn: { flex: 1, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  primaryBtn: { height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#16A34A' },
+  primaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
   qrThumb: { height: '100%', width: '100%' },
+  // Success modal
+  successWrap: { flex: 1, backgroundColor: BG },
+  successContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
+  successCheckArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  successRing: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
+  successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
+  successCheck: { fontSize: 38, fontWeight: '900', color: '#FFF' },
+  successTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
+  successSub: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.6)', marginBottom: 16 },
+  successInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  successOid: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
+  successDot: { fontSize: 14, color: 'rgba(255,255,255,0.3)', marginHorizontal: 6 },
+  successName: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  successAmt: { fontSize: 14, fontWeight: '800', color: '#FCD34D' },
+  successHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.25)', marginTop: 20 },
 
-  // ✅ QR Modal
-  qrModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)' },
-  qrModalHeader: {
-    height: 80,
-    paddingTop: 36,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-  qrCloseBtn: {
-    height: 40,
-    width: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop:40,
-  },
-  qrCloseText: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  qrModalBody: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 40 },
-  qrModalImage: { width: '92%', height: '65%' },
+  qrBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  qrSheet: { flex: 1, backgroundColor: BG, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', marginTop: 6 },
+  qrSheetHandle: { alignItems: 'center', paddingTop: 6, paddingBottom: 0 },
+  qrModalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 0, paddingBottom: 0 },
+  qrCloseBtn: { height: 34, width: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  qrCloseText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  qrTitle: { fontSize: 18, fontWeight: '800', color: '#FFF', textAlign: 'center', marginTop: 0 },
+  qrSubtitle: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 2, marginBottom: 6 },
+  qrImgWrap: { alignItems: 'center', flex: 1, justifyContent: 'center', marginHorizontal: -6 },
+  qrModalImage: { width: '100%', height: undefined, aspectRatio: 0.72, borderRadius: 10 },
+  qrModalPlaceholder: { width: '70%', height: 200, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  qrCardAmt: { fontSize: 22, fontWeight: '800', color: '#FCD34D', textAlign: 'center', marginTop: 6, marginBottom: 6 },
+  qrOrderCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  qrOrderOid: { fontSize: 12, fontWeight: '700', color: '#FFF' },
+  qrInfoPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
+  qrInfoPillT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
+  qrOrderName: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  qrDragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
+  qrInfoHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 16, marginBottom: 20 },
 
-  // ✅ Cancel reasons
-  reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 6 },
-  radioOuter: {
-    height: 18,
-    width: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  radioOuterActive: { borderColor: '#E35335' },
-  radioInner: { height: 10, width: 10, borderRadius: 5, backgroundColor: '#E35335' },
-  reasonText: { flex: 1, color: '#111827', fontWeight: '700', fontSize: 14 },
+  // Bottom sheet
+  bsContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  bsHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 6, paddingBottom: 2 },
+  bsTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  bsSub: { fontSize: 13, fontWeight: '400', color: '#94A3B8', lineHeight: 18 },
+  bsCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginLeft: 12, marginTop: 2 },
+  bsCloseX: { fontSize: 16, fontWeight: '700', color: '#94A3B8' },
+  bsDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  bsBtnWrap: { alignItems: 'center', paddingTop: 4 },
+  bsConfirmBtn: { height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, minWidth: 160 },
+  bsConfirmT: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
-  confirmBtn: {
-    height: 45,
-    width: 220,
-    borderRadius: 30,
-    alignSelf: 'center',
-    marginTop: 14,
-    justifyContent: 'center',
-  },
-  confirmText: { color: '#FFF', fontFamily: 'Poppins', alignSelf: 'center', fontSize: 14, fontWeight: '800' },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, marginBottom: 3 },
+  radioOuter: { height: 22, width: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  radioOuterActive: { borderColor: '#DC2626', borderWidth: 2 },
+  radioInner: { height: 12, width: 12, borderRadius: 6, backgroundColor: '#DC2626' },
+  reasonText: { flex: 1, color: '#334155', fontWeight: '500', fontSize: 14 },
 });
 export default withV4Navigation(DeliverToFarmer);

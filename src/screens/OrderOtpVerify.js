@@ -24,6 +24,11 @@ class OrderOtpVerify extends Component {
     this.arrowX = new Animated.Value(0);
     this.checkScale = new Animated.Value(0);
     this.checkOpacity = new Animated.Value(0);
+    this.ringScale = new Animated.Value(0.5);
+    this.ringOpacity = new Animated.Value(0);
+    this.ring2Scale = new Animated.Value(0.5);
+    this.ring2Opacity = new Animated.Value(0);
+    this.tickRotate = new Animated.Value(0);
   }
 
   getOrderId = () => this.props?.navigation?.getParam('orderId', null);
@@ -107,14 +112,31 @@ class OrderOtpVerify extends Component {
 
   showVerifiedAnimation = () => {
     this.setState({ verified: true }, () => {
-      Animated.parallel([
-        Animated.spring(this.checkScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
-        Animated.timing(this.checkOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      ]).start(() => {
-        this._navTimer = setTimeout(() => {
-          if (!this._unmounted) this.onOtpSuccess();
-        }, 1200);
-      });
+      Animated.sequence([
+        Animated.parallel([
+          Animated.spring(this.checkScale, { toValue: 1.15, friction: 3, tension: 80, useNativeDriver: true }),
+          Animated.timing(this.checkOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        ]),
+        Animated.spring(this.checkScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
+      ]).start();
+
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(this.ringScale, { toValue: 2, duration: 800, useNativeDriver: true }),
+          Animated.timing(this.ringOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+        ]).start();
+      }, 200);
+
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(this.ring2Scale, { toValue: 2.2, duration: 900, useNativeDriver: true }),
+          Animated.timing(this.ring2Opacity, { toValue: 0, duration: 900, useNativeDriver: true }),
+        ]).start();
+      }, 500);
+
+      this._navTimer = setTimeout(() => {
+        if (!this._unmounted) this.onOtpSuccess();
+      }, 2000);
     });
   };
 
@@ -178,13 +200,19 @@ class OrderOtpVerify extends Component {
             </View>
 
             {verified ? (
-              <Animated.View style={[s.verifiedWrap, { opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
-                <View style={s.checkCircle}>
-                  <Text style={s.checkMark}>✓</Text>
+              <View style={s.verifiedWrap}>
+                <View style={s.checkArea}>
+                  <Animated.View style={[s.ring, { opacity: this.ringOpacity.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.ringScale }] }]} />
+                  <Animated.View style={[s.ring, { opacity: this.ring2Opacity.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }), transform: [{ scale: this.ring2Scale }] }]} />
+                  <Animated.View style={[s.checkCircle, { opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
+                    <Text style={s.checkMark}>✓</Text>
+                  </Animated.View>
                 </View>
-                <Text style={s.verifiedTitle}>Verified!</Text>
-                <Text style={s.verifiedSub}>{isPickup ? 'Updating pickup status...' : 'Proceeding to delivery...'}</Text>
-              </Animated.View>
+                <Animated.View style={{ opacity: this.checkOpacity, alignItems: 'center' }}>
+                  <Text style={s.verifiedTitle}>Verified!</Text>
+                  <Text style={s.verifiedSub}>{isPickup ? 'Updating pickup status...' : 'Proceeding to delivery...'}</Text>
+                </Animated.View>
+              </View>
             ) : (
               <>
                 {/* Title + OTP */}
@@ -283,7 +311,7 @@ class OrderOtpVerify extends Component {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 30 },
+  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#FFF' },
@@ -298,18 +326,20 @@ const s = StyleSheet.create({
 
   formWrap: { alignItems: 'center' },
   otpView: { width: '100%', height: 65, marginBottom: 16 },
-  otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 24, fontWeight: '800' },
+  otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 32, fontWeight: '800' },
   otpActive: { borderColor: '#FCD34D', borderWidth: 2.5 },
 
   btn: { width: '100%', height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   btnT: { fontSize: 15, fontWeight: '800', color: BG, letterSpacing: 0.3 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
 
-  verifiedWrap: { alignItems: 'center', marginTop: 40 },
-  checkCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
-  checkMark: { fontSize: 44, fontWeight: '900', color: '#FFF', marginTop: -2 },
-  verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 8 },
-  verifiedSub: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
+  verifiedWrap: { alignItems: 'center', marginTop: 30, marginBottom: 20 },
+  checkArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  ring: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
+  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
+  checkMark: { fontSize: 38, fontWeight: '900', color: '#FFF' },
+  verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
+  verifiedSub: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)' },
 
   // Order card (white on purple)
   orderCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, marginTop: 20, overflow: 'hidden' },

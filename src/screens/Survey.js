@@ -845,10 +845,10 @@ goToDashboardAndReset = () => {
               <Animated.View style={{ opacity: this.fadeAnim, transform: [{ translateY: this.slideAnim }] }}>
                 {this.renderOrderCard()}
 
-                {this.renderSeason(‘Current Crops’, s.currentCropOptions, s.selectedCurrentCropIds, s.currentCrops, ‘selectedCurrentCropIds’, ‘currentCrops’)}
-                {this.renderSeason(‘Rabi Season Crops’, s.rabiCropOptions, s.selectedRabiCropIds, s.rabiCrops, ‘selectedRabiCropIds’, ‘rabiCrops’)}
-                {this.renderSeason(‘Kharif Season Crops’, s.kharifCropOptions, s.selectedKharifCropIds, s.kharifCrops, ‘selectedKharifCropIds’, ‘kharifCrops’)}
-                {this.renderSeason(‘Zaid Season Crops’, s.zaidCropOptions, s.selectedZaidCropIds, s.zaidCrops, ‘selectedZaidCropIds’, ‘zaidCrops’)}
+                {this.renderSeason('Current Crops', s.currentCropOptions, s.selectedCurrentCropIds, s.currentCrops, 'selectedCurrentCropIds', 'currentCrops')}
+                {this.renderSeason('Rabi Season Crops', s.rabiCropOptions, s.selectedRabiCropIds, s.rabiCrops, 'selectedRabiCropIds', 'rabiCrops')}
+                {this.renderSeason('Kharif Season Crops', s.kharifCropOptions, s.selectedKharifCropIds, s.kharifCrops, 'selectedKharifCropIds', 'kharifCrops')}
+                {this.renderSeason('Zaid Season Crops', s.zaidCropOptions, s.selectedZaidCropIds, s.zaidCrops, 'selectedZaidCropIds', 'zaidCrops')}
 
                 <Section title="Crop Problems">
                   <View style={styles.chipRow}>
@@ -891,43 +891,43 @@ goToDashboardAndReset = () => {
                     <View style={styles.cattleBox}>
                       <Text style={styles.cattleLbl}>Cows</Text>
                       <TextInput
-                        value={String(s.cattle?.cows ?? ‘’)}
+                        value={String(s.cattle?.cows ?? '')}
                         onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, cows: t } })}
                         placeholder="0"
                         placeholderTextColor={THEME.muted}
-                        keyboardType={Platform.OS === ‘ios’ ? ‘number-pad’ : ‘numeric’}
+                        keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
                         style={styles.cattleInput}
                       />
                     </View>
                     <View style={styles.cattleBox}>
                       <Text style={styles.cattleLbl}>Buffalo</Text>
                       <TextInput
-                        value={String(s.cattle?.buffalo ?? ‘’)}
+                        value={String(s.cattle?.buffalo ?? '')}
                         onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, buffalo: t } })}
                         placeholder="0"
                         placeholderTextColor={THEME.muted}
-                        keyboardType={Platform.OS === ‘ios’ ? ‘number-pad’ : ‘numeric’}
+                        keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
                         style={styles.cattleInput}
                       />
                     </View>
                     <View style={[styles.cattleBox, styles.cattleBoxLast]}>
                       <Text style={styles.cattleLbl}>Milk (L)</Text>
                       <TextInput
-                        value={String(s.cattle?.milk_litre ?? ‘’)}
+                        value={String(s.cattle?.milk_litre ?? '')}
                         onChangeText={(t) => this.setState({ cattle: { ...this.state.cattle, milk_litre: t } })}
                         placeholder="0"
                         placeholderTextColor={THEME.muted}
-                        keyboardType={Platform.OS === ‘ios’ ? ‘decimal-pad’ : ‘numeric’}
+                        keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
                         style={styles.cattleInput}
                       />
                     </View>
                   </View>
                 </Section>
 
-                <Section title="Today’s Fodder">
+                <Section title="Today's Fodder">
                   <View style={styles.chipRow}>
                     {(s.fodderOptions || []).map((f) => (
-                      <Chip key={f.id} label={f.label} active={(s.selectedFodder || []).includes(String(f.label))} onPress={() => this.toggleString(‘selectedFodder’, String(f.label))} />
+                      <Chip key={f.id} label={f.label} active={(s.selectedFodder || []).includes(String(f.label))} onPress={() => this.toggleString('selectedFodder', String(f.label))} />
                     ))}
                   </View>
                 </Section>
@@ -935,7 +935,7 @@ goToDashboardAndReset = () => {
                 <Section title="Next Expense">
                   <View style={styles.chipRow}>
                     {(s.expenseOptions || []).map((e) => (
-                      <Chip key={e.id} label={e.label} active={(s.selectedExpense || []).includes(String(e.label))} onPress={() => this.toggleString(‘selectedExpense’, String(e.label))} />
+                      <Chip key={e.id} label={e.label} active={(s.selectedExpense || []).includes(String(e.label))} onPress={() => this.toggleString('selectedExpense', String(e.label))} />
                     ))}
                   </View>
                 </Section>

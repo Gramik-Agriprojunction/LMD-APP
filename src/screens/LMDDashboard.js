@@ -75,6 +75,11 @@ class LMDDashboard extends Component {
     return m[s] || { bg: '#F1F5F9', c: '#475569' };
   };
 
+  statusLabel = (s) => {
+    const m = { PENDING:'Pending', DELIVERED:'Delivered', PICKUP:'Picked Up', INTRANSIT:'In Transit', RESCHEDULE:'Reschedule', RTO:'RTO', CANCELLED:'Cancelled' };
+    return m[s] || s;
+  };
+
   renderItem = ({ item }) => {
     const st = (item?.status || '').toUpperCase();
     const b = this.badge(st);
@@ -86,7 +91,7 @@ class LMDDashboard extends Component {
         <View style={$.dlvHead}>
           <Text style={$.dlvOid}>#{item?.order_id}</Text>
           <View style={{ flex: 1 }} />
-          <View style={[$.chip, { backgroundColor: b.bg }]}><Text style={[$.chipT, { color: b.c }]}>{st}</Text></View>
+          <View style={[$.chip, { backgroundColor: b.bg }]}><Text style={[$.chipT, { color: b.c }]}>{this.statusLabel(st)}</Text></View>
         </View>
 
         {/* Farmer */}
@@ -211,12 +216,13 @@ class LMDDashboard extends Component {
                 </View>
                 <View style={$.sg}>
                   {[
-                    { l: 'Picked Up', v: live?.picked_up, bg: '#F1F5F9', c: '#475569', k: 'PICKUP' },
-                    { l: 'Pending', v: live?.pending, bg: '#FFF7ED', c: '#EA580C', k: 'PENDING' },
-                    { l: 'Delivered', v: live?.delivered, bg: '#F0FDF4', c: '#16A34A', k: 'DELIVERED' },
-                    { l: 'In-Transit', v: live?.in_transit, bg: '#EFF6FF', c: '#2563EB', k: 'IN_TRANSIT' },
-                    { l: 'Reschedule', v: live?.reschedule_order, bg: '#F5F3FF', c: '#7C3AED', k: 'RESCHEDULE' },
-                    { l: 'RTO', v: live?.rto, bg: '#FEF2F2', c: '#DC2626', k: 'RTO' },
+                    { l: 'Picked Up', v: live?.picked_up, bg: '#E2E8F0', c: '#334155', k: 'PICKUP' },
+                    { l: 'Pending', v: live?.pending, bg: '#FFEDD5', c: '#C2410C', k: 'PENDING' },
+                    { l: 'Delivered', v: live?.delivered, bg: '#DCFCE7', c: '#15803D', k: 'DELIVERED' },
+                    { l: 'In-Transit', v: live?.in_transit, bg: '#DBEAFE', c: '#1D4ED8', k: 'IN_TRANSIT' },
+                    { l: 'Reschedule', v: live?.reschedule_order, bg: '#EDE9FE', c: '#6D28D9', k: 'RESCHEDULE' },
+                    { l: 'RTO', v: live?.rto, bg: '#FEE2E2', c: '#B91C1C', k: 'RTO' },
+                    ...(live?.cancelled !== undefined ? [{ l: 'Cancelled', v: live?.cancelled, bg: '#FEE2E2', c: '#B91C1C', k: 'CANCELLED' }] : []),
                   ].map(s => (
                     <TouchableOpacity key={s.k} activeOpacity={0.8} onPress={() => this.go(s.k)} style={[$.sb, { backgroundColor: s.bg }]}>
                       <Text style={[$.sbV, { color: s.c }]}>{this.n(s.v)}</Text>
@@ -233,16 +239,16 @@ class LMDDashboard extends Component {
                 </View>
                 {today.length > 0 ? (
                   <FlatList data={today} keyExtractor={(it, i) => `${it?.order_id || i}`} renderItem={this.renderItem} scrollEnabled={false} />
-                ) : <View style={$.card}><Text style={$.empty}>No deliveries for today</Text></View>}
+                ) : <View style={[$.card, { alignItems: 'center', paddingVertical: 14 }]}><Image source={require('./assets/dlh.png')} style={{ width: 64, height: 64, resizeMode: 'contain', marginBottom: 6 }} /><Text style={$.empty}>No deliveries for today</Text></View>}
               </Animated.View>
 
               <Animated.View style={this.a(4)}>
                 <Text style={$.secT}>Quick Actions</Text>
                 <View style={$.actRow}>
                   {[
-                    { l: 'Deposit', ico: require('./assets/purse.png'), bg: '#EDE9FE', c: '#5B21B6', nav: 'SettlementList' },
-                    { l: 'History', ico: require('./assets/dlh.png'), bg: '#DBEAFE', c: '#1E40AF', nav: 'ALL' },
-                    { l: 'Support', ico: require('./assets/help2.png'), bg: '#D1FAE5', c: '#065F46', nav: 'support' },
+                    { l: 'Deposit', ico: require('./assets/purse.png'), bg: '#DDD6FE', c: '#4C1D95', nav: 'SettlementList' },
+                    { l: 'History', ico: require('./assets/dlh.png'), bg: '#BFDBFE', c: '#1E3A8A', nav: 'ALL' },
+                    { l: 'Support', ico: require('./assets/help2.png'), bg: '#A7F3D0', c: '#064E3B', nav: 'support' },
                   ].map(q => (
                     <TouchableOpacity key={q.l} style={[$.qa, { backgroundColor: q.bg }]} activeOpacity={0.8}
                       onPress={() => q.nav === 'support' ? this.dial(this.state.data?.Support) : q.nav === 'ALL' ? this.go('ALL') : this.props.navigation.navigate(q.nav)}>
@@ -282,7 +288,7 @@ const $ = StyleSheet.create({
 
   scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
 
-  ruleCard: { backgroundColor: '#FFF', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#F59E0B', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
+  ruleCard: { backgroundColor: '#FFFBEB', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
   ruleDot: { display: 'none' },
   ruleT: { flex: 1, fontSize: 12, fontWeight: '500', color: '#475569', lineHeight: 17 },
 
@@ -298,7 +304,7 @@ const $ = StyleSheet.create({
   viewAllWrap: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
 
   sg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: G },
-  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
   sbV: { fontSize: 18, fontWeight: '700' },
   sbL: { fontSize: 9, fontWeight: '500', marginTop: 2 },
 
@@ -327,17 +333,17 @@ const $ = StyleSheet.create({
   routePhone: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
   routeAddr: { fontSize: 11, fontWeight: '400', color: '#64748B', lineHeight: 16, marginTop: 1 },
   dsCallBtn: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 12 },
-  dsCallIco: { width: 22, height: 22, resizeMode: 'contain', tintColor: '#EA580C' },
+  dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#EA580C' },
 
   dlvFoot: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   pill: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4, marginRight: 4 },
   pillT: { fontSize: 9, fontWeight: '500', color: '#64748B' },
   dlvAmt: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
 
-  empty: { textAlign: 'center', color: '#94A3B8', fontSize: 12, paddingVertical: 20 },
+  empty: { textAlign: 'center', color: '#475569', fontSize: 13, fontWeight: '500', paddingVertical: 4 },
   secT: { fontSize: 12, fontWeight: '600', color: '#334155', marginBottom: 8, marginTop: 6 },
   actRow: { flexDirection: 'row' },
-  qa: { flex: 1, borderRadius: 10, alignItems: 'center', paddingVertical: 12, marginHorizontal: 3, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  qa: { flex: 1, borderRadius: 12, alignItems: 'center', paddingVertical: 14, marginHorizontal: 4, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3 },
   qaImg: { width: 32, height: 32, marginBottom: 6 },
   qaL: { fontSize: 11, fontWeight: '600' },
 });

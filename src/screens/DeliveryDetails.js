@@ -463,12 +463,7 @@ class DeliveryDetails extends Component {
   getQrImageSource = () => {
     const { qr } = this.state;
     if (!qr) return null;
-
-    const bust = qr.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-    return {
-      uri: qr + bust,
-      headers: { Authorization: 'Bearer ' + global.token },
-    };
+    return { uri: qr };
   };
 
   renderQrTile = () => {
@@ -536,11 +531,8 @@ class DeliveryDetails extends Component {
         <NavigationEvents
           onWillFocus={() => {}}
           onDidFocus={() => {
-            const order = this.getOrder();
-            const id = order?.id;
-
+            const id = this.state.details?.id || this.getOrder()?.id;
             if (id) this.deliverDetailsAPI(id);
-            else console.log('DeliveryDetails: navigation order.id missing');
           }}
         />
 
@@ -767,11 +759,13 @@ class DeliveryDetails extends Component {
             <Text style={styles.codValue}>{`₹ ${this.toNum(details?.grand_total)}`}</Text>
           </View>
 
-          {/* ✅ Survey button BELOW grand total (as you asked earlier) */}
           {details?.order_status == 'delivered' ? (
-            <TouchableOpacity activeOpacity={0.9} onPress={this.openSurvey} style={[styles.primaryBtn, { marginBottom: 12 }]}>
-              <Text style={styles.primaryText}>SURVEY</Text>
-            </TouchableOpacity>
+            <View style={{ height: 48, borderRadius: 10, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
+            </View>
           ) : null}
 
           {(details?.order_status == 'pending' || details?.order_status == 'reschedule') &&
