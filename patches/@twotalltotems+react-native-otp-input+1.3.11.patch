@@ -1,0 +1,31 @@
+diff --git a/node_modules/@twotalltotems/react-native-otp-input/dist/index.js b/node_modules/@twotalltotems/react-native-otp-input/dist/index.js
+index 71580b8..9c813f9 100644
+--- a/node_modules/@twotalltotems/react-native-otp-input/dist/index.js
++++ b/node_modules/@twotalltotems/react-native-otp-input/dist/index.js
+@@ -1,15 +1,16 @@
+ import React, { Component } from 'react';
+ import { View, TextInput, TouchableWithoutFeedback, Keyboard, Platform, I18nManager, } from 'react-native';
+-import Clipboard from '@react-native-community/clipboard';
+ import styles from './styles';
+ import { isAutoFillSupported } from './helpers/device';
+ import { codeToArray } from './helpers/codeToArray';
++let Clipboard = null;
++try { Clipboard = require('@react-native-clipboard/clipboard').default; } catch (e) {}
+ export default class OTPInputView extends Component {
+     constructor(props) {
+         super(props);
+         this.fields = [];
+         this.copyCodeFromClipBoardOnAndroid = () => {
+-            if (Platform.OS === "android") {
++            if (Platform.OS === "android" && Clipboard) {
+                 this.checkPinCodeFromClipBoard();
+                 this.timer = setInterval(this.checkPinCodeFromClipBoard, 400);
+             }
+@@ -39,6 +40,7 @@ export default class OTPInputView extends Component {
+             }
+         };
+         this.checkPinCodeFromClipBoard = () => {
++            if (!Clipboard) return;
+             const { pinCount, onCodeFilled } = this.props;
+             const regexp = new RegExp(`^\\d{${pinCount}}$`);
+             Clipboard.getString().then(code => {

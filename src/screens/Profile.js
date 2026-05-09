@@ -203,11 +203,7 @@ class Profile extends Component {
               {(!!name || !!avatar || !!phone || !!role) && (
               <View style={styles.profileRow}>
                 <View style={styles.avatar}>
-                  {!!avatar ? (
-                    <Image source={{ uri: avatar }} style={styles.avatarImg} />
-                  ) : (
-                    <Image source={require('./assets/profile.png')} style={styles.avatarFallbackImg} />
-                  )}
+                  <Image source={require('./assets/profile.png')} style={styles.avatarFallbackImg} />
                 </View>
 
                 <View style={{ flex: 1,alignSelf:'center' }}>
@@ -392,13 +388,13 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     overflow: 'hidden',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFF',
     marginRight: 12,
     resizeMode:'cover'
   },
   avatarImg: { width: '100%', height: '100%', resizeMode: 'cover',marginTop:2 },
   avatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  avatarFallbackImg: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#FFF' },
+  avatarFallbackImg: { width: 48, height: 48, borderRadius: 24, resizeMode: 'contain' },
   avatarFallbackText: { fontSize: 18, fontWeight: '900', color: '#111827' },
 
   name: { fontSize: 16, fontWeight: '900', color: '#fff' },

@@ -171,7 +171,7 @@ class LMDDashboard extends Component {
           <SafeAreaView>
             <View style={$.hdrRow}>
               <TouchableOpacity style={$.hdrBtn} onPress={() => this.props.navigation.navigate('Profile')} activeOpacity={0.7}>
-                <Image source={require('./assets/profile.png')} style={$.hdrIco} />
+                <Image source={require('./assets/profile.png')} style={$.profIco} />
               </TouchableOpacity>
               <View style={$.hdrInfo}>
                 <Text style={$.hdrSub}>Welcome</Text>
@@ -280,6 +280,7 @@ const $ = StyleSheet.create({
   hdrRow: { height: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
   hdrBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   hdrIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
+  profIco: { width: 36, height: 36, borderRadius: 18, resizeMode: 'contain' },
   hdrInfo: { flex: 1, marginLeft: 12 },
   hdrSub: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
   hdrName: { fontSize: 15, fontWeight: '600', color: '#FFF' },

@@ -1,0 +1,33 @@
+diff --git a/node_modules/react-native-worklets/android/build.gradle b/node_modules/react-native-worklets/android/build.gradle
+index 0000000..0000000 100644
+--- a/node_modules/react-native-worklets/android/build.gradle
++++ b/node_modules/react-native-worklets/android/build.gradle
+@@ -12,6 +12,10 @@ def safeAppExtGet(prop, fallback) {
+     appProject?.ext?.has(prop) ? appProject.ext.get(prop) : fallback
+ }
+ 
++def getNodeExecutable() {
++    return safeAppExtGet("NODE_BINARY", safeExtGet("NODE_BINARY", "node"))
++}
++
+ def isNewArchitectureEnabled() {
+     // In React Native 0.82+, users can no longer opt-out of the New Architecture.
+     if (getReactNativeMinorVersion() >= 82) {
+@@ -34,7 +38,7 @@ def resolveReactNativeDirectory() {
+     // Fallback to node resolver for custom directory structures like monorepos.
+     def reactNativePackage = file(providers.exec {
+         workingDir(rootDir)
+-        commandLine("node", "--print", "require.resolve('react-native/package.json')")
++        commandLine(getNodeExecutable(), "--print", "require.resolve('react-native/package.json')")
+     }.standardOutput.asText.get().trim())
+     if (reactNativePackage.exists()) {
+         return reactNativePackage.parentFile
+@@ -319,7 +323,7 @@ android {
+ 
+ def validateReactNativeVersionResult = providers.exec {
+     workingDir(projectDir.path)
+-    commandLine("node", "./../scripts/validate-react-native-version.js", REACT_NATIVE_VERSION.toString())
++    commandLine(getNodeExecutable(), "./../scripts/validate-react-native-version.js", REACT_NATIVE_VERSION.toString())
+     ignoreExitValue = true
+ }
+ 

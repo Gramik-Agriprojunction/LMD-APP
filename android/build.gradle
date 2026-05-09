@@ -6,6 +6,8 @@ buildscript {
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.1.20"
+        NODE_BINARY = System.getenv("NODE_BINARY") ?: "/opt/homebrew/bin/node"
+        REACT_NATIVE_NODE_MODULES_DIR = file("../node_modules/react-native").absolutePath
     }
     repositories {
         google()
