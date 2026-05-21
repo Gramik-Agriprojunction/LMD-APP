@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet, Easing } from 'react-native';
+import { View, Text, StatusBar, Animated, Dimensions, StyleSheet, Easing } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withV4Navigation } from '../utils/v4Compat';
 
@@ -94,10 +95,6 @@ class Splash extends React.Component {
 
     setTimeout(() => this.startDots(), 1900);
 
-    setTimeout(() => {
-      Animated.timing(this.fadeOut, { toValue: 0, duration: 400, easing: Easing.in(Easing.ease), useNativeDriver: true }).start();
-    }, 3000);
-
     var token = await AsyncStorage.getItem('accessToken');
     var userType = await AsyncStorage.getItem('userType');
     var language = await AsyncStorage.getItem('language');
@@ -110,7 +107,7 @@ class Splash extends React.Component {
       } else {
         this.props.navigation.replace('Login');
       }
-    }, 3400);
+    }, 3000);
   }
 
   startVanBounce = () => {
@@ -175,7 +172,7 @@ class Splash extends React.Component {
       <Animated.View style={[$.root, { opacity: this.fadeOut }]}>
         <StatusBar backgroundColor={P} translucent={false} barStyle="light-content" />
         <Animated.View style={[$.scene, { opacity: this.sceneOp }]}>
-          <SafeAreaView style={$.safe}>
+          <SafeAreaView edges={['top']} style={$.safe}>
             <View style={$.center}>
 
               <Animated.View style={[$.gridWrap, { opacity: this.gridOp }]}>
@@ -287,7 +284,7 @@ class Splash extends React.Component {
             </View>
           </SafeAreaView>
         </Animated.View>
-        <SafeAreaView style={{ flex: 0, backgroundColor: P }} />
+        <SafeAreaView edges={['bottom']} style={{ flex: 0, backgroundColor: P }}/>
       </Animated.View>
     );
   }
@@ -319,13 +316,13 @@ const $ = StyleSheet.create({
   rDot: { position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.25)' },
 
   pin: { position: 'absolute', alignItems: 'center', zIndex: 10 },
-  pinHead: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 5 },
+  pinHead: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 2 },
   pinLetter: { fontSize: 14, fontWeight: '900', color: '#FFF' },
   pinTail: { width: 0, height: 0, borderLeftWidth: 7, borderRightWidth: 7, borderTopWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', marginTop: -3 },
 
   pulseCircle: { position: 'absolute', width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: '#10B981', zIndex: 5 },
 
-  badge: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center', zIndex: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
+  badge: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center', zIndex: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 2 },
   badgeText: { color: '#FFF', fontSize: 13, fontWeight: '900' },
 
   van: { position: 'absolute', top: 40, left: ROUTE_W / 2 - 12, flexDirection: 'row', alignItems: 'flex-end', zIndex: 8 },

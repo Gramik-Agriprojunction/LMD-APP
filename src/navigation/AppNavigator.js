@@ -26,7 +26,14 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Splash"
-        screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+        screenOptions={{
+          headerShown: false,
+          // 'fade' avoids the slide-transition elevation shadow that
+          // native-stack renders on Android during screen mount.
+          animation: 'fade',
+          animationDuration: 200,
+          contentStyle: { backgroundColor: '#5D3FD3' },
+        }}
       >
         <Stack.Screen name="Splash" component={Splash} />
         <Stack.Screen name="Login" component={Login} />

@@ -4,7 +4,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ImagePicker from 'react-native-image-crop-picker';
 import Toast from 'react-native-simple-toast';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -103,7 +103,7 @@ const Chip = ({ label, active, onPress }) => (
 
 const Header = ({ farmer, onBack, initials, maskPhone }) => (
   <View style={styles.headerWrap}>
-    <SafeAreaView style={styles.headerSafe}>
+    <SafeAreaView edges={['top']} style={styles.headerSafe}>
       <View style={styles.headerRowNew}>
         <TouchableOpacity onPress={onBack} style={styles.headerBackBtn} activeOpacity={0.85}>
           <Image source={require('./assets/back.png')} style={styles.backImg} resizeMode="contain" />
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 3,
   },
 
   itemLeft: {

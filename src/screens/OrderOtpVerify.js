@@ -1,8 +1,9 @@
 import React, { Component } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar,
+  View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Image, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, ScrollView, Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -185,7 +186,7 @@ class OrderOtpVerify extends Component {
     return (
       <View style={s.root}>
         <StatusBar barStyle="light-content" backgroundColor={BG} />
-        <SafeAreaView style={{ backgroundColor: BG }} />
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -303,7 +304,7 @@ class OrderOtpVerify extends Component {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <SafeAreaView style={{ backgroundColor: BG }} />
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
       </View>
     );
   }
@@ -336,7 +337,7 @@ const s = StyleSheet.create({
   verifiedWrap: { alignItems: 'center', marginTop: 30, marginBottom: 20 },
   checkArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   ring: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
-  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
+  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 3 },
   checkMark: { fontSize: 38, fontWeight: '900', color: '#FFF' },
   verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
   verifiedSub: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)' },

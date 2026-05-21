@@ -1,44 +1,59 @@
 import React, { Component } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, Dimensions,
-  SafeAreaView, StatusBar, Image, Animated, RefreshControl, Linking, Alert,
+  View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList,
+  StatusBar, Image, Animated, RefreshControl, Linking, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import ShimmerLoader from '../components/ShimmerLoader';
+import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
+import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSubscribe, KEYS, invalidateOrderRelated } from '../utils/dataCache';
+import LiveOrdersGrid from '../components/LiveOrdersGrid';
 
-const { width } = Dimensions.get('window');
 const P = '#5D3FD3';
-const G = 8;
-const SW = (width - 8*2 - 12*2 - G*2) / 3;
 
-const STATUSES = ['ALL','PICKUP','PENDING','DELIVERED','IN_TRANSIT','RESCHEDULE','RTO','CANCELLED'];
+const STATUSES = ['ALL','PICKUP','PENDING','DELIVERED','IN_TRANSIT','RESCHEDULE','DISPUTED','RTO','CANCELLED'];
 
 class TrackOrders extends Component {
   constructor(props) {
     super(props);
     const init = this.props?.navigation?.getParam('selectedStatus', 'ALL');
-    this.state = { loading: true, refreshing: false, query: '', selected: STATUSES.includes(init) ? init : 'ALL', orders: [], live: {} };
-    this.anims = [0,1,2].map(() => ({ o: new Animated.Value(0), y: new Animated.Value(20) }));
+    const selected = STATUSES.includes(init) ? init : 'ALL';
+    const cacheKey = `${KEYS.ORDERS}_${selected}`;
+    const cached = cacheGet(cacheKey);
+    this.state = {
+      loading: !cached,
+      refreshing: false,
+      query: '',
+      selected,
+      orders: cached?.orders || [],
+      live: cached?.live || {},
+      selectedIds: new Set(),
+      batchSubmitting: false,
+    };
+    this.anims = [0,1,2].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
   }
 
-  componentDidMount() { this.load(); }
+  cacheKey = () => `${KEYS.ORDERS}_${this.state.selected}`;
 
-  animateIn = () => {
-    this.anims.forEach((a, i) => {
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(a.o, { toValue: 1, duration: 280, useNativeDriver: true }),
-          Animated.spring(a.y, { toValue: 0, friction: 8, useNativeDriver: true }),
-        ]).start();
-      }, i * 60);
+  componentDidMount() {
+    this.unsubscribe = cacheSubscribe(this.cacheKey(), (v) => {
+      if (!v) return;
+      this.setState({ orders: v.orders || [], live: v.live || {} });
     });
-  };
+    this.load(cacheHas(this.cacheKey()));
+  }
 
-  load = () => {
-    if (!this.state.refreshing) this.setState({ loading: true });
+  componentWillUnmount() {
+    if (this.unsubscribe) this.unsubscribe();
+  }
+
+  animateIn = () => {};
+
+  load = (silent = false) => {
+    if (!silent && !this.state.refreshing) this.setState({ loading: true });
     const body = { status: this.state.selected === 'ALL' ? '' : this.state.selected.toLowerCase() };
-    console.log('Orders List API payload== ', body);
     fetch(constants.orderList, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + global.token, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -46,22 +61,112 @@ class TrackOrders extends Component {
     })
       .then(r => r.json())
       .then(j => {
-        console.log('Orders List API response== ', JSON.stringify(j));
-        this.setState({
-          loading: false, refreshing: false,
-          orders: j?.status && Array.isArray(j.data) ? j.data : [],
-          live: j?.live || this.state.live,
-        }, this.animateIn);
+        const orders = j?.status && Array.isArray(j.data) ? j.data : [];
+        const live = j?.live || this.state.live;
+        cacheSet(this.cacheKey(), { orders, live });
+        this.setState({ loading: false, refreshing: false, orders, live });
       })
-      .catch(() => this.setState({ loading: false, refreshing: false, orders: [] }));
+      .catch(() => this.setState({ loading: false, refreshing: false }));
   };
 
   refresh = () => {
-    this.anims.forEach(a => { a.o.setValue(0); a.y.setValue(20); });
-    this.setState({ refreshing: true }, this.load);
+    this.setState({ refreshing: true }, () => this.load(true));
   };
 
-  pick = (s) => this.setState({ selected: s }, this.load);
+  pick = (s) => {
+    // Re-subscribe to the new key, then load (silent if we have cached data for that filter).
+    if (this.unsubscribe) this.unsubscribe();
+    const newKey = `${KEYS.ORDERS}_${s}`;
+    const cached = cacheGet(newKey);
+    this.setState({
+      selected: s,
+      orders: cached?.orders || [],
+      live: cached?.live || this.state.live,
+      loading: !cached,
+      selectedIds: new Set(), // clear multi-select when switching tabs
+    }, () => {
+      this.unsubscribe = cacheSubscribe(newKey, (v) => {
+        if (!v) return;
+        this.setState({ orders: v.orders || [], live: v.live || {} });
+      });
+      this.load(!!cached);
+    });
+  };
+
+  // -------- Multi-select (Pending tab) --------
+  getOrderKey = (item) => String(item?.id || item?.order_id || '');
+
+  toggleSelect = (key) => {
+    if (!key) return;
+    const next = new Set(this.state.selectedIds);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this.setState({ selectedIds: next });
+  };
+
+  clearSelection = () => this.setState({ selectedIds: new Set() });
+
+  selectAllPending = () => {
+    const next = new Set();
+    (this.state.orders || []).forEach(o => {
+      const k = this.getOrderKey(o);
+      if (k) next.add(k);
+    });
+    this.setState({ selectedIds: next });
+  };
+
+  batchPickup = () => {
+    const keys = Array.from(this.state.selectedIds);
+    if (!keys.length || this.state.batchSubmitting) return;
+
+    // The selected ids are getOrderKey() values; map back to the actual numeric `id`
+    // (the API expects `order_id` to be the DB id, not the human-readable order_id).
+    const idMap = {};
+    (this.state.orders || []).forEach(o => {
+      idMap[this.getOrderKey(o)] = o?.id;
+    });
+
+    Alert.alert(
+      'Pick Up Orders',
+      `Mark ${keys.length} order${keys.length > 1 ? 's' : ''} as picked up?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Pick Up', onPress: () => this._submitBatchPickup(keys, idMap) },
+      ],
+    );
+  };
+
+  _submitBatchPickup = async (keys, idMap) => {
+    this.setState({ batchSubmitting: true });
+    let success = 0, failed = 0;
+    for (const k of keys) {
+      const orderId = idMap[k];
+      if (!orderId) { failed++; continue; }
+      try {
+        const res = await fetch(constants.updateStatus, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + global.token,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ status: 'pickup', order_id: orderId, type: '', reason: '' }),
+        });
+        const json = await res.json();
+        if (json?.status || json?.success) success++; else failed++;
+      } catch (e) {
+        failed++;
+      }
+    }
+    this.setState({ batchSubmitting: false, selectedIds: new Set() });
+    Toast.show(
+      failed === 0
+        ? `${success} order${success > 1 ? 's' : ''} picked up`
+        : `${success} picked up, ${failed} failed`,
+      Toast.SHORT
+    );
+    invalidateOrderRelated();
+    this.load(true);
+  };
   n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
   mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0,2) + '****' + s.slice(-2); };
   dial = async (p) => {
@@ -81,7 +186,7 @@ class TrackOrders extends Component {
   };
 
   badge = (s) => {
-    const m = { PENDING:{bg:'#EA580C'}, DELIVERED:{bg:'#16A34A'}, PICKUP:{bg:'#7C3AED'}, INTRANSIT:{bg:'#2563EB'}, RESCHEDULE:{bg:'#7C3AED'}, RTO:{bg:'#DC2626'}, CANCELLED:{bg:'#DC2626'} };
+    const m = { PENDING:{bg:'#EA580C'}, DELIVERED:{bg:'#16A34A'}, PICKUP:{bg:'#7C3AED'}, INTRANSIT:{bg:'#2563EB'}, RESCHEDULE:{bg:'#7C3AED'}, DISPUTED:{bg:'#A16207'}, RTO:{bg:'#DC2626'}, CANCELLED:{bg:'#F87171'} };
     return m[s?.toUpperCase()] || { bg: '#475569' };
   };
 
@@ -106,7 +211,7 @@ class TrackOrders extends Component {
         <View style={s.dlvHead}>
           <Text style={s.dlvOid}>#{item?.order_id}</Text>
           <View style={{ flex: 1 }} />
-          <View style={[s.chip, { backgroundColor: b.bg }]}><Text style={s.chipT}>{({PENDING:'Pending',DELIVERED:'Delivered',PICKUP:'Picked Up',INTRANSIT:'In Transit',RESCHEDULE:'Reschedule',RTO:'RTO',CANCELLED:'Cancelled'})[st] || st}</Text></View>
+          <View style={[s.chip, { backgroundColor: b.bg }]}><Text style={s.chipT}>{({PENDING:'Pending',DELIVERED:'Delivered',PICKUP:'Picked Up',INTRANSIT:'In Transit',RESCHEDULE:'Reschedule',DISPUTED:'Disputed',RTO:'RTO',CANCELLED:'Cancelled'})[st] || st}</Text></View>
         </View>
 
         {/* Farmer */}
@@ -163,22 +268,14 @@ class TrackOrders extends Component {
   render() {
     const { loading, refreshing, query, selected, live } = this.state;
     const data = this.filtered();
-    const stats = [
-      { k: 'PICKUP', l: 'Picked Up', v: live?.picked_up, bg: '#E2E8F0', c: '#334155' },
-      { k: 'PENDING', l: 'Pending', v: live?.pending, bg: '#FFEDD5', c: '#C2410C' },
-      { k: 'DELIVERED', l: 'Delivered', v: live?.delivered, bg: '#DCFCE7', c: '#15803D' },
-      { k: 'IN_TRANSIT', l: 'In-Transit', v: live?.in_transit, bg: '#DBEAFE', c: '#1D4ED8' },
-      { k: 'RESCHEDULE', l: 'Reschedule', v: live?.reschedule_order, bg: '#EDE9FE', c: '#6D28D9' },
-      { k: 'RTO', l: 'RTO', v: live?.rto, bg: '#FEE2E2', c: '#B91C1C' },
-    ];
 
     return (
       <View style={s.root}>
         <StatusBar barStyle="light-content" backgroundColor={P} />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load()} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load(true)} />
 
         <View style={s.hdr}>
-          <SafeAreaView>
+          <SafeAreaView edges={['top']}>
             <View style={s.hdrRow}>
               <TouchableOpacity onPress={() => this.props.navigation.goBack()} style={s.hdrBtn} activeOpacity={0.7}>
                 <Image source={require('./assets/back.png')} style={s.hdrIco} />
@@ -209,15 +306,7 @@ class TrackOrders extends Component {
                 {/* Stats */}
                 <Animated.View style={[s.card, this.a(0)]}>
                   <Text style={s.cardTitle}>Live Orders</Text>
-                  <View style={s.sg}>
-                    {stats.map(st => (
-                      <TouchableOpacity key={st.k} activeOpacity={0.8} onPress={() => this.pick(st.k)}
-                        style={[s.sb, { backgroundColor: st.bg }, selected === st.k && { borderWidth: 1.5, borderColor: st.c }]}>
-                        <Text style={[s.sbV, { color: st.c }]}>{this.n(st.v)}</Text>
-                        <Text style={[s.sbL, { color: st.c }]}>{st.l}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <LiveOrdersGrid live={live} selected={selected} onPress={this.pick} />
                   {selected !== 'ALL' && (
                     <TouchableOpacity onPress={() => this.pick('ALL')} style={s.clearBtn} activeOpacity={0.7}>
                       <Text style={s.clearT}>Show All Orders</Text>
@@ -263,10 +352,6 @@ const s = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   cardTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 10 },
 
-  sg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: G },
-  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
-  sbV: { fontSize: 18, fontWeight: '700' },
-  sbL: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 
   clearBtn: { marginTop: 10, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 16, backgroundColor: '#EDE9FE', borderRadius: 6 },
   clearT: { fontSize: 11, fontWeight: '600', color: P },

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  SafeAreaView,
   StatusBar,
   Image,
   ActivityIndicator,
@@ -18,12 +17,15 @@ import {
   Platform,
   LayoutAnimation,
   UIManager,
+  Share,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ShimmerLoader from '../components/ShimmerLoader';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
+import { invalidateOrderRelated } from '../utils/dataCache';
 
 class DeliveryDetails extends Component {
   constructor(props) {
@@ -252,7 +254,7 @@ class DeliveryDetails extends Component {
     if (!keys.length) {
       return (
         <Text style={{ textAlign: 'center', marginTop: 12, color: '#6B7280', fontWeight: '700' }}>
-          No reject reasons found
+          No cancel reasons found
         </Text>
       );
     }
@@ -333,14 +335,95 @@ class DeliveryDetails extends Component {
     return Number.isFinite(n) ? n : 0;
   };
 
+  // Convert a positive integer to English words using Indian numbering (Lakh / Crore)
+  amountInWords = (value) => {
+    let num = Math.floor(this.toNum(value));
+    if (num === 0) return 'Zero Rupees Only';
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const below100 = (n) => n < 20 ? ones[n] : tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    const below1000 = (n) => n < 100 ? below100(n) : ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + below100(n % 100) : '');
+    let result = '';
+    const crore = Math.floor(num / 10000000); num %= 10000000;
+    const lakh  = Math.floor(num / 100000);   num %= 100000;
+    const thou  = Math.floor(num / 1000);     num %= 1000;
+    if (crore) result += below1000(crore) + ' Crore ';
+    if (lakh)  result += below1000(lakh)  + ' Lakh ';
+    if (thou)  result += below1000(thou)  + ' Thousand ';
+    if (num)   result += below1000(num) + ' ';
+    return result.trim() + ' Rupees Only';
+  };
+
+  // -------- Invoice (view / download / share) --------
+  // Sample PDF used when API doesn't yet include `invoice_pdf` in the response.
+  static SAMPLE_INVOICE_URL = 'https://www.orimi.com/pdf-test.pdf';
+
+  getInvoiceUrl = () => {
+    const d = this.state.details;
+    // Backend returns the signed PDF link in `order_invoice`.
+    // Fallback to `invoice_pdf` for older response shapes, then a sample URL.
+    const fromApi = d?.order_invoice || d?.invoice_pdf;
+    if (fromApi && String(fromApi).trim()) return String(fromApi).trim();
+    return DeliveryDetails.SAMPLE_INVOICE_URL;
+  };
+
+  openUrl = async (url) => {
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (can) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL(url); // try anyway — some Android devices return false but still open
+      }
+    } catch (e) {
+      Toast.show('Could not open the invoice', Toast.SHORT);
+    }
+  };
+
+  viewInvoice = () => {
+    this.openUrl(this.getInvoiceUrl());
+  };
+
+  downloadInvoice = () => {
+    // Mobile browsers handle PDF download via the open URL flow.
+    // Showing a hint so the user understands what's happening.
+    Toast.show('Opening invoice for download…', Toast.SHORT);
+    this.openUrl(this.getInvoiceUrl());
+  };
+
+  shareInvoice = async () => {
+    const url = this.getInvoiceUrl();
+    const orderIdRaw =
+      this.state.details?.order_id ||
+      this.state.details?.invoice_no ||
+      this.state.details?.id ||
+      '';
+    const orderId = String(orderIdRaw).replace(/^#?/, '');
+    const message = orderId
+      ? `Invoice for order #${orderId}\n${url}`
+      : `Invoice: ${url}`;
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { url, message, title: 'Invoice' }
+          : { message, title: 'Invoice' }
+      );
+    } catch (e) {
+      Toast.show('Could not share the invoice', Toast.SHORT);
+    }
+  };
+
+  // Color palette synced with LiveOrdersGrid — every order status has a distinct color.
   getStatusColors = (statusRaw) => {
     const s = String(statusRaw || '').toLowerCase();
     if (s === 'pending') return { bg: '#EA580C', text: '#FFF' };
-    if (s === 'pickup' || s === 'pickedup' || s === 'picked_up') return { bg: '#7C3AED', text: '#FFF' };
+    if (s === 'pickup' || s === 'pickedup' || s === 'picked_up') return { bg: '#0891B2', text: '#FFF' };
     if (s === 'delivered' || s === 'deliver') return { bg: '#16A34A', text: '#FFF' };
     if (s === 'intransit' || s === 'in_transit') return { bg: '#2563EB', text: '#FFF' };
-    if (s === 'reschedule') return { bg: '#7C3AED', text: '#FFF' };
-    if (s === 'cancelled' || s === 'canceled') return { bg: '#DC2626', text: '#FFF' };
+    if (s === 'reschedule') return { bg: '#9333EA', text: '#FFF' };
+    if (s === 'disputed') return { bg: '#CA8A04', text: '#FFF' };
+    if (s === 'cancelled' || s === 'canceled') return { bg: '#F87171', text: '#FFF' };
     if (s === 'rto') return { bg: '#DC2626', text: '#FFF' };
     return { bg: '#475569', text: '#FFF' };
   };
@@ -375,6 +458,8 @@ class DeliveryDetails extends Component {
           this.setState({ isLoading: false });
           Toast.show(responseJson.message, Toast.SHORT);
           if (responseJson.status) {
+            // Order state changed → mark dashboard + orders caches stale so they refresh on next visit
+            invalidateOrderRelated();
             this.deliverDetailsAPI(this.state.details?.id);
             this.setState({ show_pickup_confirm: false, selectedCancelReason: '', selectedRejectReason: '' });
           }
@@ -524,9 +609,12 @@ class DeliveryDetails extends Component {
     const paymentStatus = details?.payment_status || '';
     const codAmount = this.toNum(details?.cod_amount);
 
+    // Header tinted to match the current order's status (falls back to brand purple before data loads)
+    const headerColor = details?.order_status ? this.getStatusColors(details.order_status).bg : '#5D3FD3';
+
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="#5D3FD3" />
+        <StatusBar barStyle="light-content" backgroundColor={headerColor} />
 
         <NavigationEvents
           onWillFocus={() => {}}
@@ -536,8 +624,8 @@ class DeliveryDetails extends Component {
           }}
         />
 
-        <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+        <View style={[styles.headerWrap, { backgroundColor: headerColor }]}>
+          <SafeAreaView edges={['top']} style={[styles.headerSafe, { backgroundColor: headerColor }]}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
@@ -564,7 +652,7 @@ class DeliveryDetails extends Component {
           ) : null}
 
           {details ? (
-            <>
+            <Animated.View style={{ opacity: this.fadeAnim, transform: [{ translateY: this.slideAnim }] }}>
               {/* Hero Card — Order + Farmer + Payment */}
               <View style={styles.ddCard}>
                 {/* Order header */}
@@ -594,13 +682,6 @@ class DeliveryDetails extends Component {
                   </TouchableOpacity>
                 </View>
 
-                {/* Payment row */}
-                <View style={styles.ddPayRow}>
-                  <View style={[styles.ddPill, { backgroundColor: '#475569' }]}><Text style={styles.ddPillT}>{paymentMode.toUpperCase() || '-'}</Text></View>
-                  <View style={[styles.ddPill, { backgroundColor: paymentStatus === 'paid' ? '#16A34A' : '#B45309' }]}><Text style={styles.ddPillT}>{paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}</Text></View>
-                  <View style={{ flex: 1 }} />
-                  <Text style={styles.ddHeroAmt}>₹{codAmount}</Text>
-                </View>
               </View>
 
               {/* Route: Pickup → Drop */}
@@ -635,44 +716,276 @@ class DeliveryDetails extends Component {
                 </View>
               </View>
 
-              {/* Delivery Slots */}
-              {details?.delivery_slot?.length > 0 ? (
-                <View style={styles.ddCard}>
-                  <View style={{ padding: 12 }}>
-                    <Text style={styles.ddInfoLabel}>Delivery Slots</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
-                      {details.delivery_slot.map((sl, i) => (
-                        <View key={i} style={styles.ddSlot}>
-                          <Text style={styles.ddSlotT}>{sl.label}: {sl.time}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-              ) : null}
-
               {/* Items */}
               <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>₹ {total}</Text></Text>
-              {items.length ? items.map((it, idx) => (
-                <View key={`${it?.variant_id || it?.product_id || idx}`} style={styles.ddCard}>
-                  <View style={styles.ddItemRow}>
-                    <View style={styles.ddItemImg}>
-                      {it?.image ? <Image source={{ uri: it.image }} style={styles.ddProductImg} /> : null}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.ddItemName}>{String(it?.product_name || '-')}</Text>
-                      <View style={styles.ddItemMeta}>
-                        {it?.variation ? <View style={styles.ddItemVarPill}><Text style={styles.ddItemVar}>{it.variation}</Text></View> : null}
-                        <Text style={styles.ddItemQty}>Qty: {this.toNum(it?.quantity)}</Text>
+              {items.length ? (
+                <View style={styles.itemsCard}>
+                  {items.map((it, idx) => (
+                    <View
+                      key={`${it?.variant_id || it?.product_id || idx}`}
+                      style={[styles.ddItemRow, idx > 0 && styles.ddItemRowDivider]}
+                    >
+                      {/* Product image in a soft tinted container */}
+                      <View style={styles.ddItemImgWrap}>
+                        {it?.image ? (
+                          <Image source={{ uri: it.image }} style={styles.ddProductImg} />
+                        ) : (
+                          <Image source={require('./assets/box.png')} style={styles.ddProductFallback} />
+                        )}
+                      </View>
+
+                      {/* Name + meta pills */}
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.ddItemName} numberOfLines={2}>{String(it?.product_name || '-')}</Text>
+                        <View style={styles.ddItemMeta}>
+                          {it?.variation ? (
+                            <View style={styles.ddItemVarPill}>
+                              <Text style={styles.ddItemVar}>{it.variation}</Text>
+                            </View>
+                          ) : null}
+                          <View style={styles.ddItemQtyPill}>
+                            <Text style={styles.ddItemQty}>× {this.toNum(it?.quantity)}</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Price column */}
+                      <View style={styles.ddItemPriceCol}>
+                        <Text style={styles.ddItemPrice}>₹{this.toNum(it?.total_price || it?.price)}</Text>
+                        {it?.price && this.toNum(it?.quantity) > 1 ? (
+                          <Text style={styles.ddItemUnit}>₹{this.toNum(it?.price)} ea</Text>
+                        ) : null}
                       </View>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.ddItemPrice}>₹{this.toNum(it?.total_price || it?.price)}</Text>
-                      {it?.price && it?.quantity > 1 ? <Text style={styles.ddItemUnit}>₹{this.toNum(it?.price)} each</Text> : null}
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.ddCard}><Text style={styles.emptyItemsText}>No items</Text></View>
+              )}
+
+              {/* ✅ Payment & Settlement summary — every numeric/status field from the API with icons */}
+              {(() => {
+                const cod = this.toNum(details?.cod_amount);
+                const collected = this.toNum(details?.collected_amount);
+                const settleAmt = this.toNum(details?.settlement_amount);
+                const settleStatus = String(details?.settlement_status || '').toLowerCase();
+                const paymentPaid = String(details?.payment_status || '').toLowerCase() === 'paid';
+                const settleChip = (() => {
+                  if (settleStatus === 'paid' || settleStatus === 'settled' || settleStatus === 'success')
+                    return { bg: '#DCFCE7', fg: '#15803D' };
+                  if (settleStatus === 'disputed' || settleStatus === 'failed' || settleStatus === 'rejected')
+                    return { bg: '#FEE2E2', fg: '#B91C1C' };
+                  return { bg: '#FFEDD5', fg: '#C2410C' };
+                })();
+
+                // Colored box: tinted background + matching border + colored icon disc + label/value
+                const colorPair = (c) => {
+                  const map = {
+                    '#6366F1': { bg: '#EEF2FF', border: '#C7D2FE' },
+                    '#2563EB': { bg: '#DBEAFE', border: '#BFDBFE' },
+                    '#16A34A': { bg: '#DCFCE7', border: '#BBF7D0' },
+                    '#F37A20': { bg: '#FFF7ED', border: '#FED7AA' },
+                    '#9333EA': { bg: '#F3E8FF', border: '#E9D5FF' },
+                    '#DC2626': { bg: '#FEE2E2', border: '#FECACA' },
+                    '#0891B2': { bg: '#ECFEFF', border: '#A5F3FC' },
+                    '#B45309': { bg: '#FEF3C7', border: '#FDE68A' },
+                    '#C2410C': { bg: '#FFEDD5', border: '#FED7AA' },
+                  };
+                  return map[c] || { bg: '#F8FAFC', border: '#E2E8F0' };
+                };
+
+                const Box = ({ icon, iconChar, color, lbl, valueText, valueColor, chipFg, chipText, full }) => {
+                  const pair = colorPair(color);
+                  return (
+                    <View style={[styles.sumBox, { backgroundColor: pair.bg, borderColor: pair.border }, full && styles.sumBoxFull]}>
+                      <View style={[styles.sumBoxIcon, { backgroundColor: color }]}>
+                        {icon ? (
+                          <Image source={icon} style={styles.sumBoxIconImg} />
+                        ) : (
+                          <Text style={styles.sumBoxIconChar}>{iconChar}</Text>
+                        )}
+                      </View>
+                      <View style={styles.sumBoxContent}>
+                        <Text style={styles.sumBoxLbl} numberOfLines={1}>{lbl}</Text>
+                        {chipText ? (
+                          <Text style={[styles.sumBoxChipT, { color: chipFg }]} numberOfLines={1}>{chipText}</Text>
+                        ) : (
+                          <Text
+                            style={[styles.sumBoxVal, valueColor && { color: valueColor }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {valueText}
+                          </Text>
+                        )}
+                      </View>
                     </View>
+                  );
+                };
+
+                return (
+                  <View style={styles.summaryCard}>
+                    <View style={styles.summaryHeader}>
+                      <View style={[styles.summaryHdrIconWrap, { backgroundColor: '#5D3FD3' }]}>
+                        <Image source={require('./assets/wlt.png')} style={[styles.summaryHdrIcon, { tintColor: '#FFF' }]} />
+                      </View>
+                      <Text style={styles.summaryTitle}>Payment & Settlement</Text>
+                    </View>
+
+                    {/* Critical alerts */}
+                    {details?.penalty_text ? (
+                      <View style={styles.alertBanner}>
+                        <View style={styles.alertBannerBar} />
+                        <View style={styles.alertBannerIconWrap}>
+                          <Text style={styles.alertBannerIconChar}>!</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.alertBannerText}>{details.penalty_text}</Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {details?.dispute_date ? (
+                      <View style={styles.alertBanner}>
+                        <View style={styles.alertBannerBar} />
+                        <View style={styles.alertBannerIconWrap}>
+                          <Text style={styles.alertBannerIconChar}>!</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.alertBannerTitle}>Dispute Raised</Text>
+                          <Text style={styles.alertBannerText}>{details.dispute_date}</Text>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Strict 2x2 grid — everything half-width, alerts above stay full-width */}
+                    <View style={styles.sumGrid}>
+                      {details?.delivery_date ? (
+                        <Box icon={require('./assets/cal.png')} color="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} />
+                      ) : null}
+                      <Box icon={require('./assets/box.png')} color="#6366F1" lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
+                      <Box icon={require('./assets/wlt.png')} color="#2563EB" lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
+                      <Box
+                        icon={require('./assets/check.png')}
+                        color={paymentPaid ? '#16A34A' : '#B45309'}
+                        lbl="Payment Status"
+                        chipFg={paymentPaid ? '#15803D' : '#B45309'}
+                        chipText={String(details?.payment_status || '-').toUpperCase()}
+                      />
+                      <Box iconChar="₹" color="#F37A20" lbl="COD Amount" valueText={`₹ ${cod}`} />
+                      <Box
+                        iconChar="↓"
+                        color="#16A34A"
+                        lbl="Collected"
+                        valueText={`₹ ${collected}`}
+                        valueColor={collected > 0 ? '#15803D' : '#0F172A'}
+                      />
+                      <Box
+                        icon={require('./assets/clock.png')}
+                        color={settleChip.fg}
+                        lbl="Settlement"
+                        chipFg={settleChip.fg}
+                        chipText={(details?.settlement_status || 'pending').toUpperCase()}
+                      />
+                      <Box
+                        iconChar="✓"
+                        color="#9333EA"
+                        lbl="Settled Amount"
+                        valueText={`₹ ${settleAmt}`}
+                        valueColor={settleAmt > 0 ? '#15803D' : '#0F172A'}
+                      />
+
+                      {/* Conditional settlement audit fields from API */}
+                      {details?.settlement_submitted ? (
+                        <Box
+                          icon={require('./assets/cal.png')}
+                          color="#0891B2"
+                          lbl="Settlement Submitted"
+                          valueText={String(details.settlement_submitted)}
+                        />
+                      ) : null}
+
+                      {details?.settlement_approve_reject ? (
+                        <Box
+                          iconChar="✓"
+                          color="#0891B2"
+                          lbl="Approval Status"
+                          valueText={String(details.settlement_approve_reject)}
+                        />
+                      ) : null}
+                    </View>
+
+                    {/* Delivery Partner */}
+                    {details?.user?.name || details?.user?.mobile ? (
+                      <View style={styles.partnerCard}>
+                        <View style={styles.partnerAvatar}>
+                          <Text style={styles.partnerAvatarChar}>
+                            {(details?.user?.name || 'U').trim().charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.partnerLbl}>Delivery Partner</Text>
+                          <Text style={styles.partnerName}>{details?.user?.name || '-'}</Text>
+                          {details?.user?.mobile ? (
+                            <Text style={styles.partnerPhone}>{details.user.mobile}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })()}
+
+              {/* ✅ Invoice — view / download / share */}
+              <View style={styles.invoiceCard}>
+                <View style={styles.invoiceHeader}>
+                  <View style={styles.invoiceHeaderIconWrap}>
+                    <Text style={styles.invoiceHeaderIconChar}>₹</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.invoiceHeaderTitle}>Invoice</Text>
+                    <Text style={styles.invoiceHeaderSub}>View, download or share the bill</Text>
                   </View>
                 </View>
-              )) : <View style={styles.ddCard}><Text style={styles.emptyItemsText}>No items</Text></View>}
+
+                <View style={styles.invoiceActions}>
+                  {/* View — indigo */}
+                  <TouchableOpacity
+                    style={[styles.invoicePill, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+                    onPress={this.viewInvoice}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.invoicePillIconWrap, { backgroundColor: '#4F46E5' }]}>
+                      <Text style={styles.invoicePillIconChar}>▶</Text>
+                    </View>
+                    <Text style={[styles.invoicePillText, { color: '#4338CA' }]}>View</Text>
+                  </TouchableOpacity>
+
+                  {/* Download — cyan */}
+                  <TouchableOpacity
+                    style={[styles.invoicePill, { backgroundColor: '#ECFEFF', borderColor: '#A5F3FC' }]}
+                    onPress={this.downloadInvoice}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.invoicePillIconWrap, { backgroundColor: '#0891B2' }]}>
+                      <Text style={styles.invoicePillIconChar}>↓</Text>
+                    </View>
+                    <Text style={[styles.invoicePillText, { color: '#0E7490' }]}>Download</Text>
+                  </TouchableOpacity>
+
+                  {/* Share — emerald */}
+                  <TouchableOpacity
+                    style={[styles.invoicePill, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
+                    onPress={this.shareInvoice}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.invoicePillIconWrap, { backgroundColor: '#059669' }]}>
+                      <Text style={styles.invoicePillIconChar}>↗</Text>
+                    </View>
+                    <Text style={[styles.invoicePillText, { color: '#047857' }]}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
               {/* ✅ Payment / Collect Payment (added exactly like your UI) */}
               {/* <View style={[styles.card, { padding: 12 }]}>
@@ -748,25 +1061,37 @@ class DeliveryDetails extends Component {
               </View> */}
 
               <View style={{ height: 14 }} />
-            </>
+            </Animated.View>
           ) : null}
         </ScrollView>
 
-        {/* ✅ Bottom white actions panel */}
-        <View style={styles.bottomPanel}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Grand Total</Text>
-            <Text style={styles.codValue}>{`₹ ${this.toNum(details?.grand_total)}`}</Text>
-          </View>
-
-          {details?.order_status == 'delivered' ? (
-            <View style={{ height: 48, borderRadius: 10, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
+        {/* ✅ Bottom panel — solid status color for delivered/cancelled (matches header) */}
+        {(() => {
+          const s = String(details?.order_status || '').toLowerCase();
+          const isDelivered = s === 'delivered' || s === 'deliver';
+          const isCancelled = s === 'cancelled' || s === 'canceled';
+          const isRto = s === 'rto';
+          const onDark = isDelivered || isCancelled || isRto;
+          const panelBg = isDelivered ? '#16A34A' : isRto ? '#DC2626' : isCancelled ? '#F87171' : '#FFF';
+          return (
+            <SafeAreaView
+              edges={['bottom']}
+              style={[styles.bottomPanel, { backgroundColor: panelBg }]}
+            >
+              <View style={styles.totalRow}>
+                <Text style={[styles.totalLabel, onDark && { color: '#FFF' }]}>Grand Total</Text>
+                <Text style={[styles.codValue, onDark && { color: '#FFF' }]}>{`₹ ${this.toNum(details?.grand_total)}`}</Text>
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
-            </View>
-          ) : null}
+              <Text style={[styles.totalWords, onDark && { color: 'rgba(255,255,255,0.85)' }]}>{this.amountInWords(details?.grand_total)}</Text>
+
+              {isDelivered ? (
+                <View style={{ height: 44, borderRadius: 10, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                    <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
+                </View>
+              ) : null}
 
           {(details?.order_status == 'pending' || details?.order_status == 'reschedule') &&
           details?.order_status != 'cancelled' &&
@@ -774,19 +1099,21 @@ class DeliveryDetails extends Component {
             <>
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { marginRight: 6, backgroundColor: '#DC2626' }]}
+                  style={[styles.actionBtn, { marginRight: 3, backgroundColor: '#DC2626' }]}
                   onPress={() => this.setState({ popup_type: 'reject', selectedRejectReason: '' }, () => this.onPickUp())}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.actionBtnText}>Reject</Text>
+                  <Image source={require('./assets/cross.png')} style={styles.actionBtnIco} />
+                  <Text style={styles.actionBtnText}>Cancel</Text>
                 </TouchableOpacity>
 
                 {details?.order_status == 'pending' ? (
                   <TouchableOpacity
                     onPress={() => this.props.navigation.navigate('RescheduleDelivery', { order: details })}
-                    style={[styles.actionBtn, { marginLeft: 6, backgroundColor: '#5D3FD3' }]}
+                    style={[styles.actionBtn, { marginLeft: 3, backgroundColor: '#5D3FD3' }]}
                     activeOpacity={0.85}
                   >
+                    <Text style={styles.actionBtnChar}>↻</Text>
                     <Text style={styles.actionBtnText}>Re-schedule</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -809,30 +1136,42 @@ class DeliveryDetails extends Component {
             <>
               <View style={styles.actionRow}>
                 <TouchableOpacity
-                  style={[styles.actionBtn, { marginRight: 6, backgroundColor: '#DC2626' }]}
+                  style={[styles.actionBtn, { marginRight: 3, backgroundColor: '#DC2626' }]}
                   onPress={() => this.setState({ popup_type: 'cancel', selectedCancelReason: '' }, () => this.onPickUp())}
                   activeOpacity={0.85}
                 >
+                  <Image source={require('./assets/cross.png')} style={styles.actionBtnIco} />
                   <Text style={styles.actionBtnText}>Cancel</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'deliver', order: details })}
-                  style={[styles.actionBtn, { marginLeft: 6, backgroundColor: '#16A34A' }]}
+                  style={[styles.actionBtn, { marginLeft: 3, backgroundColor: '#16A34A' }]}
                   activeOpacity={0.85}
                 >
+                  <Image source={require('./assets/check.png')} style={styles.actionBtnIco} />
                   <Text style={styles.actionBtnText}>Deliver Order</Text>
                 </TouchableOpacity>
               </View>
             </>
           ) : null}
 
-          {details?.order_status == 'cancelled' ? (
-            <Text style={{ fontSize: 13, color: '#DC2626', alignSelf: 'center', fontWeight: '600' }}>
-              This order has been cancelled
-            </Text>
-          ) : null}
-        </View>
+              {(isCancelled || isRto) ? (() => {
+                const badgeC = isRto ? '#DC2626' : '#F87171';
+                return (
+                  <View style={{ height: 44, borderRadius: 10, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: badgeC, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                      <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✕'}</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: badgeC }}>
+                      {isRto ? 'Returned' : 'Cancelled'}
+                    </Text>
+                  </View>
+                );
+              })() : null}
+            </SafeAreaView>
+          );
+        })()}
 
         {/* ✅ QR Fullscreen Modal (same behavior as DeliverToFarmer) */}
         <Modal
@@ -895,13 +1234,13 @@ class DeliveryDetails extends Component {
               <View style={styles.bsHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.bsTitle, { color: this.state.popup_type == 'reject' || this.state.popup_type == 'cancel' ? '#DC2626' : '#5D3FD3' }]}>
-                    {this.state.popup_type == 'pickup' ? 'Pickup' : this.state.popup_type == 'cancel' ? 'Cancel' : 'Reject'} Confirmation
+                    {this.state.popup_type == 'pickup' ? 'Pickup' : 'Cancel'} Confirmation
                   </Text>
                   <Text style={styles.bsSub}>
                     {this.state.popup_type == 'cancel'
                       ? 'Select a cancel reason to proceed'
                       : this.state.popup_type == 'reject'
-                      ? 'Select a reject reason to proceed'
+                      ? 'Select a cancel reason to proceed'
                       : 'Confirm order pickup?'}
                   </Text>
                 </View>
@@ -948,7 +1287,7 @@ class DeliveryDetails extends Component {
                   activeOpacity={0.85}
                 >
                   {!this.state.isLoading ? (
-                    <Text style={styles.bsConfirmT}>{this.state.popup_type == 'reject' ? 'Reject Order' : this.state.popup_type == 'cancel' ? 'Cancel Order' : 'Confirm Pickup'}</Text>
+                    <Text style={styles.bsConfirmT}>{this.state.popup_type == 'pickup' ? 'Confirm Pickup' : 'Cancel Order'}</Text>
                   ) : (
                     <ActivityIndicator size="small" color="#FFF" />
                   )}
@@ -981,16 +1320,16 @@ const styles = StyleSheet.create({
   // Detail card styles
   ddCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
 
-  ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 8 },
-  ddOid: { fontSize: 14, fontWeight: '700', color: '#5D3FD3' },
-  ddDate: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
+  ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 10 },
+  ddOid: { fontSize: 13, fontWeight: '700', color: '#5D3FD3' },
+  ddDate: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 3 },
   ddChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
   ddChipT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
 
   ddPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
   ddAvt: { width: 36, height: 36, borderRadius: 18, resizeMode: 'cover', marginRight: 10 },
-  ddName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  ddPhone: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 1 },
+  ddName: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  ddPhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
   ddIco: { width: 30, height: 30, resizeMode: 'contain' },
   ddIcoOrange: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#EA580C' },
 
@@ -1005,10 +1344,10 @@ const styles = StyleSheet.create({
   ddDot: { width: 8, height: 8, borderRadius: 4 },
   ddLine: { width: 1.5, flex: 1, minHeight: 10, backgroundColor: '#D1D5DB', marginVertical: 3 },
   ddRouteBody: { flex: 1, paddingBottom: 10 },
-  ddRouteLbl: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, marginBottom: 3 },
-  ddRouteTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  ddRoutePhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
-  ddRouteAddr: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
+  ddRouteLbl: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
+  ddRouteTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  ddRoutePhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
+  ddRouteAddr: { fontSize: 12, fontWeight: '500', color: '#64748B', lineHeight: 17, marginTop: 2 },
 
   ddInfoRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   ddInfoItem: { flex: 1 },
@@ -1021,21 +1360,49 @@ const styles = StyleSheet.create({
   ddSlot: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, marginRight: 6, marginBottom: 4 },
   ddSlotT: { fontSize: 11, fontWeight: '500', color: '#475569' },
 
-  ddSecTitle: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 6 },
+  ddSecTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8, marginTop: 6 },
 
-  ddItemRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
-  ddItemImg: { marginRight: 12 },
-  ddProductImg: { width: 46, height: 46, borderRadius: 8, resizeMode: 'cover', backgroundColor: '#F1F5F9' },
-  ddItemName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
-  ddItemMeta: { flexDirection: 'row', alignItems: 'center' },
-  ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
-  ddItemVar: { fontSize: 12, fontWeight: '600', color: '#EA580C' },
-  ddItemQty: { fontSize: 12, fontWeight: '500', color: '#64748B' },
+  // Items card — single rounded container holding all line items, separated by an inner divider
+  itemsCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  ddItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12 },
+  ddItemRowDivider: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  // Soft tinted container for the product image — gives the photo nicer framing
+  ddItemImgWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+  },
+  ddProductImg: { width: 52, height: 52, resizeMode: 'contain' },
+  ddProductFallback: { width: 28, height: 28, resizeMode: 'contain', tintColor: '#94A3B8' },
+  ddItemName: { fontSize: 12, fontWeight: '600', color: '#1E293B', marginBottom: 6, lineHeight: 16 },
+  ddItemMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  // Variation pill (e.g. "100 ML")
+  ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, marginRight: 6, borderWidth: 1, borderColor: '#FED7AA' },
+  ddItemVar: { fontSize: 11, fontWeight: '600', color: '#C2410C' },
+  // Quantity pill (e.g. "× 1")
+  ddItemQtyPill: { backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' },
+  ddItemQty: { fontSize: 11, fontWeight: '600', color: '#475569' },
+  // Price column on the right
+  ddItemPriceCol: { alignItems: 'flex-end', minWidth: 60 },
   ddItemPrice: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
-  ddItemUnit: { fontSize: 10, fontWeight: '400', color: '#94A3B8', marginTop: 2 },
+  ddItemUnit: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
 
   statusPill: { alignSelf: 'flex-start', borderRadius: 60, paddingHorizontal: 14, paddingVertical: 6 },
-  statusPillText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
   orderIdLine: { fontSize: 12, fontWeight: '800', color: '#111827' },
   orderIdBold: { fontSize: 13, fontWeight: '800', color: '#F68A20' },
   smallMeta: { fontSize: 12, color: '#6B7280', fontWeight: '500', marginTop: 4 },
@@ -1043,7 +1410,7 @@ const styles = StyleSheet.create({
   orderMetaItem: { flex: 1, alignItems: 'center' },
   orderMetaLabel: { fontSize: 11, fontWeight: '500', color: '#9CA3AF', marginBottom: 4 },
   orderMetaValue: { fontSize: 13, fontWeight: '700', color: '#111827' },
-  cardLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', marginBottom: 8, letterSpacing: 0.3 },
+  cardLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', marginBottom: 8 },
 
   card: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
 
@@ -1073,27 +1440,329 @@ const styles = StyleSheet.create({
   itemPrice: { fontSize: 15, fontWeight: '600', color: '#0F7451' },
   itemQty: { fontSize: 12, color: '#000', fontWeight: '500', alignSelf: 'center' },
 
-  bottomPanel: { paddingHorizontal: 14, paddingBottom: 30, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 8 },
+  bottomPanel: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    paddingHorizontal: 14,
+    // SafeAreaView adds the platform inset on top of this value:
+    //   iOS adds ~34px (home indicator) — too much; we offset it back with a negative value.
+    //   Android adds ~24px (gesture nav) — already comfortable, so we keep a small positive padding.
+    paddingBottom: Platform.OS === 'ios' ? -16 : 10,
+    paddingTop: 10,
+    backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
 
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8 },
-  totalLabel: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  codValue: { fontSize: 16, fontWeight: '700', color: '#F37A20' },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 0, marginTop: 2 },
+  totalLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  codValue: { fontSize: 17, fontWeight: '800', color: '#F37A20' },
+  totalWords: { fontSize: 11, fontWeight: '500', color: '#64748B', fontStyle: 'italic', marginBottom: 12 },
 
-  pickupBtn: { height: 48, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#16A34A', marginTop: 4 },
-  pickupBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  pickupBtn: { height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#16A34A', marginTop: 6 },
+  pickupBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   pickupArrow: { width: 12, height: 12, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.8)' },
 
   actionRow: { flexDirection: 'row', marginBottom: 0 },
-  actionBtn: { flex: 1, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { flex: 1, height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  actionBtnIco: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FFF', marginRight: 8 },
+  actionBtnChar: { color: '#FFF', fontSize: 18, fontWeight: '900', marginRight: 8, marginTop: -2 },
   actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 
   primaryBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5D3FD3', marginBottom: 12 },
-  primaryText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
+  primaryText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   dangerBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E35335' },
-  dangerText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
+  dangerText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   emptyItemsText: { fontSize: 12, fontWeight: '700', color: '#6B7280', textAlign: 'center', paddingVertical: 10 },
+
+  // Payment & Settlement summary card
+  summaryCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  summaryHdrIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  summaryHdrIcon: { width: 14, height: 14, resizeMode: 'contain' },
+  summaryTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+
+  // 2-column grid of colored stat-cards
+  sumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  // Each box has icon on LEFT and content (label + value) on RIGHT
+  sumBox: {
+    width: '48.5%',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sumBoxFull: { width: '100%' },
+  sumBoxAlignTop: { alignItems: 'flex-start' },
+  sumBoxIconTop: { marginTop: 2 },
+  // Compact icon disc on the LEFT
+  sumBoxIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+  },
+  sumBoxIconImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
+  sumBoxIconChar: { color: '#FFF', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  // Content column on the right — label + value stacked, left-aligned
+  sumBoxContent: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  sumBoxLbl: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: '#64748B',
+    marginBottom: 2,
+  },
+  sumBoxVal: { fontSize: 11, fontWeight: '600', color: '#0F172A', lineHeight: 15 },
+  sumBoxValMulti: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  sumBoxChipT: { fontSize: 11, fontWeight: '700' },
+
+  // Receipt-style list rows
+  psRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+  },
+  // Small colored dot — quick visual accent without the heavy icon disc
+  psDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  psLbl: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  psVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    maxWidth: '55%',
+    textAlign: 'right',
+  },
+  // Status chip rendered as bold colored text (no pill) so it aligns with regular value text
+  psChip: {
+    fontSize: 13,
+    fontWeight: '800',
+    maxWidth: '55%',
+    textAlign: 'right',
+  },
+  // Subsection header — tiny uppercase label that groups related rows
+  psSubHdr: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  psDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginTop: 6,
+  },
+
+  // Critical alert banner (Penalty / Dispute) — stands out with a red bar + warning glyph
+  alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingLeft: 14,
+    marginBottom: 8,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  alertBannerBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#DC2626',
+  },
+  alertBannerIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginTop: 1,
+  },
+  alertBannerIconChar: { color: '#FFF', fontSize: 14, fontWeight: '900', lineHeight: 16 },
+  alertBannerTitle: { fontSize: 12, fontWeight: '800', color: '#991B1B', marginBottom: 2 },
+  alertBannerText: { fontSize: 12, fontWeight: '500', color: '#B91C1C', lineHeight: 17 },
+
+  // Delivery Slots — compact chip row card
+  slotsCard: {
+    backgroundColor: '#ECFEFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A5F3FC',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  slotsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  slotsHeaderIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+  },
+  slotsHeaderIconChar: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  slotsHeaderTitle: { fontSize: 12, fontWeight: '700', color: '#0E7490' },
+  slotsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  slotChip: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#A5F3FC',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  slotChipLbl: { fontSize: 10, fontWeight: '700', color: '#0E7490', marginBottom: 1 },
+  slotChipTime: { fontSize: 11, fontWeight: '600', color: '#475569' },
+
+  // Delivery Partner card — avatar + name + phone
+  partnerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F3FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  partnerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#5D3FD3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  partnerAvatarChar: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  partnerLbl: { fontSize: 10, fontWeight: '500', color: '#6B7280', marginBottom: 1 },
+  partnerName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  partnerPhone: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 1 },
+
+  // Invoice card
+  invoiceCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden', // so the colored header band clips to the rounded corners
+  },
+  // Soft pastel indigo banner — much lighter than before, dark text for contrast
+  invoiceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#E0E7FF',
+  },
+  invoiceHeaderIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#4338CA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  invoiceHeaderIconChar: { color: '#FFF', fontSize: 18, fontWeight: '800', lineHeight: 20 },
+  invoiceHeaderTitle: { fontSize: 14, fontWeight: '700', color: '#3730A3' },
+  invoiceHeaderSub: { fontSize: 10, fontWeight: '500', color: '#4F46E5', marginTop: 1 },
+
+  // Three horizontal pill buttons with icon + label inline
+  invoiceActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  invoicePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  invoicePillIcon: { width: 16, height: 16, resizeMode: 'contain', marginRight: 6 },
+  // Small solid-colored disc on the pill — white character icon inside for guaranteed crispness
+  invoicePillIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
+  },
+  invoicePillIconChar: { color: '#FFF', fontSize: 13, fontWeight: '800', lineHeight: 15 },
+  invoicePillText: { fontSize: 12, fontWeight: '600' },
 
   // Bottom sheet
   bsContent: { paddingHorizontal: 20, paddingBottom: 20 },
@@ -1105,7 +1774,7 @@ const styles = StyleSheet.create({
   bsDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
   bsBtnWrap: { alignItems: 'center', paddingTop: 4 },
   bsConfirmBtn: { height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, minWidth: 160 },
-  bsConfirmT: { color: '#FFF', fontSize: 14, fontWeight: '700', letterSpacing: 0.2 },
+  bsConfirmT: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
   reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, marginBottom: 3 },
   reasonRowActive: { backgroundColor: '#FEF2F2' },

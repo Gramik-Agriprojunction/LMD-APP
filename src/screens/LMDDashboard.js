@@ -1,54 +1,67 @@
 import React, { Component } from 'react';
 import {
-  View, SafeAreaView, Text, StatusBar, TouchableOpacity, StyleSheet,
-  Dimensions, FlatList, ScrollView, Linking, Image, Animated, RefreshControl, Alert,
+  View, Text, StatusBar, TouchableOpacity, StyleSheet,
+  FlatList, ScrollView, Linking, Image, Animated, RefreshControl, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import ShimmerLoader from '../components/ShimmerLoader';
 import NetBanner from '../components/NetBanner';
+import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSubscribe, KEYS } from '../utils/dataCache';
+import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
 
-const { width } = Dimensions.get('window');
 const P = '#5D3FD3';
 
 class LMDDashboard extends Component {
   constructor() {
     super();
-    this.state = { loading: true, refreshing: false, data: null, notif: 0 };
-    this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(0), y: new Animated.Value(20) }));
+    // Read cached dashboard data on mount → render instantly without shimmer.
+    const cached = cacheGet(KEYS.DASHBOARD);
+    this.state = {
+      loading: !cached,
+      refreshing: false,
+      data: cached || null,
+      notif: Number(cached?.notification_count || 0),
+    };
+    this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
   }
 
-  componentDidMount() { this.load(); }
-
-  animate = () => {
-    this.anims.forEach((a, i) => {
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(a.o, { toValue: 1, duration: 280, useNativeDriver: true }),
-          Animated.spring(a.y, { toValue: 0, friction: 8, useNativeDriver: true }),
-        ]).start();
-      }, i * 60);
+  componentDidMount() {
+    // Subscribe to cache updates so this screen reflects mutations from other screens.
+    this.unsubscribe = cacheSubscribe(KEYS.DASHBOARD, (data) => {
+      if (!data) return;
+      this.setState({ data, notif: Number(data.notification_count || 0) });
     });
-  };
+    // Always refresh in background; UI shows cached data meanwhile.
+    this.load(cacheHas(KEYS.DASHBOARD));
+  }
 
-  load = () => {
-    if (!this.state.refreshing) this.setState({ loading: true });
+  componentWillUnmount() {
+    if (this.unsubscribe) this.unsubscribe();
+  }
+
+  animate = () => {};
+
+  // silent=true → background refresh, no shimmer flicker
+  load = (silent = false) => {
+    if (!silent && !this.state.refreshing) this.setState({ loading: true });
     fetch(constants.homescreen, {
       headers: { 'X-localization': 'en', Authorization: 'Bearer ' + global.token }, method: 'GET',
     })
       .then(r => r.json())
       .then(j => {
-        console.log('Dashboard API response== ', JSON.stringify(j));
         if (j.status) {
-          this.setState({ loading: false, refreshing: false, data: j.data || {}, notif: Number(j.data?.notification_count || 0) }, this.animate);
+          const data = j.data || {};
+          cacheSet(KEYS.DASHBOARD, data);
+          this.setState({ loading: false, refreshing: false, data, notif: Number(data.notification_count || 0) });
         } else this.setState({ loading: false, refreshing: false });
       })
       .catch(() => this.setState({ loading: false, refreshing: false }));
   };
 
   refresh = () => {
-    this.anims.forEach(a => { a.o.setValue(0); a.y.setValue(20); });
-    this.setState({ refreshing: true }, this.load);
+    this.setState({ refreshing: true }, () => this.load(true));
   };
 
   go = (s) => this.props.navigation.navigate('TrackOrders', { selectedStatus: s || 'ALL' });
@@ -71,7 +84,7 @@ class LMDDashboard extends Component {
   mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0, 2) + '****' + s.slice(-2); };
 
   badge = (s) => {
-    const m = { PENDING:{bg:'#EA580C',c:'#FFF'}, DELIVERED:{bg:'#16A34A',c:'#FFF'}, PICKUP:{bg:'#7C3AED',c:'#FFF'}, INTRANSIT:{bg:'#2563EB',c:'#FFF'}, RESCHEDULE:{bg:'#7C3AED',c:'#FFF'}, RTO:{bg:'#DC2626',c:'#FFF'}, CANCELLED:{bg:'#DC2626',c:'#FFF'} };
+    const m = { PENDING:{bg:'#EA580C',c:'#FFF'}, DELIVERED:{bg:'#16A34A',c:'#FFF'}, PICKUP:{bg:'#7C3AED',c:'#FFF'}, INTRANSIT:{bg:'#2563EB',c:'#FFF'}, RESCHEDULE:{bg:'#7C3AED',c:'#FFF'}, RTO:{bg:'#DC2626',c:'#FFF'}, CANCELLED:{bg:'#F87171',c:'#FFF'} };
     return m[s] || { bg: '#F1F5F9', c: '#475569' };
   };
 
@@ -165,10 +178,10 @@ class LMDDashboard extends Component {
     return (
       <View style={$.root}>
         <StatusBar backgroundColor={P} translucent={false} barStyle="light-content" />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load()} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load(true)} />
 
         <View style={$.hdr}>
-          <SafeAreaView>
+          <SafeAreaView edges={['top']}>
             <View style={$.hdrRow}>
               <TouchableOpacity style={$.hdrBtn} onPress={() => this.props.navigation.navigate('Profile')} activeOpacity={0.7}>
                 <Image source={require('./assets/profile.png')} style={$.profIco} />
@@ -185,7 +198,7 @@ class LMDDashboard extends Component {
           </SafeAreaView>
         </View>
 
-        <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+        <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
           {this.state.loading && !this.state.refreshing ? <ShimmerLoader /> : (
             <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.refresh} tintColor={P} colors={[P]} />}>
@@ -211,25 +224,10 @@ class LMDDashboard extends Component {
 
               <Animated.View style={[$.card, this.a(2)]}>
                 <View style={$.cardH}>
-                  <Text style={$.cardT}>Live Orders <Text style={{ color: P }}>({this.n(live?.all_orders)})</Text></Text>
+                  <Text style={$.cardT}>Live Orders <Text style={{ color: P }}>({this.n(live?.all_orders ?? allCount(live))})</Text></Text>
                   <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>View All ›</Text></View></TouchableOpacity>
                 </View>
-                <View style={$.sg}>
-                  {[
-                    { l: 'Picked Up', v: live?.picked_up, bg: '#E2E8F0', c: '#334155', k: 'PICKUP' },
-                    { l: 'Pending', v: live?.pending, bg: '#FFEDD5', c: '#C2410C', k: 'PENDING' },
-                    { l: 'Delivered', v: live?.delivered, bg: '#DCFCE7', c: '#15803D', k: 'DELIVERED' },
-                    { l: 'In-Transit', v: live?.in_transit, bg: '#DBEAFE', c: '#1D4ED8', k: 'IN_TRANSIT' },
-                    { l: 'Reschedule', v: live?.reschedule_order, bg: '#EDE9FE', c: '#6D28D9', k: 'RESCHEDULE' },
-                    { l: 'RTO', v: live?.rto, bg: '#FEE2E2', c: '#B91C1C', k: 'RTO' },
-                    ...(live?.cancelled !== undefined ? [{ l: 'Cancelled', v: live?.cancelled, bg: '#FEE2E2', c: '#B91C1C', k: 'CANCELLED' }] : []),
-                  ].map(s => (
-                    <TouchableOpacity key={s.k} activeOpacity={0.8} onPress={() => this.go(s.k)} style={[$.sb, { backgroundColor: s.bg }]}>
-                      <Text style={[$.sbV, { color: s.c }]}>{this.n(s.v)}</Text>
-                      <Text style={[$.sbL, { color: s.c }]}>{s.l}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <LiveOrdersGrid live={live} onPress={this.go} />
               </Animated.View>
 
               <Animated.View style={this.a(3)}>
@@ -258,10 +256,10 @@ class LMDDashboard extends Component {
                   ))}
                 </View>
               </Animated.View>
-              <View style={{ height: 20 }} />
+              <View style={{ height: 12 }} />
             </ScrollView>
           )}
-        </View>
+        </SafeAreaView>
         <NetBanner />
       </View>
     );
@@ -270,8 +268,6 @@ class LMDDashboard extends Component {
 
 function fmt(n) { try { return Number(n).toLocaleString('en-IN'); } catch(e) { return String(n); } }
 
-const G = 8;
-const SW = (width - 8*2 - 12*2 - G*2) / 3;
 
 const $ = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#E8ECF4' },
@@ -303,11 +299,6 @@ const $ = StyleSheet.create({
   cardT: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
   viewAll: { color: P, fontSize: 11, fontWeight: '600' },
   viewAllWrap: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-
-  sg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: G },
-  sb: { width: SW, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
-  sbV: { fontSize: 18, fontWeight: '700' },
-  sbL: { fontSize: 9, fontWeight: '500', marginTop: 2 },
 
   dlvHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, marginTop: 6 },
   dlv: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
@@ -342,11 +333,23 @@ const $ = StyleSheet.create({
   dlvAmt: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
 
   empty: { textAlign: 'center', color: '#475569', fontSize: 13, fontWeight: '500', paddingVertical: 4 },
-  secT: { fontSize: 12, fontWeight: '600', color: '#334155', marginBottom: 8, marginTop: 6 },
-  actRow: { flexDirection: 'row' },
-  qa: { flex: 1, borderRadius: 12, alignItems: 'center', paddingVertical: 14, marginHorizontal: 4, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3 },
-  qaImg: { width: 32, height: 32, marginBottom: 6 },
-  qaL: { fontSize: 11, fontWeight: '600' },
+  secT: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 10, marginTop: 8 },
+  actRow: { flexDirection: 'row', gap: 10 },
+  qa: {
+    flex: 1,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  qaImg: { width: 40, height: 40, marginBottom: 10, resizeMode: 'contain' },
+  qaL: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
 });
 
 export default withV4Navigation(LMDDashboard);

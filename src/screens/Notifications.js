@@ -5,12 +5,12 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 
@@ -117,7 +117,7 @@ class Notifications extends Component {
         <StatusBar barStyle="light-content" backgroundColor="#5D3FD3" />
 
         <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+          <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />

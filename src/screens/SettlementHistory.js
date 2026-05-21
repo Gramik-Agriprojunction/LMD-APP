@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   ScrollView,
@@ -17,6 +16,7 @@ import {
   Pressable,
   InteractionManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import ImageCropPicker from 'react-native-image-crop-picker';
@@ -408,7 +408,7 @@ class SettlementHistory extends Component {
 
         {/* Header */}
         <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+          <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
@@ -423,7 +423,7 @@ class SettlementHistory extends Component {
           </SafeAreaView>
         </View>
 
-        <SafeAreaView style={styles.bodySafe}>
+        <View style={styles.bodySafe}>
           <View style={{ flex: 1 }}>
             <ScrollView
               contentContainerStyle={styles.scrollContent}
@@ -494,8 +494,16 @@ class SettlementHistory extends Component {
               ) : rows.length ? (
                 rows.map(this.renderRow)
               ) : (
-                <View style={{ paddingVertical: 80, alignItems: 'center' }}>
-                  <Text style={{ color: '#6B7280', fontSize: 15, fontWeight: '400' }}>No settlements found</Text>
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconWrap}>
+                    <Image source={require('./assets/purse.png')} style={styles.emptyIcon} />
+                  </View>
+                  <Text style={styles.emptyTitle}>No settlements yet</Text>
+                  <Text style={styles.emptySubtitle}>
+                    {activeTab === 'all'
+                      ? 'Your completed settlements will appear here once they are processed.'
+                      : `No ${activeTab === 'success' ? 'settled' : activeTab} settlements to show right now.`}
+                  </Text>
                 </View>
               )}
 
@@ -525,10 +533,10 @@ class SettlementHistory extends Component {
                 )}
               </TouchableOpacity> */}
 
-              <SafeAreaView style={{ backgroundColor: '#E8ECF4' }} />
+              <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#E8ECF4' }}/>
             </View>
           </View>
-        </SafeAreaView>
+        </View>
 
         {/* Picker Modal (iOS-safe, no touch bubbling) */}
         <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={this.closePicker}>
@@ -597,6 +605,39 @@ const styles = StyleSheet.create({
 
   bodySafe: { flex: 1, backgroundColor: '#E8ECF4' },
   scrollContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 16 },
+
+  // Empty state
+  emptyState: {
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  emptyIcon: { width: 44, height: 44, resizeMode: 'contain' },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
+  },
 
   // Search
   searchBox: {

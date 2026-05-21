@@ -17,7 +17,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   TextInput,
@@ -30,6 +29,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 
@@ -488,7 +488,7 @@ class SettlementList extends Component {
 
         {/* Header */}
         <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+          <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
@@ -536,8 +536,8 @@ class SettlementList extends Component {
               keyboardShouldPersistTaps="handled"
             />
 
-            {/* Fixed bottom */}
-            <View style={styles.footerWrap}>
+            {/* Fixed bottom — SafeAreaView edges bottom handles Android 15+ gesture nav + iPhone home indicator dynamically */}
+            <SafeAreaView edges={['bottom']} style={styles.footerWrap}>
               <View style={styles.footerTopRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.totalLabel}>Total Cash</Text>
@@ -561,7 +561,7 @@ class SettlementList extends Component {
                 </TouchableOpacity>
               </View>
 
-            </View>
+            </SafeAreaView>
           </View>
       </View>
     );
@@ -663,7 +663,7 @@ const styles = StyleSheet.create({
   checkBoxOn: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
   checkTick: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: -1 },
 
-  // Footer fixed
+  // Footer fixed — paddingBottom is provided by SafeAreaView edges={['bottom']} now
   footerWrap: {
     position: 'absolute',
     left: 0,
@@ -672,12 +672,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: 34,
+    paddingBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 3,
   },
   footerTopRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 5 },
 

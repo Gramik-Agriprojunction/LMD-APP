@@ -2,12 +2,14 @@ import React, { Component } from 'react';
 import { withV4Navigation } from '../utils/v4Compat';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView,
-  SafeAreaView, StatusBar, Image, Linking, ActivityIndicator, Animated, Alert,
+  StatusBar, Image, Linking, ActivityIndicator, Animated, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DatePicker from 'react-native-date-picker';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import moment from 'moment';
+import { invalidateOrderRelated } from '../utils/dataCache';
 
 const P = '#5D3FD3';
 
@@ -18,7 +20,8 @@ class RescheduleDelivery extends Component {
       details: null, dateObj: null, slot: '', note: '',
       showDateModal: false, showSlotPicker: false, submitting: false,
     };
-    this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(0), y: new Animated.Value(20) }));
+    // Start fully visible — animating opacity on Android causes elevation shadows to appear huge.
+    this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
   }
 
   getOrder = () => this.props?.navigation?.getParam('order', null);
@@ -29,6 +32,8 @@ class RescheduleDelivery extends Component {
   }
 
   animateIn = () => {
+    // No-op: cards are at their final state to avoid Android elevation-shadow artifacts.
+    return;
     this.anims.forEach((a, i) => {
       setTimeout(() => {
         Animated.parallel([
@@ -94,7 +99,10 @@ class RescheduleDelivery extends Component {
           console.log('Reschedule API response== ', j);
           this.setState({ submitting: false });
           Toast.show(j?.message || 'Updated', Toast.SHORT);
-          if (j?.status) this.goBack();
+          if (j?.status) {
+            invalidateOrderRelated();
+            this.goBack();
+          }
         })
         .catch(e => { this.setState({ submitting: false }); });
     });
@@ -132,7 +140,7 @@ class RescheduleDelivery extends Component {
         <StatusBar barStyle="light-content" backgroundColor={P} />
 
         <View style={$.hdr}>
-          <SafeAreaView>
+          <SafeAreaView edges={['top']}>
             <View style={$.hdrRow}>
               <TouchableOpacity onPress={this.goBack} style={$.hdrBtn} activeOpacity={0.7}>
                 <Image source={require('./assets/back.png')} style={$.hdrIco} />

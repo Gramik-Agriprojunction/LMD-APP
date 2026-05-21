@@ -4,18 +4,18 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   ScrollView,
-  Dimensions,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import BottomSheet from '../components/BottomSheet';
 import ShimmerLoader from '../components/ShimmerLoader';
+import LiveOrdersGrid from '../components/LiveOrdersGrid';
 
 import {NavigationEvents} from '../utils/v4Compat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,18 +33,6 @@ const THEME = {
   border: '#E6EAF0',
   text: '#111827',
   subText: '#6B7280',
-};
-
-const TILE = {
-  picked_up: { bg: '#E9EEF3', valueColor: '#484b4d', label: 'Picked Up' },
-
-  // ✅ swapped colors (as you asked)
-  pending: { bg: '#FCE9C9', valueColor: '#c27e08', label: 'Pending' },
-  delivered: { bg: '#DDF3EA', valueColor: '#06bf72', label: 'Delivered' },
-
-  in_transit: { bg: '#DCEEFF', valueColor: '#0B5394', label: 'In-Transit' },
-  reschedule_order: { bg: '#E9E6FF', valueColor: '#3C2F8F', label: 'Re-schedule' },
-  rto: { bg: '#FAD8D8', valueColor: '#B10000', label: 'RTO' },
 };
 
 class Profile extends Component {
@@ -88,7 +76,7 @@ class Profile extends Component {
 
   // ✅ Navigate to TrackOrders with selected delivery status
   onPressStatus = (statusKey) => {
-    this.props?.navigation?.navigate('TrackOrders', { status: statusKey });
+    this.props?.navigation?.navigate('TrackOrders', { selectedStatus: statusKey });
   };
 
   // ✅ PROFILE API (GET) - your API returns object directly
@@ -142,24 +130,6 @@ class Profile extends Component {
     return Number.isFinite(n) ? n : 0;
   };
 
-  renderTile = (key, rawValue) => {
-    const t = TILE[key];
-    const value = this.toNum(rawValue);
-
-    return (
-      <TouchableOpacity
-        key={key}
-        activeOpacity={0.9}
-        onPress={() => this.onPressStatus(key)}
-        style={[styles.tile, { backgroundColor: t.bg }]}
-      >
-        <Text style={styles.tileLabel} numberOfLines={1}>
-          {t.label}
-        </Text>
-        <Text style={[styles.tileValue, { color: t.valueColor }]}>{String(value)}</Text>
-      </TouchableOpacity>
-    );
-  };
 
     async onLogout() {
       try {
@@ -194,7 +164,7 @@ class Profile extends Component {
 
         {/* ✅ Header (same as other screens) */}
         <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+          <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
@@ -271,12 +241,7 @@ class Profile extends Component {
             </View>
 
             <View style={styles.tilesGrid}>
-              {this.renderTile('picked_up', orders?.picked_up)}
-              {this.renderTile('pending', orders?.pending)}
-              {this.renderTile('delivered', orders?.delivered)}
-              {this.renderTile('in_transit', orders?.in_transit)}
-              {this.renderTile('reschedule_order', orders?.reschedule_order)}
-              {this.renderTile('rto', orders?.rto)}
+              <LiveOrdersGrid live={orders} onPress={this.onPressStatus} />
             </View>
           </View>
 
@@ -351,10 +316,6 @@ class Profile extends Component {
   }
 }
 
-const W = Dimensions.get('window').width;
-const TILE_W = (W - 14 * 2 - 12 * 2 - 18) / 3; // 3 columns
-const TILE_H = 70;
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#E8ECF4' },
 
@@ -416,18 +377,7 @@ const styles = StyleSheet.create({
   viewBtnText: { color: '#1C5D9E', fontSize: 13, fontWeight: '700' },
   viewBtnArrow: { color: '#1C5D9E', fontSize: 18, marginLeft: 6, marginTop: -2,fontWeight:'bold' },
 
-  tilesGrid: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  tile: {
-    width: TILE_W,
-    height: TILE_H,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  tileLabel: { fontSize: 11, fontWeight: '500', color: '#4B5563', marginBottom: 6 },
-  tileValue: { fontSize: 22, fontWeight: '800',marginTop:2 },
+  tilesGrid: { marginTop: 12 },
 
   actionCard: {
     backgroundColor: '#fff',

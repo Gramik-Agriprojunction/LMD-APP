@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Image, SafeAreaView, Text, StatusBar, TouchableOpacity, Platform } from 'react-native';
+import { View, Image, Text, StatusBar, TouchableOpacity, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -87,7 +88,7 @@ class Language extends React.Component {
                 
             </View>
 
-             <SafeAreaView style={{flex:0, backgroundColor: '#FFF'}}/>
+             <SafeAreaView edges={['bottom']} style={{flex:0, backgroundColor: '#FFF'}}/>
 
         </View>
     );

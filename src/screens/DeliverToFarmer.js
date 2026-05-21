@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Image,
   ActivityIndicator,
@@ -19,11 +18,13 @@ import {
   UIManager,
   PanResponder,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
 import ShimmerLoader from '../components/ShimmerLoader';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
+import { invalidateOrderRelated } from '../utils/dataCache';
 
 const BG = '#5D3FD3';
 
@@ -357,6 +358,8 @@ class DeliverToFarmer extends Component {
           Toast.show(responseJson.message, Toast.SHORT);
 
           if (responseJson.status || responseJson.success) {
+            // Order state changed → mark dashboard & orders caches stale so they refetch on next visit
+            invalidateOrderRelated();
             const st = String(body?.status || '').toLowerCase();
             if (st === 'delivered' || st === 'deliver') {
               this.setState({ completingDelivery: false, show_sheet: false }, () => this.showDeliverySuccess());
@@ -533,7 +536,7 @@ class DeliverToFarmer extends Component {
     if (v === 'pending') return { bg: '#EA580C' };
     if (v === 'pickup' || v === 'pickedup') return { bg: '#7C3AED' };
     if (v === 'delivered' || v === 'deliver') return { bg: '#16A34A' };
-    if (v === 'cancelled' || v === 'canceled') return { bg: '#DC2626' };
+    if (v === 'cancelled' || v === 'canceled') return { bg: '#F87171' };
     return { bg: '#475569' };
   };
 
@@ -574,7 +577,7 @@ class DeliverToFarmer extends Component {
         <StatusBar barStyle="light-content" backgroundColor={BG} />
 
         <View style={styles.headerWrap}>
-          <SafeAreaView style={styles.headerSafe}>
+          <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
@@ -789,7 +792,7 @@ class DeliverToFarmer extends Component {
 
             {/* Sheet */}
             <Animated.View style={[styles.qrSheet, { transform: [{ translateY: this.qrModalY }] }]} {...this.qrPan.panHandlers}>
-              <SafeAreaView style={{ backgroundColor: 'transparent' }} />
+              <SafeAreaView edges={['bottom']} style={{ backgroundColor: 'transparent' }}/>
 
               {/* Drag handle */}
               <View style={styles.qrSheetHandle}><View style={styles.qrDragHandle} /></View>
@@ -840,7 +843,7 @@ class DeliverToFarmer extends Component {
                 <Text style={styles.qrInfoHint}>Swipe down to close</Text>
               </View>
 
-              <SafeAreaView style={{ backgroundColor: BG }} />
+              <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
             </Animated.View>
           </View>
         </Modal>
@@ -976,7 +979,7 @@ const styles = StyleSheet.create({
   paidAmt: { fontSize: 16, fontWeight: '700', color: '#16A34A' },
 
   // Bottom Panel
-  bottomPanel: { paddingHorizontal: 14, paddingBottom: 30, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 8 },
+  bottomPanel: { paddingHorizontal: 14, paddingBottom: 30, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8 },
   totalLabel: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   codValue: { fontSize: 16, fontWeight: '700', color: '#F37A20' },
@@ -993,7 +996,7 @@ const styles = StyleSheet.create({
   successContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
   successCheckArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   successRing: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
-  successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 10 },
+  successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 3 },
   successCheck: { fontSize: 38, fontWeight: '900', color: '#FFF' },
   successTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
   successSub: { fontSize: 14, fontWeight: '400', color: 'rgba(255,255,255,0.6)', marginBottom: 16 },
