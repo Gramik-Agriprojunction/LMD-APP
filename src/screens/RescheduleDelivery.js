@@ -10,6 +10,8 @@ import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import moment from 'moment';
 import { invalidateOrderRelated } from '../utils/dataCache';
+import { getStatus } from '../utils/statusColors';
+import ScreenHeader from '../components/ScreenHeader';
 
 const P = '#5D3FD3';
 
@@ -109,13 +111,8 @@ class RescheduleDelivery extends Component {
   };
 
   getStatusColors = (statusRaw) => {
-    const s = String(statusRaw || '').toLowerCase();
-    if (s === 'pending') return { bg: '#FEF3C7', text: '#92400E' };
-    if (s === 'pickup' || s === 'pickedup' || s === 'picked_up') return { bg: '#DBEAFE', text: '#1E40AF' };
-    if (s === 'delivered' || s === 'deliver') return { bg: '#D1FAE5', text: '#065F46' };
-    if (s === 'cancelled' || s === 'canceled' || s === 'rejected') return { bg: '#FEE2E2', text: '#991B1B' };
-    if (s === 'reschedule') return { bg: '#EDE9FE', text: '#5B21B6' };
-    return { bg: '#F3F4F6', text: '#374151' };
+    const st = getStatus(statusRaw);
+    return { bg: st.tint, text: st.accent };
   };
 
   render() {
@@ -139,17 +136,7 @@ class RescheduleDelivery extends Component {
       <View style={$.root}>
         <StatusBar barStyle="light-content" backgroundColor={P} />
 
-        <View style={$.hdr}>
-          <SafeAreaView edges={['top']}>
-            <View style={$.hdrRow}>
-              <TouchableOpacity onPress={this.goBack} style={$.hdrBtn} activeOpacity={0.7}>
-                <Image source={require('./assets/back.png')} style={$.hdrIco} />
-              </TouchableOpacity>
-              <Text style={$.hdrTitle}>Re-schedule Delivery</Text>
-              <View style={{ width: 36 }} />
-            </View>
-          </SafeAreaView>
-        </View>
+        <ScreenHeader bg={P} title="Re-schedule Delivery" onBack={this.goBack} />
 
         <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {!details ? (
@@ -279,8 +266,8 @@ const $ = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#E8ECF4' },
 
   hdr: { backgroundColor: P, paddingBottom: 4 },
-  hdrRow: { height: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
-  hdrBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  hdrRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  hdrBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   hdrIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
   hdrTitle: { flex: 1, textAlign: 'center', color: '#FFF', fontSize: 15, fontWeight: '600' },
 

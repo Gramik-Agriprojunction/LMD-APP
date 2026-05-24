@@ -67,8 +67,8 @@ class Language extends React.Component {
               <View style={{width:'100%',paddingTop:Platform.OS=='android' ? 30:45,backgroundColor:'#FFF'}}>
                     <View style={{flexDirection:'row',justifyContent:'space-between',backgroundColor:'#FFF'}}>
                        <View style={{flexDirection:'row'}}>
-                            <TouchableOpacity onPress={()=> this.props.navigation.goBack()} style={{padding:15,paddingRight:10,justifyContent:'center'}}>
-                                <Image style={{width:25,height:25,alignSelf:'center',resizeMode:'contain',tintColor:'#000'}} source={require('./assets/back.png')}></Image>
+                            <TouchableOpacity onPress={()=> this.props.navigation.goBack()} style={{width:40,height:40,borderRadius:20,backgroundColor:'rgba(0,0,0,0.06)',alignItems:'center',justifyContent:'center',marginLeft:4,marginRight:6}}>
+                                <Image style={{width:17,height:17,resizeMode:'contain',tintColor:'#0F172A'}} source={require('./assets/back.png')}></Image>
                             </TouchableOpacity>
                             <Text style={{color:'#000',fontFamily:'Poppins-Bold',fontSize:14,alignSelf:'center'}}>{global.language == 'English' ? languages.english.lang : languages.hindi.lang}</Text>
                        </View>

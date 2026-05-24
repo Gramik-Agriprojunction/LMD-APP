@@ -3,6 +3,7 @@ import {
   View, Modal, StyleSheet, TouchableWithoutFeedback,
   Dimensions, Animated, PanResponder,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SH = Dimensions.get('window').height;
 
@@ -13,14 +14,31 @@ export default class BottomSheet extends React.Component {
     super(props);
     this.translateY = new Animated.Value(SH);
 
+    // Drag-to-close from anywhere inside the sheet.
+    // - Capture phase fires before children (ScrollViews, lists, buttons) get
+    //   the gesture, so a downward drag steals focus even when the touch lands
+    //   on scrollable / tappable content.
+    // - Direction guard (dy bigger than dx, downward only) prevents stealing
+    //   from horizontal swipes or upward scrolls.
+    // Lower threshold = snappier drag pickup. Direction guard keeps horizontal
+    // swipes / upward scrolls from being stolen.
+    const isDownwardDrag = (g) => g.dy > 6 && g.dy > Math.abs(g.dx) * 1.4;
     this.pan = PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (_, g) => isDownwardDrag(g),
+      onMoveShouldSetPanResponderCapture: (_, g) => isDownwardDrag(g),
+      onPanResponderGrant: () => {
+        // Stop any in-flight spring so the drag tracks the finger from 0.
+        this.translateY.stopAnimation();
+      },
       onPanResponderMove: (_, g) => { if (g.dy > 0) this.translateY.setValue(g.dy); },
       onPanResponderRelease: (_, g) => {
         if (g.dy > 80 || g.vy > 0.5) this.close();
         else Animated.spring(this.translateY, { toValue: 0, friction: 10, tension: 50, useNativeDriver: true }).start();
       },
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
     });
   }
 
@@ -46,11 +64,16 @@ export default class BottomSheet extends React.Component {
           <TouchableWithoutFeedback onPress={() => this.close()}>
             <View style={$.touchArea} />
           </TouchableWithoutFeedback>
-          <Animated.View style={[$.sheet, { maxHeight: SH * 0.8, transform: [{ translateY: this.translateY }] }]}>
-            <View {...this.pan.panHandlers} style={$.handleWrap}>
+          <Animated.View
+            {...this.pan.panHandlers}
+            style={[$.sheet, { maxHeight: SH * 0.9, transform: [{ translateY: this.translateY }] }]}
+          >
+            <View style={$.handleWrap}>
               <View style={$.handle} />
             </View>
-            {children}
+            <SafeAreaView edges={['bottom']}>
+              {children}
+            </SafeAreaView>
           </Animated.View>
         </View>
       </Modal>
@@ -66,6 +89,6 @@ const $ = StyleSheet.create({
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 6,
   },
-  handleWrap: { alignItems: 'center', paddingTop: 12, paddingBottom: 4 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB' },
+  handleWrap: { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
+  handle: { width: 44, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1' },
 });

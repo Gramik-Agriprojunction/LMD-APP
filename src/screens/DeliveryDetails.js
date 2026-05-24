@@ -26,6 +26,10 @@ import BottomSheet from '../components/BottomSheet';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
+import * as STATUS_COLORS from '../utils/statusColors';
+import CachedImage from '../components/CachedImage';
+import ScreenHeader from '../components/ScreenHeader';
+import OrderCard from '../components/OrderCard';
 
 class DeliveryDetails extends Component {
   constructor(props) {
@@ -38,6 +42,7 @@ class DeliveryDetails extends Component {
 
       show_pickup_confirm: false,
       popup_type: '',
+      show_more_options: false,
 
       // cancel reasons
       reasonsLoading: false,
@@ -56,6 +61,10 @@ class DeliveryDetails extends Component {
       qrFailed: false,
       qrErrorText: '',
       qrModalVisible: false,
+
+      // Invoice download state
+      invoiceDownloading: false,
+      invoiceProgress: 0,
     };
 
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -129,7 +138,13 @@ class DeliveryDetails extends Component {
         if (json?.status && json?.order) {
           this.fadeAnim.setValue(0);
           this.slideAnim.setValue(24);
-          this.setState({ details: json.order }, () => {
+          // `dispute_reasons` ships alongside the order; hold on to it so the
+          // MarkDispute screen doesn't have to hit a separate (sometimes 404)
+          // endpoint — we'll pass it through navigation params.
+          this.setState({
+            details: json.order,
+            disputeReasons: Array.isArray(json?.dispute_reasons) ? json.dispute_reasons : [],
+          }, () => {
             const oid = json?.order?.id;
             if (oid) this.getQR(oid);
             Animated.parallel([
@@ -210,7 +225,7 @@ class DeliveryDetails extends Component {
     if (!keys.length) {
       return (
         <Text style={{ textAlign: 'center', marginTop: 12, color: '#6B7280', fontWeight: '700' }}>
-          No cancel reasons found
+          No reasons available
         </Text>
       );
     }
@@ -254,7 +269,7 @@ class DeliveryDetails extends Component {
     if (!keys.length) {
       return (
         <Text style={{ textAlign: 'center', marginTop: 12, color: '#6B7280', fontWeight: '700' }}>
-          No cancel reasons found
+          No reasons available
         </Text>
       );
     }
@@ -368,64 +383,140 @@ class DeliveryDetails extends Component {
     return DeliveryDetails.SAMPLE_INVOICE_URL;
   };
 
-  openUrl = async (url) => {
+  // ----- Invoice download / view / share -----
+  // Lazily required so a missing native module doesn't crash the screen.
+  _ensureBlobUtil = () => {
+    if (!this._BlobUtil) {
+      try { this._BlobUtil = require('react-native-blob-util').default || require('react-native-blob-util'); }
+      catch (e) { this._BlobUtil = null; }
+    }
+    return this._BlobUtil;
+  };
+
+  _ensureRNShare = () => {
+    if (!this._RNShare) {
+      try { this._RNShare = require('react-native-share').default || require('react-native-share'); }
+      catch (e) { this._RNShare = null; }
+    }
+    return this._RNShare;
+  };
+
+  _invoiceFilename = () => {
+    const oid = this.state.details?.order_id || this.state.details?.invoice_no || this.state.details?.id || 'invoice';
+    return `Invoice-${String(oid).replace(/[^\w-]/g, '_')}.pdf`;
+  };
+
+  // Show a non-blocking progress UI without rebuilding lots of state plumbing.
+  _setInvoiceProgress = (p) => this.setState({ invoiceProgress: p });
+
+  // Download to app cache. Returns local file path (sans file:// prefix) on success.
+  downloadInvoiceFile = async ({ silent = false } = {}) => {
+    const url = this.getInvoiceUrl();
+    const BlobUtil = this._ensureBlobUtil();
+    if (!BlobUtil) {
+      Toast.show('Download module not available', Toast.SHORT);
+      return null;
+    }
+    const filename = this._invoiceFilename();
+    const dir = BlobUtil.fs.dirs.CacheDir;
+    const path = `${dir}/${filename}`;
+
+    if (!silent) this.setState({ invoiceDownloading: true, invoiceProgress: 0 });
+
     try {
-      const can = await Linking.canOpenURL(url);
-      if (can) {
-        await Linking.openURL(url);
-      } else {
-        await Linking.openURL(url); // try anyway — some Android devices return false but still open
-      }
+      const res = await BlobUtil
+        .config({ fileCache: true, path, appendExt: 'pdf' })
+        .fetch('GET', url, { Accept: 'application/pdf' })
+        .progress({ interval: 100 }, (received, total) => {
+          const t = Number(total) || 0;
+          const r = Number(received) || 0;
+          const pct = t > 0 ? Math.min(1, r / t) : 0;
+          this._setInvoiceProgress(pct);
+        });
+      const localPath = res.path();
+      if (!silent) this.setState({ invoiceDownloading: false, invoiceProgress: 1 });
+      return localPath;
     } catch (e) {
-      Toast.show('Could not open the invoice', Toast.SHORT);
+      console.log('Invoice download error', e);
+      if (!silent) this.setState({ invoiceDownloading: false, invoiceProgress: 0 });
+      Toast.show('Download failed. Please try again.', Toast.SHORT);
+      return null;
     }
   };
 
-  viewInvoice = () => {
-    this.openUrl(this.getInvoiceUrl());
+  openLocalPdf = async (localPath) => {
+    if (!localPath) return;
+    const BlobUtil = this._ensureBlobUtil();
+    // Strip any "file://" prefix — both native openers expect a raw FS path.
+    const rawPath = localPath.replace(/^file:\/\//, '');
+    try {
+      if (Platform.OS === 'ios') {
+        // openDocument needs the absolute file-system path; previewController
+        // attaches a few frames late so the UI doesn't race the file write.
+        await new Promise((res) => setTimeout(res, 80));
+        await BlobUtil.ios.openDocument(rawPath);
+      } else {
+        await BlobUtil.android.actionViewIntent(rawPath, 'application/pdf');
+      }
+    } catch (e) {
+      console.log('Open PDF error', e);
+      // Last-ditch fallback — let the OS resolve the file URI.
+      try {
+        await Linking.openURL(`file://${rawPath}`);
+      } catch (e2) {
+        Toast.show('Could not open the invoice', Toast.SHORT);
+      }
+    }
   };
 
-  downloadInvoice = () => {
-    // Mobile browsers handle PDF download via the open URL flow.
-    // Showing a hint so the user understands what's happening.
-    Toast.show('Opening invoice for download…', Toast.SHORT);
-    this.openUrl(this.getInvoiceUrl());
+  viewInvoice = async () => {
+    const path = await this.downloadInvoiceFile();
+    if (path) {
+      Toast.show('Invoice ready', Toast.SHORT);
+      this.openLocalPdf(path);
+    }
+  };
+
+  downloadInvoice = async () => {
+    const path = await this.downloadInvoiceFile();
+    if (path) {
+      Toast.show('Invoice downloaded — opening…', Toast.SHORT);
+      this.openLocalPdf(path);
+    }
   };
 
   shareInvoice = async () => {
-    const url = this.getInvoiceUrl();
-    const orderIdRaw =
-      this.state.details?.order_id ||
-      this.state.details?.invoice_no ||
-      this.state.details?.id ||
-      '';
-    const orderId = String(orderIdRaw).replace(/^#?/, '');
-    const message = orderId
-      ? `Invoice for order #${orderId}\n${url}`
-      : `Invoice: ${url}`;
+    // Download to a local file first, then hand the actual PDF (not a URL) to the share sheet.
+    const path = await this.downloadInvoiceFile();
+    if (!path) return;
+    const Share = this._ensureRNShare();
+    const oid = this.state.details?.order_id || '';
+    const fileUri = Platform.OS === 'android' && !path.startsWith('file://') ? `file://${path}` : path;
     try {
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { url, message, title: 'Invoice' }
-          : { message, title: 'Invoice' }
-      );
+      if (Share && typeof Share.open === 'function') {
+        await Share.open({
+          url: fileUri,
+          type: 'application/pdf',
+          filename: this._invoiceFilename().replace(/\.pdf$/i, ''),
+          title: oid ? `Invoice #${oid}` : 'Invoice',
+          subject: oid ? `Invoice #${oid}` : 'Invoice',
+          failOnCancel: false,
+        });
+      } else {
+        // Fallback to RN's Share API. On iOS this still attaches the file via `url`.
+        // eslint-disable-next-line global-require
+        const RNShare = require('react-native').Share;
+        await RNShare.share({ url: fileUri, title: oid ? `Invoice #${oid}` : 'Invoice' });
+      }
     } catch (e) {
+      console.log('Share invoice error', e);
       Toast.show('Could not share the invoice', Toast.SHORT);
     }
   };
 
-  // Color palette synced with LiveOrdersGrid — every order status has a distinct color.
+  // Canonical color palette — same colors across the whole app (see utils/statusColors.js)
   getStatusColors = (statusRaw) => {
-    const s = String(statusRaw || '').toLowerCase();
-    if (s === 'pending') return { bg: '#EA580C', text: '#FFF' };
-    if (s === 'pickup' || s === 'pickedup' || s === 'picked_up') return { bg: '#0891B2', text: '#FFF' };
-    if (s === 'delivered' || s === 'deliver') return { bg: '#16A34A', text: '#FFF' };
-    if (s === 'intransit' || s === 'in_transit') return { bg: '#2563EB', text: '#FFF' };
-    if (s === 'reschedule') return { bg: '#9333EA', text: '#FFF' };
-    if (s === 'disputed') return { bg: '#CA8A04', text: '#FFF' };
-    if (s === 'cancelled' || s === 'canceled') return { bg: '#F87171', text: '#FFF' };
-    if (s === 'rto') return { bg: '#DC2626', text: '#FFF' };
-    return { bg: '#475569', text: '#FFF' };
+    return { bg: STATUS_COLORS.getStatus(statusRaw).bg, text: '#FFF' };
   };
 
   openSurvey = () => {
@@ -624,21 +715,7 @@ class DeliveryDetails extends Component {
           }}
         />
 
-        <View style={[styles.headerWrap, { backgroundColor: headerColor }]}>
-          <SafeAreaView edges={['top']} style={[styles.headerSafe, { backgroundColor: headerColor }]}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
-
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Delivery Details
-              </Text>
-
-              <View style={{ width: 42, height: 42 }} />
-            </View>
-          </SafeAreaView>
-        </View>
+        <ScreenHeader bg={headerColor} title="Delivery Jaankari" onBack={this.goBack} />
 
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />}>
           {isLoading ? (
@@ -653,68 +730,13 @@ class DeliveryDetails extends Component {
 
           {details ? (
             <Animated.View style={{ opacity: this.fadeAnim, transform: [{ translateY: this.slideAnim }] }}>
-              {/* Hero Card — Order + Farmer + Payment */}
-              <View style={styles.ddCard}>
-                {/* Order header */}
-                <View style={styles.ddHero}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.ddOid}>#{orderIdText}</Text>
-                    <Text style={styles.ddDate}>{orderDate || '-'}</Text>
-                  </View>
-                  {(() => {
-                    const sc = this.getStatusColors(details?.order_status);
-                    return <View style={[styles.ddChip, { backgroundColor: sc.bg }]}><Text style={styles.ddChipT}>{details?.order_status?.toUpperCase()}</Text></View>;
-                  })()}
-                </View>
-
-                {/* Farmer */}
-                <View style={styles.ddPerson}>
-                  <Image source={require('./assets/farmer.png')} style={styles.ddAvt} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.ddName}>{farmerName || '-'}</Text>
-                    <Text style={styles.ddPhone}>{this.mask(details?.farmer_data?.phone)}</Text>
-                  </View>
-                  <TouchableOpacity onPress={this.onCall} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
-                    <Image source={require('./assets/call.png')} style={styles.ddIco} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={this.onWhatsApp} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 10 }}>
-                    <Image source={require('./assets/whatsapp.png')} style={styles.ddIco} />
-                  </TouchableOpacity>
-                </View>
-
-              </View>
-
-              {/* Route: Pickup → Drop */}
-              <View style={styles.ddCard}>
-                <View style={styles.ddRoute}>
-                  <View style={styles.ddRouteRow}>
-                    <View style={styles.ddTl}><View style={[styles.ddDot, { backgroundColor: '#0DA60D' }]} /><View style={styles.ddLine} /></View>
-                    <View style={styles.ddRouteBody}>
-                      <Text style={[styles.ddRouteLbl, { color: '#0DA60D' }]}>Pickup</Text>
-                      <Text style={styles.ddRouteTitle}>{darkStore?.name || '-'}</Text>
-                      {darkStore?.mobile ? <Text style={styles.ddRoutePhone}>{darkStore.mobile}</Text> : null}
-                      <Text style={styles.ddRouteAddr}>{darkStore?.location || `${darkStore?.city || ''}${darkStore?.pincode ? `, ${darkStore.pincode}` : ''}`}</Text>
-                    </View>
-                    {darkStore?.mobile ? (
-                      <TouchableOpacity onPress={() => { const p = darkStore.mobile; if(p) Linking.openURL(`tel:${p}`).catch(()=>{}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginTop: 4 }}>
-                        <Image source={require('./assets/call.png')} style={styles.ddIcoOrange} />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                  <View style={styles.ddRouteRow}>
-                    <View style={styles.ddTl}><View style={[styles.ddDot, { backgroundColor: '#EF4444' }]} /></View>
-                    <View style={[styles.ddRouteBody, { paddingBottom: 0 }]}>
-                      <Text style={[styles.ddRouteLbl, { color: '#EF4444' }]}>Drop</Text>
-                      <Text style={styles.ddRouteAddr}>
-                        {farmerFullAddress?.address || farmerAddress}
-                        {farmerFullAddress?.block ? `, ${farmerFullAddress.block}` : ''}
-                        {farmerFullAddress?.city ? `, ${farmerFullAddress.city}` : ''}
-                        {farmerFullAddress?.state ? `, ${farmerFullAddress.state}` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
+              {/* Hero — same OrderCard used in Dashboard, TrackOrders, PenaltyOrders */}
+              <OrderCard
+                order={details}
+                onCall={this.onCall ? () => this.onCall() : undefined}
+                onWhatsApp={this.onWhatsApp ? () => this.onWhatsApp() : undefined}
+                onCallStore={(p) => p && Linking.openURL(`tel:${p}`).catch(() => {})}
+              />
 
               {/* Items */}
               <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>₹ {total}</Text></Text>
@@ -728,7 +750,7 @@ class DeliveryDetails extends Component {
                       {/* Product image in a soft tinted container */}
                       <View style={styles.ddItemImgWrap}>
                         {it?.image ? (
-                          <Image source={{ uri: it.image }} style={styles.ddProductImg} />
+                          <CachedImage source={{ uri: it.image }} style={styles.ddProductImg} />
                         ) : (
                           <Image source={require('./assets/box.png')} style={styles.ddProductFallback} />
                         )}
@@ -760,7 +782,7 @@ class DeliveryDetails extends Component {
                   ))}
                 </View>
               ) : (
-                <View style={styles.ddCard}><Text style={styles.emptyItemsText}>No items</Text></View>
+                <View style={styles.ddCard}><Text style={styles.emptyItemsText}>Koi item nahi</Text></View>
               )}
 
               {/* ✅ Payment & Settlement summary — every numeric/status field from the API with icons */}
@@ -778,26 +800,11 @@ class DeliveryDetails extends Component {
                   return { bg: '#FFEDD5', fg: '#C2410C' };
                 })();
 
-                // Colored box: tinted background + matching border + colored icon disc + label/value
-                const colorPair = (c) => {
-                  const map = {
-                    '#6366F1': { bg: '#EEF2FF', border: '#C7D2FE' },
-                    '#2563EB': { bg: '#DBEAFE', border: '#BFDBFE' },
-                    '#16A34A': { bg: '#DCFCE7', border: '#BBF7D0' },
-                    '#F37A20': { bg: '#FFF7ED', border: '#FED7AA' },
-                    '#9333EA': { bg: '#F3E8FF', border: '#E9D5FF' },
-                    '#DC2626': { bg: '#FEE2E2', border: '#FECACA' },
-                    '#0891B2': { bg: '#ECFEFF', border: '#A5F3FC' },
-                    '#B45309': { bg: '#FEF3C7', border: '#FDE68A' },
-                    '#C2410C': { bg: '#FFEDD5', border: '#FED7AA' },
-                  };
-                  return map[c] || { bg: '#F8FAFC', border: '#E2E8F0' };
-                };
-
-                const Box = ({ icon, iconChar, color, lbl, valueText, valueColor, chipFg, chipText, full }) => {
-                  const pair = colorPair(color);
+                // Unified neutral surface across all stat boxes — color comes from
+                // the icon disc only so the grid reads as one cohesive block.
+                const Box = ({ icon, iconChar, color, lbl, valueText, valueColor, chipFg, chipText, full, valSmall }) => {
                   return (
-                    <View style={[styles.sumBox, { backgroundColor: pair.bg, borderColor: pair.border }, full && styles.sumBoxFull]}>
+                    <View style={[styles.sumBox, full && styles.sumBoxFull]}>
                       <View style={[styles.sumBoxIcon, { backgroundColor: color }]}>
                         {icon ? (
                           <Image source={icon} style={styles.sumBoxIconImg} />
@@ -811,7 +818,10 @@ class DeliveryDetails extends Component {
                           <Text style={[styles.sumBoxChipT, { color: chipFg }]} numberOfLines={1}>{chipText}</Text>
                         ) : (
                           <Text
-                            style={[styles.sumBoxVal, valueColor && { color: valueColor }]}
+                            style={[
+                              valSmall ? styles.sumBoxValSm : styles.sumBoxVal,
+                              valueColor && { color: valueColor },
+                            ]}
                             numberOfLines={2}
                             ellipsizeMode="tail"
                           >
@@ -829,7 +839,7 @@ class DeliveryDetails extends Component {
                       <View style={[styles.summaryHdrIconWrap, { backgroundColor: '#5D3FD3' }]}>
                         <Image source={require('./assets/wlt.png')} style={[styles.summaryHdrIcon, { tintColor: '#FFF' }]} />
                       </View>
-                      <Text style={styles.summaryTitle}>Payment & Settlement</Text>
+                      <Text style={styles.summaryTitle}>Payment & Settlement</Text>{/* English — universally understood */}
                     </View>
 
                     {/* Critical alerts */}
@@ -860,8 +870,11 @@ class DeliveryDetails extends Component {
 
                     {/* Strict 2x2 grid — everything half-width, alerts above stay full-width */}
                     <View style={styles.sumGrid}>
+                      {details?.order_date ? (
+                        <Box iconChar="🗓️" color="#0891B2" lbl="Order Date" valueText={details.order_date} valSmall />
+                      ) : null}
                       {details?.delivery_date ? (
-                        <Box icon={require('./assets/cal.png')} color="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} />
+                        <Box iconChar="📅" color="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} valSmall />
                       ) : null}
                       <Box icon={require('./assets/box.png')} color="#6366F1" lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
                       <Box icon={require('./assets/wlt.png')} color="#2563EB" lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
@@ -898,24 +911,27 @@ class DeliveryDetails extends Component {
                       {/* Conditional settlement audit fields from API */}
                       {details?.settlement_submitted ? (
                         <Box
-                          icon={require('./assets/cal.png')}
+                          icon={require('./assets/flow.png')}
                           color="#0891B2"
-                          lbl="Settlement Submitted"
+                          lbl="Settled On"
                           valueText={String(details.settlement_submitted)}
+                          valSmall
                         />
                       ) : null}
 
                       {details?.settlement_approve_reject ? (
                         <Box
-                          iconChar="✓"
+                          icon={require('./assets/flow.png')}
                           color="#0891B2"
-                          lbl="Approval Status"
+                          lbl="Updated On"
                           valueText={String(details.settlement_approve_reject)}
+                          valSmall
                         />
                       ) : null}
+
                     </View>
 
-                    {/* Delivery Partner */}
+                    {/* Delivery Partner — the LMD themselves; read-only, no call button */}
                     {details?.user?.name || details?.user?.mobile ? (
                       <View style={styles.partnerCard}>
                         <View style={styles.partnerAvatar}>
@@ -924,12 +940,68 @@ class DeliveryDetails extends Component {
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.partnerLbl}>Delivery Partner</Text>
+                          <Text style={styles.partnerLbl}>Delivery Partner (Aap)</Text>
                           <Text style={styles.partnerName}>{details?.user?.name || '-'}</Text>
                           {details?.user?.mobile ? (
                             <Text style={styles.partnerPhone}>{details.user.mobile}</Text>
                           ) : null}
                         </View>
+                      </View>
+                    ) : null}
+
+                    {/* Partner Contacts (PP / BSO / DSO from API) */}
+                    {Array.isArray(details?.partner_contacts) && details.partner_contacts.length > 0 ? (
+                      <View style={styles.contactsBlock}>
+                        <Text style={styles.contactsTitle}>Madad ke Liye Sampark</Text>
+                        {details.partner_contacts.map((c, i) => {
+                          const roleMap = {
+                            PP:  { color: '#0891B2' },
+                            BSO: { color: '#7C3AED' },
+                            DSO: { color: '#16A34A' },
+                          };
+                          const meta = roleMap[String(c?.role || '').toUpperCase()] || { color: '#475569' };
+                          // Show ONLY the API-provided `role_description`. No static
+                          // fallback — if the backend doesn't send it yet, the subline
+                          // is omitted entirely.
+                          const subline = (c?.role_description && String(c.role_description).trim()) || '';
+                          return (
+                            <View key={`${c?.role || ''}-${i}`} style={[styles.contactRow, i > 0 && styles.contactRowDivider]}>
+                              <View style={[styles.contactRoleChip, { backgroundColor: meta.color }]}>
+                                <Text style={styles.contactRoleChipT}>{String(c?.role || '').toUpperCase()}</Text>
+                              </View>
+                              <View style={{ flex: 1, paddingHorizontal: 10 }}>
+                                <Text style={styles.contactName} numberOfLines={1}>{c?.name || '-'}</Text>
+                                {!!subline && (
+                                  <Text style={styles.contactRole} numberOfLines={2}>{subline}</Text>
+                                )}
+                              </View>
+                              {c?.mobile ? (
+                                <>
+                                  <TouchableOpacity
+                                    onPress={() => Linking.openURL(`tel:${String(c.mobile).replace(/\s+/g, '')}`).catch(() => {})}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                  >
+                                    <Image source={require('./assets/call.png')} style={{ width: 28, height: 28, resizeMode: 'contain', tintColor: '#EA580C' }} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      const digits = String(c.mobile).replace(/[^\d]/g, '');
+                                      Linking.openURL(`whatsapp://send?phone=${digits}`).catch(() =>
+                                        Linking.openURL(`https://wa.me/${digits}`).catch(() => {}),
+                                      );
+                                    }}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                                    style={{ marginLeft: 16 }}
+                                  >
+                                    <Image source={require('./assets/whatsapp.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                                  </TouchableOpacity>
+                                </>
+                              ) : null}
+                            </View>
+                          );
+                        })}
                       </View>
                     ) : null}
                   </View>
@@ -944,16 +1016,33 @@ class DeliveryDetails extends Component {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.invoiceHeaderTitle}>Invoice</Text>
-                    <Text style={styles.invoiceHeaderSub}>View, download or share the bill</Text>
+                    <Text style={styles.invoiceHeaderSub}>
+                      {this.state.invoiceDownloading
+                        ? `Downloading… ${Math.round((this.state.invoiceProgress || 0) * 100)}%`
+                        : 'View, download or share the bill'}
+                    </Text>
                   </View>
                 </View>
+
+                {/* Inline progress bar — only visible while downloading */}
+                {this.state.invoiceDownloading ? (
+                  <View style={styles.invoiceProgressTrack}>
+                    <View
+                      style={[
+                        styles.invoiceProgressFill,
+                        { width: `${Math.max(4, Math.round((this.state.invoiceProgress || 0) * 100))}%` },
+                      ]}
+                    />
+                  </View>
+                ) : null}
 
                 <View style={styles.invoiceActions}>
                   {/* View — indigo */}
                   <TouchableOpacity
-                    style={[styles.invoicePill, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+                    style={[styles.invoicePill, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }, this.state.invoiceDownloading && { opacity: 0.55 }]}
                     onPress={this.viewInvoice}
                     activeOpacity={0.8}
+                    disabled={this.state.invoiceDownloading}
                   >
                     <View style={[styles.invoicePillIconWrap, { backgroundColor: '#4F46E5' }]}>
                       <Text style={styles.invoicePillIconChar}>▶</Text>
@@ -963,21 +1052,29 @@ class DeliveryDetails extends Component {
 
                   {/* Download — cyan */}
                   <TouchableOpacity
-                    style={[styles.invoicePill, { backgroundColor: '#ECFEFF', borderColor: '#A5F3FC' }]}
+                    style={[styles.invoicePill, { backgroundColor: '#ECFEFF', borderColor: '#A5F3FC' }, this.state.invoiceDownloading && { opacity: 0.55 }]}
                     onPress={this.downloadInvoice}
                     activeOpacity={0.8}
+                    disabled={this.state.invoiceDownloading}
                   >
                     <View style={[styles.invoicePillIconWrap, { backgroundColor: '#0891B2' }]}>
-                      <Text style={styles.invoicePillIconChar}>↓</Text>
+                      {this.state.invoiceDownloading ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <Text style={styles.invoicePillIconChar}>↓</Text>
+                      )}
                     </View>
-                    <Text style={[styles.invoicePillText, { color: '#0E7490' }]}>Download</Text>
+                    <Text style={[styles.invoicePillText, { color: '#0E7490' }]}>
+                      {this.state.invoiceDownloading ? `${Math.round((this.state.invoiceProgress || 0) * 100)}%` : 'Download'}
+                    </Text>
                   </TouchableOpacity>
 
                   {/* Share — emerald */}
                   <TouchableOpacity
-                    style={[styles.invoicePill, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
+                    style={[styles.invoicePill, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }, this.state.invoiceDownloading && { opacity: 0.55 }]}
                     onPress={this.shareInvoice}
                     activeOpacity={0.8}
+                    disabled={this.state.invoiceDownloading}
                   >
                     <View style={[styles.invoicePillIconWrap, { backgroundColor: '#059669' }]}>
                       <Text style={styles.invoicePillIconChar}>↗</Text>
@@ -1071,104 +1168,103 @@ class DeliveryDetails extends Component {
           const isDelivered = s === 'delivered' || s === 'deliver';
           const isCancelled = s === 'cancelled' || s === 'canceled';
           const isRto = s === 'rto';
-          const onDark = isDelivered || isCancelled || isRto;
-          const panelBg = isDelivered ? '#16A34A' : isRto ? '#DC2626' : isCancelled ? '#F87171' : '#FFF';
+          const isRejected = s === 'rejected' || s === 'reject';
+          // Bottom panel stays neutral white for every status — the status is
+          // already conveyed by the inline status badge inside the panel and
+          // by the order card above. A solid colored panel reads too heavy.
+          const onDark = false;
+          const panelBg = '#FFF';
           return (
             <SafeAreaView
               edges={['bottom']}
               style={[styles.bottomPanel, { backgroundColor: panelBg }]}
             >
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, onDark && { color: '#FFF' }]}>Grand Total</Text>
+                <Text style={[styles.totalLabel, onDark && { color: '#FFF' }]}>Kul Amount</Text>
                 <Text style={[styles.codValue, onDark && { color: '#FFF' }]}>{`₹ ${this.toNum(details?.grand_total)}`}</Text>
               </View>
-              <Text style={[styles.totalWords, onDark && { color: 'rgba(255,255,255,0.85)' }]}>{this.amountInWords(details?.grand_total)}</Text>
-
-              {isDelivered ? (
-                <View style={{ height: 44, borderRadius: 10, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                    <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
-                  </View>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
-                </View>
-              ) : null}
-
-          {(details?.order_status == 'pending' || details?.order_status == 'reschedule') &&
-          details?.order_status != 'cancelled' &&
-          details?.order_status != 'delivered' ? (
-            <>
-              <View style={styles.actionRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { marginRight: 3, backgroundColor: '#DC2626' }]}
-                  onPress={() => this.setState({ popup_type: 'reject', selectedRejectReason: '' }, () => this.onPickUp())}
-                  activeOpacity={0.85}
-                >
-                  <Image source={require('./assets/cross.png')} style={styles.actionBtnIco} />
-                  <Text style={styles.actionBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                {details?.order_status == 'pending' ? (
-                  <TouchableOpacity
-                    onPress={() => this.props.navigation.navigate('RescheduleDelivery', { order: details })}
-                    style={[styles.actionBtn, { marginLeft: 3, backgroundColor: '#5D3FD3' }]}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.actionBtnChar}>↻</Text>
-                    <Text style={styles.actionBtnText}>Re-schedule</Text>
-                  </TouchableOpacity>
-                ) : null}
+              <View style={styles.totalWordsRow}>
+                <Text style={[styles.totalWords, onDark && { color: 'rgba(255,255,255,0.85)' }, { flex: 1 }]}>
+                  {this.amountInWords(details?.grand_total)}
+                </Text>
+                {(() => {
+                  // Always show a status pill next to the Grand Total — same chip
+                  // shape as the OrderCard so the order's current state is visible
+                  // at the bottom regardless of which CTA is rendered below.
+                  if (!details?.order_status) return null;
+                  const so = STATUS_COLORS.getStatus(details.order_status);
+                  const glyphMap = {
+                    DELIVERED: '✓',
+                    CANCELLED: '✕',
+                    REJECTED:  '✕',
+                    RTO:       '↩',
+                    PENDING:   '•',
+                    RESCHEDULE: '↻',
+                    PICKUP:    '◔',
+                    DISPUTED:  '⚑',
+                  };
+                  const glyph = glyphMap[so.key] || '';
+                  return (
+                    <View style={[styles.statusPill, { backgroundColor: so.bg, marginLeft: 8, marginTop: 2 }]}>
+                      {!!glyph && <Text style={styles.statusPillIco}>{glyph}</Text>}
+                      <Text style={styles.statusPillT}>{so.label}</Text>
+                    </View>
+                  );
+                })()}
               </View>
 
-              <TouchableOpacity
-                style={styles.pickupBtn}
-                onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'pickup', order: details })}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.pickupBtnText}>Pickup Order</Text>
-                <Animated.View style={{ marginLeft: 10, transform: [{ translateX: this.pickupPulse.interpolate({ inputRange: [1, 1.03], outputRange: [0, 6] }) }] }}>
-                  <Image source={require('./assets/arrow.png')} style={styles.pickupArrow} />
-                </Animated.View>
-              </TouchableOpacity>
-            </>
-          ) : null}
-
-          {details?.order_status == 'pickup' ? (
-            <>
-              <View style={styles.actionRow}>
+              {(details?.order_status === 'pending' || details?.order_status === 'reschedule') && (
                 <TouchableOpacity
-                  style={[styles.actionBtn, { marginRight: 3, backgroundColor: '#DC2626' }]}
-                  onPress={() => this.setState({ popup_type: 'cancel', selectedCancelReason: '' }, () => this.onPickUp())}
+                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.PICKUP.bg }]}
+                  onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'pickup', order: details })}
                   activeOpacity={0.85}
                 >
-                  <Image source={require('./assets/cross.png')} style={styles.actionBtnIco} />
-                  <Text style={styles.actionBtnText}>Cancel</Text>
+                  <Text style={styles.neutralPrimaryBtnT}>Order Pickup Karein</Text>
+                  <Animated.View style={{ marginLeft: 10, transform: [{ translateX: this.pickupPulse.interpolate({ inputRange: [1, 1.03], outputRange: [0, 6] }) }] }}>
+                    <Image source={require('./assets/arrow.png')} style={styles.neutralPrimaryBtnIco} />
+                  </Animated.View>
                 </TouchableOpacity>
+              )}
 
+              {details?.order_status === 'pickup' && (
                 <TouchableOpacity
                   onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'deliver', order: details })}
-                  style={[styles.actionBtn, { marginLeft: 3, backgroundColor: '#16A34A' }]}
+                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.DELIVERED.bg }]}
                   activeOpacity={0.85}
                 >
-                  <Image source={require('./assets/check.png')} style={styles.actionBtnIco} />
-                  <Text style={styles.actionBtnText}>Deliver Order</Text>
+                  <Image source={require('./assets/check.png')} style={[styles.neutralPrimaryBtnIco, { width: 16, height: 16, marginRight: 8 }]} />
+                  <Text style={styles.neutralPrimaryBtnT}>Order Deliver Karein</Text>
+                  <Animated.Image
+                    source={require('./assets/arrow.png')}
+                    style={[
+                      styles.neutralPrimaryBtnArrow,
+                      { transform: [{ translateX: this.pickupPulse.interpolate({ inputRange: [1, 1.03], outputRange: [0, 6] }) }] },
+                    ]}
+                  />
                 </TouchableOpacity>
-              </View>
-            </>
-          ) : null}
+              )}
 
-              {(isCancelled || isRto) ? (() => {
-                const badgeC = isRto ? '#DC2626' : '#F87171';
-                return (
-                  <View style={{ height: 44, borderRadius: 10, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: badgeC, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                      <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✕'}</Text>
-                    </View>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: badgeC }}>
-                      {isRto ? 'Returned' : 'Cancelled'}
-                    </Text>
-                  </View>
-                );
-              })() : null}
+              {isRto && (
+                <TouchableOpacity
+                  onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'rto', order: details })}
+                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.RTO.bg }]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.neutralPrimaryBtnT, { marginRight: 8 }]}>↩</Text>
+                  <Text style={styles.neutralPrimaryBtnT}>Saaman Wapsi Confirm Karein</Text>
+                </TouchableOpacity>
+              )}
+
+              {s !== 'disputed' && (
+                <TouchableOpacity
+                  style={styles.moreOptsBtn}
+                  onPress={() => this.setState({ show_more_options: true })}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.moreOptsDots}>⋯</Text>
+                  <Text style={styles.moreOptsT}>Aur Options</Text>
+                </TouchableOpacity>
+              )}
             </SafeAreaView>
           );
         })()}
@@ -1234,13 +1330,11 @@ class DeliveryDetails extends Component {
               <View style={styles.bsHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.bsTitle, { color: this.state.popup_type == 'reject' || this.state.popup_type == 'cancel' ? '#DC2626' : '#5D3FD3' }]}>
-                    {this.state.popup_type == 'pickup' ? 'Pickup' : 'Cancel'} Confirmation
+                    {this.state.popup_type == 'pickup' ? 'Pickup' : 'Reject Delivery'} Confirmation
                   </Text>
                   <Text style={styles.bsSub}>
-                    {this.state.popup_type == 'cancel'
-                      ? 'Select a cancel reason to proceed'
-                      : this.state.popup_type == 'reject'
-                      ? 'Select a cancel reason to proceed'
+                    {this.state.popup_type == 'cancel' || this.state.popup_type == 'reject'
+                      ? 'Select a reason to proceed'
                       : 'Confirm order pickup?'}
                   </Text>
                 </View>
@@ -1287,7 +1381,7 @@ class DeliveryDetails extends Component {
                   activeOpacity={0.85}
                 >
                   {!this.state.isLoading ? (
-                    <Text style={styles.bsConfirmT}>{this.state.popup_type == 'pickup' ? 'Confirm Pickup' : 'Cancel Order'}</Text>
+                    <Text style={styles.bsConfirmT}>{this.state.popup_type == 'pickup' ? 'Confirm Pickup' : 'Reject Delivery'}</Text>
                   ) : (
                     <ActivityIndicator size="small" color="#FFF" />
                   )}
@@ -1296,6 +1390,108 @@ class DeliveryDetails extends Component {
             </View>
           </BottomSheet>
         ) : null}
+
+        {/* More Options sheet — Cancel / Re-schedule / Mark Dispute */}
+        {this.state.show_more_options ? (() => {
+          const d = details || {};
+          const st = String(d?.order_status || '').toLowerCase();
+          const isPending = st === 'pending';
+          const isReschedule = st === 'reschedule';
+          const isPickedUp = st === 'pickup';
+          const closeAnd = (fn) => {
+            this.moreSheetRef?.close();
+            // give the close animation a beat before triggering navigation/popup
+            setTimeout(() => fn?.(), 220);
+          };
+          return (
+            <BottomSheet
+              ref={r => (this.moreSheetRef = r)}
+              visible={true}
+              onSheetClose={() => this.setState({ show_more_options: false })}
+              enablePanDownToClose={true}
+              onChange={(status) => (status == -1 ? this.setState({ show_more_options: false }) : '')}
+            >
+              <View style={styles.moreSheetWrap}>
+                <View style={styles.moreSheetHeadRow}>
+                  <View style={styles.moreSheetHeadIco}>
+                    <Text style={styles.moreSheetHeadIcoT}>⋯</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.moreSheetTitle}>Aur Options</Text>
+                    <Text style={styles.moreSheetSub}>Is order ke liye action chunein</Text>
+                  </View>
+                </View>
+
+                <View style={styles.moreSheetActions}>
+                  {(isPending || isReschedule) ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      style={[styles.moreSheetTile, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
+                      onPress={() => closeAnd(() =>
+                        this.props.navigation.navigate('RejectDelivery', { order: d })
+                      )}
+                    >
+                      <View style={[styles.moreSheetIcoWrap, { backgroundColor: '#FEE2E2' }]}>
+                        <Text style={[styles.moreSheetIco, { color: '#DC2626' }]}>✕</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.moreSheetRowT, { color: '#B91C1C' }]}>Delivery Reject Karein</Text>
+                        <Text style={styles.moreSheetRowS}>Reason ke saath delivery cancel karein</Text>
+                      </View>
+                      <Text style={[styles.moreSheetChev, { color: '#B91C1C' }]}>›</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {isPending ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      style={[styles.moreSheetTile, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
+                      onPress={() => closeAnd(() =>
+                        this.props.navigation.navigate('RescheduleDelivery', { order: d })
+                      )}
+                    >
+                      <View style={[styles.moreSheetIcoWrap, { backgroundColor: '#EDE9FE' }]}>
+                        <Text style={[styles.moreSheetIco, { color: '#5D3FD3' }]}>↻</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.moreSheetRowT, { color: '#5D3FD3' }]}>Re-schedule Karein</Text>
+                        <Text style={styles.moreSheetRowS}>Delivery ka din badlein</Text>
+                      </View>
+                      <Text style={[styles.moreSheetChev, { color: '#5D3FD3' }]}>›</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {st !== 'disputed' ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      style={[styles.moreSheetTile, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}
+                      onPress={() => closeAnd(() =>
+                        this.props.navigation.navigate('MarkDispute', { order: d, reasons: this.state.disputeReasons })
+                      )}
+                    >
+                      <View style={[styles.moreSheetIcoWrap, { backgroundColor: '#FEF3C7' }]}>
+                        <Text style={[styles.moreSheetIco, { color: '#B45309' }]}>⚑</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.moreSheetRowT, { color: '#B45309' }]}>Dispute Lagayein</Text>
+                        <Text style={styles.moreSheetRowS}>Is order par shikayat darj karein</Text>
+                      </View>
+                      <Text style={[styles.moreSheetChev, { color: '#B45309' }]}>›</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.moreSheetCancel}
+                  onPress={() => this.moreSheetRef?.close()}
+                >
+                  <Text style={styles.moreSheetCancelT}>Band Karein</Text>
+                </TouchableOpacity>
+              </View>
+            </BottomSheet>
+          );
+        })() : null}
       </View>
     );
   }
@@ -1307,8 +1503,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', justifyContent: 'center', alignItems: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '600' },
 
   container: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
@@ -1320,7 +1516,10 @@ const styles = StyleSheet.create({
   // Detail card styles
   ddCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
 
-  ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 10 },
+  // Light-grey header band that wraps the order ID + status pill + farmer row
+  // (matches the order-card pattern used in TrackOrders & LMDDashboard lists).
+  ddTop: { backgroundColor: '#F1F5F9' },
+  ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 6 },
   ddOid: { fontSize: 13, fontWeight: '700', color: '#5D3FD3' },
   ddDate: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 3 },
   ddChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
@@ -1459,18 +1658,119 @@ const styles = StyleSheet.create({
 
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 0, marginTop: 2 },
   totalLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
-  codValue: { fontSize: 17, fontWeight: '800', color: '#F37A20' },
-  totalWords: { fontSize: 11, fontWeight: '500', color: '#64748B', fontStyle: 'italic', marginBottom: 12 },
+  codValue: { fontSize: 19, fontWeight: '800', color: '#F37A20' },
+  totalWords: { fontSize: 11, fontWeight: '500', color: '#64748B', fontStyle: 'italic' },
 
-  pickupBtn: { height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#16A34A', marginTop: 6 },
+  pickupBtn: { height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0891B2', marginTop: 6 },
   pickupBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   pickupArrow: { width: 12, height: 12, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.8)' },
 
   actionRow: { flexDirection: 'row', marginBottom: 0 },
   actionBtn: { flex: 1, height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  actionBtnIco: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FFF', marginRight: 8 },
-  actionBtnChar: { color: '#FFF', fontSize: 18, fontWeight: '900', marginRight: 8, marginTop: -2 },
+  actionBtnIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: '#FFF', marginRight: 8, opacity: 0.95 },
+  actionBtnChar: { color: '#FFF', fontSize: 17, fontWeight: '500', marginRight: 8, includeFontPadding: false, lineHeight: 19 },
+  actionBtnCharCancel: { color: '#FFF', fontSize: 16, fontWeight: '500', marginRight: 8, includeFontPadding: false, lineHeight: 18 },
   actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  // "Mark Dispute" CTA — light, subtle so it doesn't compete with primary actions.
+  disputeBtn: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CA8A04',
+    backgroundColor: '#FEF3C7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disputeBtnOnDark: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  disputeBtnIco: { color: '#92400E', fontSize: 13, fontWeight: '800', marginRight: 6, includeFontPadding: false },
+  disputeBtnT: { color: '#92400E', fontSize: 12.5, fontWeight: '700', letterSpacing: 0.3 },
+
+  // Invoice download progress overlay
+  dlOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  dlCard: { width: '100%', maxWidth: 320, backgroundColor: '#FFF', borderRadius: 16, padding: 22, alignItems: 'center' },
+  dlIcoWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  dlIco: { width: 28, height: 28, resizeMode: 'contain', tintColor: '#5D3FD3' },
+  dlTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  dlSub: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 2, marginBottom: 14 },
+  dlBarWrap: { width: '100%', height: 8, borderRadius: 4, backgroundColor: '#E2E8F0', overflow: 'hidden' },
+  dlBarFill: { height: '100%', backgroundColor: '#5D3FD3', borderRadius: 4 },
+  dlPct: { marginTop: 8, fontSize: 12, fontWeight: '700', color: '#5D3FD3', letterSpacing: 0.4 },
+
+  // Compact terminal-status pill (Delivered / Cancelled / Returned) shown
+  // inline to the right of the amount-in-words row, themed to match the
+  // order's status color.
+  totalWordsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  // Same look as the top OrderCard chip — solid status color, white text — plus a leading tick.
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  statusPillIco: { color: '#FFF', fontSize: 8.5, fontWeight: '900', marginRight: 4, includeFontPadding: false, lineHeight: 10 },
+  statusPillT: { color: '#FFF', fontSize: 9, fontWeight: '700', letterSpacing: 0.3, includeFontPadding: false, lineHeight: 11 },
+
+  // Neutral primary CTA (no status color) used by Pickup / Deliver / RTO buttons.
+  neutralPrimaryBtn: {
+    height: 48,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+  },
+  neutralPrimaryBtnT: { color: '#FFF', fontSize: 14.5, fontWeight: '600', letterSpacing: 0.3 },
+  neutralPrimaryBtnIco: { width: 12, height: 12, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.85)' },
+  neutralPrimaryBtnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF', marginLeft: 10 },
+
+  // Outlined "More Options" button (kept, was already neutral).
+  moreOptsBtn: { height: 44, marginTop: 8, borderRadius: 12, borderWidth: 1.2, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#475569', marginRight: 8, includeFontPadding: false, lineHeight: 22, textAlignVertical: 'center' },
+  moreOptsT: { color: '#334155', fontSize: 13.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },
+
+  // More Options bottom-sheet — tile-based, taller, easier to scan.
+  moreSheetWrap: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20 },
+
+  moreSheetHeadRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  moreSheetHeadIco: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  // letterSpacing on the ⋯ glyph + lineHeight matching the chip height
+  // keeps the dots vertically centered inside the round chip.
+  moreSheetHeadIcoT: { fontSize: 22, fontWeight: '700', color: '#475569', includeFontPadding: false, lineHeight: 38, textAlign: 'center', textAlignVertical: 'center' },
+  moreSheetTitle: { fontSize: 15, fontWeight: '600', color: '#0F172A', letterSpacing: 0.1 },
+  moreSheetSub: { fontSize: 12, fontWeight: '400', color: '#64748B', marginTop: 2 },
+
+  moreSheetActions: { marginBottom: 4 },
+  moreSheetTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  moreSheetIcoWrap: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  moreSheetIco: { fontSize: 16, fontWeight: '700', includeFontPadding: false, lineHeight: 18 },
+  moreSheetRowT: { fontSize: 13.5, fontWeight: '600', letterSpacing: 0.1 },
+  moreSheetRowS: { fontSize: 11.5, fontWeight: '500', color: '#64748B', marginTop: 2 },
+  moreSheetChev: { fontSize: 22, fontWeight: '500', marginLeft: 6, marginTop: -2, includeFontPadding: false, opacity: 0.6 },
+
+  moreSheetCancel: {
+    marginTop: 10,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreSheetCancelT: { fontSize: 13.5, fontWeight: '600', color: '#475569' },
 
   primaryBtn: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#5D3FD3', marginBottom: 12 },
   primaryText: { color: '#fff', fontSize: 13, fontWeight: '800' },
@@ -1510,17 +1810,18 @@ const styles = StyleSheet.create({
   summaryHdrIcon: { width: 14, height: 14, resizeMode: 'contain' },
   summaryTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
 
-  // 2-column grid of colored stat-cards
+  // 2-column grid of unified stat boxes — neutral surface, color only on the icon disc.
   sumGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  // Each box has icon on LEFT and content (label + value) on RIGHT
   sumBox: {
     width: '48.5%',
     borderRadius: 10,
     borderWidth: 1,
+    borderColor: '#E6EBF1',
+    backgroundColor: '#FAFBFC',
     paddingVertical: 9,
     paddingHorizontal: 9,
     flexDirection: 'row',
@@ -1529,31 +1830,31 @@ const styles = StyleSheet.create({
   sumBoxFull: { width: '100%' },
   sumBoxAlignTop: { alignItems: 'flex-start' },
   sumBoxIconTop: { marginTop: 2 },
-  // Compact icon disc on the LEFT
   sumBoxIcon: {
-    width: 26,
-    height: 26,
+    width: 24,
+    height: 24,
     borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 9,
   },
-  sumBoxIconImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
-  sumBoxIconChar: { color: '#FFF', fontSize: 16, fontWeight: '700', lineHeight: 18 },
-  // Content column on the right — label + value stacked, left-aligned
+  sumBoxIconImg: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF' },
+  sumBoxIconChar: { color: '#FFF', fontSize: 13, fontWeight: '700', lineHeight: 16, textAlign: 'center' },
   sumBoxContent: {
     flex: 1,
     alignItems: 'flex-start',
   },
   sumBoxLbl: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '500',
     color: '#64748B',
     marginBottom: 2,
+    letterSpacing: 0.2,
   },
-  sumBoxVal: { fontSize: 11, fontWeight: '600', color: '#0F172A', lineHeight: 15 },
+  sumBoxVal: { fontSize: 12.5, fontWeight: '600', color: '#0F172A', lineHeight: 16 },
+  sumBoxValSm: { fontSize: 10.5, fontWeight: '500', color: '#0F172A', lineHeight: 14 },
   sumBoxValMulti: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
-  sumBoxChipT: { fontSize: 11, fontWeight: '700' },
+  sumBoxChipT: { fontSize: 11.5, fontWeight: '700', letterSpacing: 0.4 },
 
   // Receipt-style list rows
   psRow: {
@@ -1704,6 +2005,25 @@ const styles = StyleSheet.create({
   partnerName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   partnerPhone: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 1 },
 
+  // Support contacts (PP / BSO / DSO from API `partner_contacts`)
+  contactsBlock: {
+    marginTop: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E6EBF1',
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  contactsTitle: { fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.4, marginBottom: 6, textTransform: 'uppercase' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  contactRowDivider: { borderTopWidth: 1, borderTopColor: '#E6EBF1' },
+  contactRoleChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, minWidth: 38, alignItems: 'center' },
+  contactRoleChipT: { color: '#FFF', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  contactName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  contactRole: { fontSize: 10.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
+
   // Invoice card
   invoiceCard: {
     backgroundColor: '#FFF',
@@ -1733,6 +2053,22 @@ const styles = StyleSheet.create({
   invoiceHeaderIconChar: { color: '#FFF', fontSize: 18, fontWeight: '800', lineHeight: 20 },
   invoiceHeaderTitle: { fontSize: 14, fontWeight: '700', color: '#3730A3' },
   invoiceHeaderSub: { fontSize: 10, fontWeight: '500', color: '#4F46E5', marginTop: 1 },
+
+  // Inline download progress (shown inside the Invoice card while downloading)
+  invoiceProgressTrack: {
+    height: 5,
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  invoiceProgressFill: {
+    height: '100%',
+    backgroundColor: '#0891B2',
+    borderRadius: 3,
+  },
 
   // Three horizontal pill buttons with icon + label inline
   invoiceActions: {

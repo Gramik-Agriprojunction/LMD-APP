@@ -65,7 +65,10 @@ class SettlementHistory extends Component {
   // ======================
   fetchHistory = () => {
     this.setState({ loading: true, missingFields: [] }, () => {
-      fetch(constants.settleHistory + '', {
+      const q = String(this.state.search || '').trim();
+      const sep = constants.settleHistory.endsWith('?') || constants.settleHistory.endsWith('&') ? '' : (constants.settleHistory.includes('?') ? '&' : '?');
+      const url = q ? `${constants.settleHistory}${sep}search=${encodeURIComponent(q)}` : constants.settleHistory;
+      fetch(url, {
         method: 'GET',
         headers: {
           Authorization: 'Bearer ' + global.token,
@@ -305,20 +308,24 @@ class SettlementHistory extends Component {
     return s;
   };
 
+  // Tab filter kept client-side; text search now hits the API.
   filterList = () => {
-    const { list, activeTab, search } = this.state;
-    const q = String(search || '').trim().toLowerCase();
-
+    const { list, activeTab } = this.state;
     return (Array.isArray(list) ? list : []).filter((it) => {
       const tab = this.mapTabFromStatus(it?.status);
-      const matchTab = activeTab === 'all' ? true : tab === activeTab;
-
-      if (!q) return matchTab;
-
-      const sid = String(it?.settlement_id || '').toLowerCase();
-      const amt = String(it?.amount || '').toLowerCase();
-      return matchTab && (sid.includes(q) || amt.includes(q));
+      return activeTab === 'all' ? true : tab === activeTab;
     });
+  };
+
+  onSearchChange = (text) => {
+    this.setState({ search: text });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.fetchHistory(), 400);
+  };
+
+  clearSearch = () => {
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this.setState({ search: '' }, () => this.fetchHistory());
   };
 
   // ======================
@@ -435,10 +442,12 @@ class SettlementHistory extends Component {
                 <Image style={styles.searchImg} source={require('./assets/search.png')} />
                 <TextInput
                   value={search}
-                  onChangeText={(t) => this.setState({ search: t })}
+                  onChangeText={this.onSearchChange}
                   placeholder="Search Settlement ID / Amount..."
                   placeholderTextColor="#9CA3AF"
                   style={styles.searchInput}
+                  returnKeyType="search"
+                  onSubmitEditing={this.fetchHistory}
                   returnKeyType="search"
                 />
               </View>
@@ -599,8 +608,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
   bodySafe: { flex: 1, backgroundColor: '#E8ECF4' },

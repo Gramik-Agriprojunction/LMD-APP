@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
 
 ext.NODE_BINARY = rootProject.ext.NODE_BINARY
 ext.REACT_NATIVE_NODE_MODULES_DIR = file("../../node_modules/react-native").absolutePath
@@ -120,4 +121,10 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Push notifications (react-native-push-notification dependencies)
+    implementation platform("com.google.firebase:firebase-bom:33.7.0")
+    implementation "com.google.firebase:firebase-messaging"
+    implementation "com.google.android.gms:play-services-base:18.5.0"
+    implementation "androidx.core:core:1.13.1"
 }

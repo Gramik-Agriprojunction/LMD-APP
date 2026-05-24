@@ -24,6 +24,7 @@ import Toast from 'react-native-simple-toast';
 import ShimmerLoader from '../components/ShimmerLoader';
 import constants from '../utils/constants';
 import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Compat';
+import CachedImage from '../components/CachedImage';
 
 class ActionSheet extends React.Component {
   state = { visible: false };
@@ -777,7 +778,7 @@ goToDashboardAndReset = () => {
           <View style={styles.orderFarmerRow}>
             <View style={styles.orderAvatar}>
               {s.farmer?.image ? (
-                <Image source={{ uri: String(s.farmer.image) }} style={styles.orderAvatarImg} />
+                <CachedImage source={{ uri: String(s.farmer.image) }} style={styles.orderAvatarImg} />
               ) : (
                 <Text style={styles.orderAvatarTxt}>{this.initials(s.farmer?.name)}</Text>
               )}
@@ -804,7 +805,7 @@ goToDashboardAndReset = () => {
               {(s.orderItems || []).map((it, idx) => (
                 <View key={it.key} style={[styles.itemRow, idx === 0 && { borderTopWidth: 0, paddingTop: 0, marginTop: 0 }]}>
                   <View style={styles.itemLeft}>
-                    {it.image ? <Image source={{ uri: String(it.image) }} style={styles.itemImg} resizeMode="cover" /> : <View style={styles.itemImgPlaceholder} />}
+                    {it.image ? <CachedImage source={{ uri: String(it.image) }} style={styles.itemImg} resizeMode="cover" /> : <View style={styles.itemImgPlaceholder} />}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.itemName} numberOfLines={1}>{it.name}</Text>
                       {!!it.variant ? <Text style={styles.itemVariant} numberOfLines={1}>{it.variant}</Text> : null}
@@ -979,8 +980,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: THEME.primary },
   headerSafe: { backgroundColor: THEME.primary },
   headerRowNew: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerBackBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 22, height: 22, tintColor: '#fff' },
+  headerBackBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, tintColor: '#fff', resizeMode: 'contain' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#FFF', fontSize: 15, fontWeight: '600' },
 
   scroll: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 120 },

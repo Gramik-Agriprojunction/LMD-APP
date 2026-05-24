@@ -9,6 +9,7 @@ import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
+import { getFcmToken, refreshFcmToken } from '../utils/pushNotifications';
 
 const BG = '#5D3FD3';
 const ACCENT = '#FF8A3D';
@@ -65,6 +66,7 @@ class Login extends React.Component {
       referral_code: '',
       mobileFocused: false,
       nameFocused: false,
+      resendIn: 0,
     };
 
     // Hero anims
@@ -93,6 +95,14 @@ class Login extends React.Component {
     this.otpFormFade = new Animated.Value(0);
     this.otpFormY = new Animated.Value(30);
     this.otpShieldPulse = new Animated.Value(1);
+    this.otpHaloScale = new Animated.Value(1);
+    this.otpHaloOpacity = new Animated.Value(0.4);
+    this.otpVerifyFade = new Animated.Value(0);
+    this.otpVerifyY = new Animated.Value(20);
+  }
+
+  componentWillUnmount() {
+    if (this._resendTimer) { clearInterval(this._resendTimer); this._resendTimer = null; }
   }
 
   async componentDidMount() {
@@ -209,6 +219,8 @@ class Login extends React.Component {
     this.otpTitleY.setValue(20);
     this.otpFormFade.setValue(0);
     this.otpFormY.setValue(30);
+    this.otpVerifyFade.setValue(0);
+    this.otpVerifyY.setValue(20);
 
     Animated.parallel([
       Animated.spring(this.otpIconScale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
@@ -229,7 +241,16 @@ class Login extends React.Component {
       ]).start();
     }, 400);
 
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(this.otpVerifyFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.spring(this.otpVerifyY, { toValue: 0, friction: 6, tension: 50, useNativeDriver: true }),
+      ]).start();
+    }, 600);
+
     this.startShieldPulse();
+    this.startHaloPulse();
+    this.startResendCountdown();
   };
 
   startShieldPulse = () => {
@@ -240,6 +261,39 @@ class Login extends React.Component {
       ]).start(() => pulse());
     };
     pulse();
+  };
+
+  startHaloPulse = () => {
+    const run = () => {
+      this.otpHaloScale.setValue(1);
+      this.otpHaloOpacity.setValue(0.45);
+      Animated.parallel([
+        Animated.timing(this.otpHaloScale, { toValue: 1.6, duration: 1600, useNativeDriver: true }),
+        Animated.timing(this.otpHaloOpacity, { toValue: 0, duration: 1600, useNativeDriver: true }),
+      ]).start(() => run());
+    };
+    run();
+  };
+
+  startResendCountdown = () => {
+    if (this._resendTimer) clearInterval(this._resendTimer);
+    this.setState({ resendIn: 30 });
+    this._resendTimer = setInterval(() => {
+      this.setState((p) => {
+        if (p.resendIn <= 1) {
+          if (this._resendTimer) { clearInterval(this._resendTimer); this._resendTimer = null; }
+          return { resendIn: 0 };
+        }
+        return { resendIn: p.resendIn - 1 };
+      });
+    }, 1000);
+  };
+
+  handleResendOtp = () => {
+    if (this.state.resendIn > 0 || this.state.isLoading) return;
+    this.setState({ otp: '' });
+    this.loginApi(true);
+    this.startResendCountdown();
   };
 
   onMobileChange = (text) => {
@@ -281,14 +335,22 @@ class Login extends React.Component {
       .catch((e) => { this.setState({ isLoading: false }); console.log('Login API error== ', e); });
   }
 
-  verifyOtp() {
+  async verifyOtp() {
     if (this.state.isLoadingOtp) return;
+    this.setState({ isLoadingOtp: true });
+
+    // Make sure we have an FCM token before submitting; refresh if missing.
+    let pnsToken = getFcmToken();
+    if (!pnsToken) {
+      try { pnsToken = await refreshFcmToken(); } catch (e) {}
+    }
+    console.log('Verify OTP FCM token==', pnsToken || '(empty)');
+
     const body = {
       mobile: this.state.mobile, otp: this.state.otp,
-      fcm: global.fcmToken || '', os: global.os || Platform.OS,
+      pnsToken: pnsToken || '', deviceType: global.os || Platform.OS,
     };
     console.log('Verify OTP API payload== ', body);
-    this.setState({ isLoadingOtp: true });
     fetch(constants.verifyOtp, {
       headers: { 'X-localization': 'en', 'Content-Type': 'application/json', Accept: 'application/json' },
       method: 'POST', body: JSON.stringify(body),
@@ -493,9 +555,20 @@ class Login extends React.Component {
   };
 
   renderOtp = () => {
+    const { mobile, otp, isLoadingOtp, resendIn } = this.state;
+    const canVerify = otp && otp.length === 5 && !isLoadingOtp;
+    const canResend = resendIn === 0;
     return (
       <View>
+        {/* Shield icon with animated halo behind it */}
         <View style={st.iconArea}>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              st.shieldHalo,
+              { opacity: this.otpHaloOpacity, transform: [{ scale: this.otpHaloScale }] },
+            ]}
+          />
           <Animated.View style={[st.iconCircle, st.shieldCircle, { opacity: this.otpIconFade, transform: [{ scale: this.otpIconScale }] }]}>
             <Animated.View style={{ transform: [{ scale: this.otpShieldPulse }] }}>
               <Image source={require('./assets/shield.png')} style={st.iconImg} />
@@ -503,14 +576,19 @@ class Login extends React.Component {
           </Animated.View>
         </View>
 
+        {/* Title + subtitle */}
         <Animated.View style={{ opacity: this.otpTitleFade, transform: [{ translateY: this.otpTitleY }] }}>
           <Text style={st.title}>OTP Verify Karein</Text>
-          <Text style={st.subtitle}>
-            5-digit code daalein jo bheja gaya{'\n'}
-            <Text style={st.phoneBold}>+91 {this.state.mobile}</Text> par
-          </Text>
+          <Text style={st.subtitle}>5-digit code daalein jo bheja gaya</Text>
+
+          {/* Phone badge pill */}
+          <View style={st.phonePill}>
+            <Image source={require('./assets/india.png')} style={st.phonePillFlag} />
+            <Text style={st.phonePillNum}>+91 {mobile}</Text>
+          </View>
         </Animated.View>
 
+        {/* OTP cells */}
         <Animated.View style={{ opacity: this.otpFormFade, transform: [{ translateY: this.otpFormY }] }}>
           <OTPInputView
             style={st.otpView}
@@ -518,22 +596,47 @@ class Login extends React.Component {
             autoFocusOnLoad={true}
             codeInputFieldStyle={st.otpField}
             codeInputHighlightStyle={st.otpFieldActive}
+            onCodeChanged={(code) => this.setState({ otp: code })}
             onCodeFilled={this.onOtpFilled}
           />
+        </Animated.View>
 
-          {this.state.isLoadingOtp && (
-            <View style={st.verifyingRow}>
-              <ActivityIndicator size="small" color="#FFF" />
-              <Text style={st.verifyingText}>Verify ho raha hai...</Text>
-            </View>
-          )}
-
-          <TouchableOpacity onPress={() => this.loginApi(true)} activeOpacity={0.7} style={st.linkBtn}>
-            <Text style={st.linkText}>OTP Dobara Bhejein</Text>
+        {/* Verify CTA */}
+        <Animated.View style={{ opacity: this.otpVerifyFade, transform: [{ translateY: this.otpVerifyY }] }}>
+          <TouchableOpacity
+            onPress={() => this.verifyOtp()}
+            disabled={!canVerify}
+            activeOpacity={0.85}
+            style={[st.verifyBtn, !canVerify && { opacity: 0.45 }]}
+          >
+            {isLoadingOtp ? (
+              <ActivityIndicator size="small" color={BG} />
+            ) : (
+              <View style={st.verifyBtnInner}>
+                <Text style={st.verifyBtnText}>VERIFY OTP</Text>
+                <Text style={st.verifyBtnArr}>›</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={this.goBackToMobile} activeOpacity={0.7} style={st.linkBtn}>
-            <Text style={st.linkTextFaint}>Number Badlein</Text>
+          {/* Resend with countdown */}
+          <View style={st.resendRow}>
+            {canResend ? (
+              <TouchableOpacity onPress={this.handleResendOtp} activeOpacity={0.7} style={st.resendBtn}>
+                <Text style={st.resendIco}>↻</Text>
+                <Text style={st.resendLink}>OTP Dobara Bhejein</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={st.resendCountdown}>
+                Resend OTP in <Text style={st.resendCountdownBold}>{resendIn}s</Text>
+              </Text>
+            )}
+          </View>
+
+          {/* Change number */}
+          <TouchableOpacity onPress={this.goBackToMobile} activeOpacity={0.7} style={st.changeNumBtn}>
+            <Text style={st.changeNumIco}>‹</Text>
+            <Text style={st.changeNumText}>Number Badlein</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -735,17 +838,30 @@ const st = StyleSheet.create({
   flagImg: { width: 20, height: 20, resizeMode: 'contain', marginLeft: 12 },
   prefix: { paddingLeft: 6, fontSize: 15, fontWeight: '800', color: '#FFF' },
   divider: { width: 1, height: 26, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: 8 },
-  mobileInput: { flex: 1, fontSize: 17, fontWeight: '600', color: '#FFF', paddingRight: 16, letterSpacing: 1 },
-  mobileInputFilled: { fontSize: 22, fontWeight: '900', letterSpacing: 3 },
+  mobileInput: {
+    flex: 1,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingRight: 12,
+    height: 30,
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 1.2,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  // No font size/weight change once filled — keeps baseline locked to the prefix.
+  mobileInputFilled: {},
 
   // Button
   btn: { width: '100%', height: 56, borderRadius: 16, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   btnText: { fontSize: 16, fontWeight: '900', color: BG, letterSpacing: 0.5 },
 
   // OTP
-  otpView: { width: '100%', height: 80, marginBottom: 20 },
-  otpField: { width: 56, height: 64, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)', color: '#FFF', fontSize: 26, fontWeight: '900' },
-  otpFieldActive: { borderColor: '#FFF', borderWidth: 2.5, backgroundColor: 'rgba(255,255,255,0.15)' },
+  otpView: { width: '100%', height: 72, marginBottom: 20 },
+  otpField: { width: 56, height: 64, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', color: '#FFF', fontSize: 26, fontWeight: '800' },
+  otpFieldActive: { borderColor: '#FFF', borderWidth: 2.5, backgroundColor: 'rgba(255,255,255,0.16)' },
 
   verifyingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   verifyingText: { color: '#FFF', fontSize: 13, fontWeight: '600', marginLeft: 8 },
@@ -753,4 +869,61 @@ const st = StyleSheet.create({
   linkBtn: { paddingVertical: 12, alignItems: 'center' },
   linkText: { fontSize: 14, fontWeight: '700', color: '#FFF', textDecorationLine: 'underline' },
   linkTextFaint: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.45)' },
+
+  // Pulsing halo behind the shield icon
+  shieldHalo: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+
+  // Phone badge pill below the subtitle on the OTP screen
+  phonePill: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    marginBottom: 26,
+  },
+  phonePillFlag: { width: 18, height: 18, resizeMode: 'contain', marginRight: 8 },
+  phonePillNum: { color: '#FFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
+
+  // Primary Verify CTA
+  verifyBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  verifyBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  verifyBtnText: { fontSize: 15, fontWeight: '900', color: BG, letterSpacing: 0.6 },
+  verifyBtnArr: { fontSize: 22, fontWeight: '900', color: BG, marginLeft: 8, marginTop: -3, includeFontPadding: false, lineHeight: 24 },
+
+  // Resend row
+  resendRow: { alignItems: 'center', marginTop: 18, marginBottom: 6, minHeight: 28, justifyContent: 'center' },
+  resendBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8 },
+  resendIco: { color: '#FFF', fontSize: 15, fontWeight: '900', marginRight: 6 },
+  resendLink: { fontSize: 14, fontWeight: '700', color: '#FFF', textDecorationLine: 'underline' },
+  resendCountdown: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.65)' },
+  resendCountdownBold: { color: '#FFF', fontWeight: '800' },
+
+  // Change number link
+  changeNumBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, marginTop: 4 },
+  changeNumIco: { color: 'rgba(255,255,255,0.55)', fontSize: 18, fontWeight: '700', marginRight: 4, marginTop: -2, includeFontPadding: false },
+  changeNumText: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.55)' },
 });

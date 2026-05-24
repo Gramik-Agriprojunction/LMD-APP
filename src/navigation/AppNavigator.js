@@ -18,6 +18,10 @@ import SettlementHistory from '../screens/SettlementHistory';
 import Earnings from '../screens/Earnings';
 import Notifications from '../screens/Notifications';
 import OrderOtpVerify from '../screens/OrderOtpVerify';
+import PenaltyOrders from '../screens/PenaltyOrders';
+import BatchPickupOtp from '../screens/BatchPickupOtp';
+import MarkDispute from '../screens/MarkDispute';
+import RejectDelivery from '../screens/RejectDelivery';
 
 const Stack = createNativeStackNavigator();
 
@@ -51,6 +55,10 @@ export default function AppNavigator() {
         <Stack.Screen name="Earnings" component={Earnings} />
         <Stack.Screen name="Notifications" component={Notifications} />
         <Stack.Screen name="OrderOtpVerify" component={OrderOtpVerify} />
+        <Stack.Screen name="PenaltyOrders" component={PenaltyOrders} />
+        <Stack.Screen name="BatchPickupOtp" component={BatchPickupOtp} />
+        <Stack.Screen name="MarkDispute" component={MarkDispute} />
+        <Stack.Screen name="RejectDelivery" component={RejectDelivery} />
       </Stack.Navigator>
     </NavigationContainer>
   );

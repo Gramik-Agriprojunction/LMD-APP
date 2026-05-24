@@ -21,9 +21,13 @@ const strings = {
   settleList : baseurl + 'lmd/cash-settlement-list',
   confirmSettle : baseurl + 'lmd/cash-settlement?status=',
   rejectReasons : baseurl + 'lmd/reject-list',
+  disputeReasons : baseurl + 'lmd/dispute-reason',
   notification : baseurl + 'notification',
   orderVerifyOtp : baseurl + 'user/order-verify-otp',
   farmerSurveyForm : baseurl + 'lmd/farmer-survey/',
   fillSurvey : baseurl + 'lmd/create-farmer-survey',
+  penaltyOrders : baseurl + 'lmd/penalty-orders',
+  bulkPickupGenerateOtp : baseurl + 'lmd/bulk-pickup-generate-otp',
+  bulkPickupOtpVerify : baseurl + 'lmd/bulk-pickup-otp-verify',
 };
 export default strings;

@@ -560,8 +560,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: THEME.green },
   headerSafe: { backgroundColor: THEME.green },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 24, height: 24, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
 
   bodySafe: { flex: 1, backgroundColor: THEME.bg },

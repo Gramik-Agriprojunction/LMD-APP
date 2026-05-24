@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "240252009221",
+    "project_id": "gramik-farmer",
+    "storage_bucket": "gramik-farmer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240252009221:android:5ef29f89a722a1d319556c",
+        "android_client_info": {
+          "package_name": "com.agri.junction"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmqYHiAr0yhnmPUq1IlyKnLRyOiB_aPCE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240252009221:android:eedbb580a4cce8d219556c",
+        "android_client_info": {
+          "package_name": "com.app.darkstore"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmqYHiAr0yhnmPUq1IlyKnLRyOiB_aPCE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240252009221:android:5e75a25ec77f4ba419556c",
+        "android_client_info": {
+          "package_name": "com.app.lmd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmqYHiAr0yhnmPUq1IlyKnLRyOiB_aPCE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

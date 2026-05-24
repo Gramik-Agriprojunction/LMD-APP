@@ -103,8 +103,8 @@ class Notifications extends Component {
     return (
       <View style={styles.emptyWrap}>
         <Image source={require('./assets/bell.png')} style={styles.emptyIcon} />
-        <Text style={styles.emptyTitle}>No Notifications Yet!</Text>
-        <Text style={styles.emptySub}>You're all caught up. We'll notify you when something new arrives.</Text>
+        <Text style={styles.emptyTitle}>Abhi Koi Notification Nahi!</Text>
+        <Text style={styles.emptySub}>Kuch naya aayega toh aapko bata denge.</Text>
       </View>
     );
   };
@@ -122,7 +122,7 @@ class Notifications extends Component {
               <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
               </TouchableOpacity>
-              <Text style={styles.headerTitle} numberOfLines={1}>Notifications</Text>
+              <Text style={styles.headerTitle} numberOfLines={1}>Notifications</Text>{/* keep — widely understood */}
               <View style={{ width: 42, height: 42 }} />
             </View>
           </SafeAreaView>
@@ -157,8 +157,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
   listContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 20, flexGrow: 1 },

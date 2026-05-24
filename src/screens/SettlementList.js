@@ -140,8 +140,12 @@ class SettlementList extends Component {
   // ------------------------
   fetchList = (status) => {
     const tab = status || this.state.activeTab;
+    const q = String(this.state.search || '').trim();
     let url = constants.settleList;
-    if (tab && tab !== 'all') url += `?status=${tab}`;
+    const params = [];
+    if (tab && tab !== 'all') params.push(`status=${tab}`);
+    if (q) params.push(`search=${encodeURIComponent(q)}`);
+    if (params.length) url += `?${params.join('&')}`;
 
     console.log('Settlement List API url== ', url);
     this.setState({ loading: true, search: '' }, () => {
@@ -213,36 +217,18 @@ class SettlementList extends Component {
     this.props.navigation.navigate('CashSettlement', { selectedOrders: this.getSelectedOrderIds() });
   };
 
-  // ------------------------
-  // Filtering (search on code, id, name, address, amount, collected)
-  // ------------------------
-  getFilteredList = () => {
-    const { list, activeTab, search } = this.state;
-    const q = this.normalize(search).trim();
+  // Search is server-side now — pass the query in the API and reload.
+  getFilteredList = () => (Array.isArray(this.state.list) ? this.state.list : []);
 
-    return (Array.isArray(list) ? list : []).filter((it) => {
-      if (!q) return true;
+  onSearchChange = (text) => {
+    this.setState({ search: text });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.fetchList(), 400);
+  };
 
-      const orderId = this.normalize(this.getOrderId(it));
-      const orderCode = this.normalize(this.getOrderCode(it));
-      const farmer = this.normalize(this.getFarmerName(it));
-      const farmerPhone = this.normalize(this.getFarmerObj(it)?.phone);
-      const village = this.normalize(this.getVillage(it));
-      const amt = this.normalize(this.money(this.getCodAmount(it)));
-      const collected = this.normalize(this.money(this.getCollectedAmount(it)));
-      const dsName = this.normalize(it?.dark_store?.name);
-
-      return (
-        orderCode.includes(q) ||
-        orderId.includes(q) ||
-        farmer.includes(q) ||
-        farmerPhone.includes(q) ||
-        village.includes(q) ||
-        amt.includes(q) ||
-        collected.includes(q) ||
-        dsName.includes(q)
-      );
-    });
+  clearSearch = () => {
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this.setState({ search: '' }, () => this.fetchList());
   };
 
   // ------------------------
@@ -498,14 +484,15 @@ class SettlementList extends Component {
                 <Image style={styles.headerSearchIco} source={require('./assets/search.png')} />
                 <TextInput
                   value={this.state.search}
-                  onChangeText={(t) => this.setState({ search: t })}
+                  onChangeText={this.onSearchChange}
                   placeholder="Search orders..."
                   placeholderTextColor="rgba(255,255,255,0.45)"
                   style={styles.headerSearchInput}
                   returnKeyType="search"
+                  onSubmitEditing={() => this.fetchList()}
                 />
                 {this.state.search ? (
-                  <TouchableOpacity onPress={() => this.setState({ search: '' })} activeOpacity={0.7} style={styles.headerCrossBtn}>
+                  <TouchableOpacity onPress={this.clearSearch} activeOpacity={0.7} style={styles.headerCrossBtn}>
                     <Image source={require('./assets/cross.png')} style={styles.headerCrossIco} />
                   </TouchableOpacity>
                 ) : null}
@@ -575,8 +562,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: THEME.green },
   headerSafe: { backgroundColor: THEME.green },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 24, height: 24, resizeMode: 'contain', tintColor: '#fff' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#fff' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
   headerSearch: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, height: 38, paddingHorizontal: 10, marginRight: 8 },
   headerSearchIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },

@@ -25,6 +25,8 @@ import ShimmerLoader from '../components/ShimmerLoader';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
+import * as STATUS_COLORS from '../utils/statusColors';
+import CachedImage from '../components/CachedImage';
 
 const BG = '#5D3FD3';
 
@@ -531,14 +533,7 @@ class DeliverToFarmer extends Component {
     });
   };
 
-  getStatusColors = (s) => {
-    const v = String(s || '').toLowerCase();
-    if (v === 'pending') return { bg: '#EA580C' };
-    if (v === 'pickup' || v === 'pickedup') return { bg: '#7C3AED' };
-    if (v === 'delivered' || v === 'deliver') return { bg: '#16A34A' };
-    if (v === 'cancelled' || v === 'canceled') return { bg: '#F87171' };
-    return { bg: '#475569' };
-  };
+  getStatusColors = (s) => ({ bg: STATUS_COLORS.getStatus(s).bg });
 
   openSurvey = () => {
     this.props?.navigation?.navigate('Survey', { order_data: this.state.details });
@@ -666,7 +661,7 @@ class DeliverToFarmer extends Component {
                 <View key={`${it?.variant_id || it?.product_id || idx}`} style={styles.ddCard}>
                   <View style={styles.ddItemRow}>
                     <View style={styles.ddItemImg}>
-                      {it?.image ? <Image source={{ uri: it.image }} style={styles.ddProductImg} /> : null}
+                      {it?.image ? <CachedImage source={{ uri: it.image }} style={styles.ddProductImg} /> : null}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.ddItemName}>{String(it?.product_name || '-')}</Text>
@@ -746,8 +741,13 @@ class DeliverToFarmer extends Component {
             </View>
           ) : statusText !== 'cancelled' ? (
             <View style={styles.actionRow}>
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#DC2626', marginRight: 6 }]} onPress={this.onCancel} activeOpacity={0.85}>
-                <Text style={styles.actionBtnText}>Cancel</Text>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#CA8A04', marginRight: 6 }]}
+                onPress={() => this.props.navigation.navigate('MarkDispute', { order: o })}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.actionBtnChar}>⚑</Text>
+                <Text style={styles.actionBtnText}>Mark Dispute</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16A34A', marginLeft: 6, opacity: this.state.completingDelivery ? 0.6 : 1 }]} onPress={this.onComplete} activeOpacity={0.85} disabled={this.state.completingDelivery}>
                 {this.state.completingDelivery ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.actionBtnText}>Complete Delivery</Text>}
@@ -903,8 +903,8 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: BG },
   headerSafe: { backgroundColor: BG },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center' },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '600' },
 
   container: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },

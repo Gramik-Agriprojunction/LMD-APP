@@ -8,8 +8,21 @@ import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import { withV4Navigation } from '../utils/v4Compat';
+import OrderCard from '../components/OrderCard';
 
-const BG = '#5D3FD3';
+import { STATUS } from '../utils/statusColors';
+import ScreenHeader from '../components/ScreenHeader';
+
+const BG = STATUS.ALL.bg;
+
+// Each verification screen uses the colour of the status it transitions the
+// order to — Pickup → cyan, Deliver → green, RTO → red. Pulled from the
+// canonical statusColors map so it matches buttons, pills, and grid tiles.
+const THEMES = {
+  pickup:  { bg: STATUS.PICKUP.bg,    accent: '#FCD34D', title: 'Pickup Verify Karein',   helper: 'warehouse',  verifyLbl: 'PICKUP',         doneTitle: 'Verify Ho Gaya!',  doneSub: 'Pickup status update ho raha hai...' },
+  deliver: { bg: STATUS.DELIVERED.bg, accent: '#FCD34D', title: 'Delivery Verify Karein', helper: 'farmer',     verifyLbl: 'DELIVER',        doneTitle: 'Verify Ho Gaya!',  doneSub: 'Delivery aage badh rahi hai...' },
+  rto:     { bg: STATUS.RTO.bg,       accent: '#FCD34D', title: 'Wapsi Verify Karein',    helper: 'warehouse',  verifyLbl: 'WAPSI CONFIRM',  doneTitle: 'Wapas Ho Gaya!',   doneSub: 'Product wapsi mark ho rahi hai...' },
+};
 
 class OrderOtpVerify extends Component {
   constructor(props) {
@@ -36,6 +49,42 @@ class OrderOtpVerify extends Component {
   getActionType = () => this.props?.navigation?.getParam('actionType', 'pickup');
   getOrder = () => this.props?.navigation?.getParam('order', null);
   goBack = () => { if (this.props?.navigation?.goBack) this.props.navigation.goBack(); };
+
+  mask = (p) => {
+    if (!p) return '';
+    const s = String(p);
+    if (s.length < 6) return s;
+    return s.slice(0, 2) + '****' + s.slice(-2);
+  };
+
+  // Robust dialler — works across iOS and Android (some Android skins return
+  // false from canOpenURL even when openURL succeeds).
+  dial = async (phoneRaw) => {
+    const phone = String(phoneRaw || '').replace(/[^\d+]/g, '');
+    if (!phone) return Toast.show('No phone number available', Toast.SHORT);
+    const url = `tel:${phone}`;
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      try { await Linking.openURL(`telprompt:${phone}`); }
+      catch (e2) { Toast.show('Could not open dialer', Toast.SHORT); }
+    }
+  };
+
+  // Robust WhatsApp — try native scheme first, then wa.me, then api.whatsapp.com.
+  whatsapp = async (phoneRaw) => {
+    const phone = String(phoneRaw || '').replace(/[^\d]/g, '');
+    if (!phone) return Toast.show('No phone number available', Toast.SHORT);
+    const tryUrls = [
+      `whatsapp://send?phone=${phone}`,
+      `https://wa.me/${phone}`,
+      `https://api.whatsapp.com/send?phone=${phone}`,
+    ];
+    for (const u of tryUrls) {
+      try { await Linking.openURL(u); return; } catch (e) { /* try next */ }
+    }
+    Toast.show('WhatsApp is not available', Toast.SHORT);
+  };
 
   componentDidMount() {
     Animated.parallel([
@@ -179,47 +228,40 @@ class OrderOtpVerify extends Component {
   render() {
     const actionType = this.getActionType();
     const order = this.getOrder();
+    const theme = THEMES[actionType] || THEMES.pickup;
+    const BG_T = theme.bg;
     const isPickup = actionType === 'pickup';
     const disabled = this.state.isLoading || this.state.otp.length < 5;
     const { verified } = this.state;
 
     return (
-      <View style={s.root}>
-        <StatusBar barStyle="light-content" backgroundColor={BG} />
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
+      <View style={[s.root, { backgroundColor: BG_T }]}>
+        <StatusBar barStyle="light-content" backgroundColor={BG_T} />
+        <ScreenHeader bg={BG_T} title={theme.title} onBack={this.goBack} />
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: BG_T }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-
-            {/* Header row */}
-            <View style={s.topRow}>
-              <TouchableOpacity onPress={this.goBack} style={s.backBtn} activeOpacity={0.7}>
-                <Image source={require('./assets/back.png')} style={s.backIco} />
-              </TouchableOpacity>
-              <Text style={s.topTitle}>{isPickup ? 'Pickup Verification' : 'Delivery Verification'}</Text>
-              <View style={{ width: 38 }} />
-            </View>
 
             {verified ? (
               <View style={s.verifiedWrap}>
                 <View style={s.checkArea}>
-                  <Animated.View style={[s.ring, { opacity: this.ringOpacity.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.ringScale }] }]} />
-                  <Animated.View style={[s.ring, { opacity: this.ring2Opacity.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }), transform: [{ scale: this.ring2Scale }] }]} />
-                  <Animated.View style={[s.checkCircle, { opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
-                    <Text style={s.checkMark}>✓</Text>
+                  <Animated.View style={[s.ring, { borderColor: '#FFF', opacity: this.ringOpacity.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.ringScale }] }]} />
+                  <Animated.View style={[s.ring, { borderColor: '#FFF', opacity: this.ring2Opacity.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }), transform: [{ scale: this.ring2Scale }] }]} />
+                  <Animated.View style={[s.checkCircle, { backgroundColor: '#FFF', shadowColor: '#000', opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
+                    <Text style={[s.checkMark, { color: BG_T }]}>✓</Text>
                   </Animated.View>
                 </View>
                 <Animated.View style={{ opacity: this.checkOpacity, alignItems: 'center' }}>
-                  <Text style={s.verifiedTitle}>Verified!</Text>
-                  <Text style={s.verifiedSub}>{isPickup ? 'Updating pickup status...' : 'Proceeding to delivery...'}</Text>
+                  <Text style={s.verifiedTitle}>{theme.doneTitle}</Text>
+                  <Text style={s.verifiedSub}>{theme.doneSub}</Text>
                 </Animated.View>
               </View>
             ) : (
               <>
                 {/* Title + OTP */}
                 <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
-                  <Text style={s.title}>Enter OTP</Text>
-                  <Text style={s.subtitle}>Enter the 5-digit code shared by the {isPickup ? 'warehouse' : 'farmer'}</Text>
+                  <Text style={s.title}>OTP Daalein</Text>
+                  <Text style={s.subtitle}>{theme.helper === 'farmer' ? 'Farmer' : 'Warehouse'} ne jo 5-digit code diya hai, woh daalein</Text>
                 </Animated.View>
 
                 <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
@@ -227,7 +269,7 @@ class OrderOtpVerify extends Component {
                     style={s.otpView}
                     pinCount={5}
                     autoFocusOnLoad={false}
-                    codeInputFieldStyle={s.otpField}
+                    codeInputFieldStyle={[s.otpField, { color: BG_T }]}
                     codeInputHighlightStyle={s.otpActive}
                     onCodeFilled={(code) => {
                       this.setState({ otp: code }, () => this.verifyOtp(code));
@@ -238,13 +280,13 @@ class OrderOtpVerify extends Component {
                     style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
                     {this.state.isLoading ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={BG} />
-                        <Text style={[s.btnT, { marginLeft: 10 }]}>Verifying...</Text>
+                        <ActivityIndicator size="small" color={BG_T} />
+                        <Text style={[s.btnT, { color: BG_T, marginLeft: 10 }]}>Verify ho raha hai...</Text>
                       </View>
                     ) : (
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={s.btnT}>VERIFY & {isPickup ? 'PICKUP' : 'DELIVER'}</Text>
-                        <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { transform: [{ translateX: this.arrowX }] }]} />
+                        <Text style={[s.btnT, { color: BG_T }]}>VERIFY & {theme.verifyLbl} KAREIN</Text>
+                        <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { tintColor: BG_T, transform: [{ translateX: this.arrowX }] }]} />
                       </View>
                     )}
                   </TouchableOpacity>
@@ -252,59 +294,22 @@ class OrderOtpVerify extends Component {
               </>
             )}
 
-            {/* Order details card — below verify */}
-            <Animated.View style={[s.orderCard, { opacity: this.formFade }]}>
-              {/* Header */}
-              <View style={s.orderHead}>
-                <Text style={s.orderOid}>#{order?.order_id || (order?.order_code ? order.order_code.split(' ')[0] : '')}</Text>
-                <Text style={s.orderAmt}>₹{order?.amount || order?.grand_total || 0}</Text>
-              </View>
-
-              {/* Farmer */}
-              <View style={s.orderPerson}>
-                <Image source={require('./assets/farmer.png')} style={s.orderAvt} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.orderName}>{order?.farmer_name || order?.farmer_data?.name || '-'}</Text>
-                  <Text style={s.orderPhone}>{order?.farmer_mobile || order?.farmer_data?.phone || ''}</Text>
-                </View>
-                <TouchableOpacity onPress={() => { const p = order?.farmer_mobile || order?.farmer_data?.phone; if(p) Linking.openURL(`tel:${String(p).replace(/\s+/g,'')}`).catch(()=>{}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
-                  <Image source={require('./assets/call.png')} style={s.orderCallIco} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { const p = order?.farmer_mobile || order?.farmer_data?.phone; if(p) { const c = String(p).replace(/[^\d]/g,''); Linking.openURL(`https://wa.me/${c}`).catch(()=>{}); } }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 12 }}>
-                  <Image source={require('./assets/whatsapp.png')} style={s.orderIco} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Route */}
-              <View style={s.orderRoute}>
-                <View style={s.orderRouteR}>
-                  <View style={s.orderTl}><View style={[s.orderDot, { backgroundColor: '#86EFAC' }]} /><View style={s.orderLine} /></View>
-                  <View style={s.orderRBody}>
-                    <Text style={[s.orderRLbl, { color: '#86EFAC' }]}>Pickup</Text>
-                    <Text style={s.orderRTitle}>{order?.dark_store?.name || '-'}</Text>
-                    {order?.dark_store?.mobile ? <Text style={s.orderRSub}>{order.dark_store.mobile}</Text> : null}
-                    <Text style={s.orderRSub}>{order?.dark_store?.location || `${order?.dark_store?.city || ''}${order?.dark_store?.pincode ? `, ${order.dark_store.pincode}` : ''}`}</Text>
-                  </View>
-                </View>
-                <View style={s.orderRouteR}>
-                  <View style={s.orderTl}><View style={[s.orderDot, { backgroundColor: '#FCA5A5' }]} /></View>
-                  <View style={[s.orderRBody, { paddingBottom: 0 }]}>
-                    <Text style={[s.orderRLbl, { color: '#FCA5A5' }]}>Drop</Text>
-                    <Text style={s.orderRSub}>
-                      {order?.farmer_address?.address || order?.farmer_data?.address || order?.shipping_address || '-'}
-                      {order?.farmer_address?.block ? `, ${order.farmer_address.block}` : ''}
-                      {order?.farmer_address?.city ? `, ${order.farmer_address.city}` : ''}
-                      {order?.farmer_address?.state ? `, ${order.farmer_address.state}` : ''}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+            {/* Order details card — shared OrderCard (theme="dark" for colored bg) */}
+            <Animated.View style={{ opacity: this.formFade, marginTop: 16 }}>
+              <OrderCard
+                order={order}
+                theme="dark"
+                hideFooter
+                onCall={(p) => this.dial(p)}
+                onWhatsApp={(p) => this.whatsapp(p)}
+                onCallStore={(p) => this.dial(p)}
+              />
             </Animated.View>
 
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG_T }}/>
       </View>
     );
   }
@@ -312,11 +317,14 @@ class OrderOtpVerify extends Component {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 },
+  scroll: { flexGrow: 1, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 40 },
 
-  topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  // Align with the canonical screen header: 56-h row, no extra horizontal padding
+  // beyond the ScrollView's 12px so the chip sits at 12 + 4 = 16px from the
+  // screen edge (matches every other screen).
+  topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0, height: 56, marginBottom: 6 },
   topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#FFF' },
-  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   backIco: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
 
   infoCard: { display: 'none' },
@@ -326,12 +334,13 @@ const s = StyleSheet.create({
   subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 20 },
 
   formWrap: { alignItems: 'center' },
-  otpView: { width: '100%', height: 65, marginBottom: 16 },
+  otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 16 },
   otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 32, fontWeight: '800' },
   otpActive: { borderColor: '#FCD34D', borderWidth: 2.5 },
 
-  btn: { width: '100%', height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
-  btnT: { fontSize: 15, fontWeight: '800', color: BG, letterSpacing: 0.3 },
+  // Width matched to the OTP row above (5 × 56 + 4 × 8 gap = 312).
+  btn: { width: 312, height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  btnT: { fontSize: 15, fontWeight: '700', color: BG, letterSpacing: 0.3 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
 
   verifiedWrap: { alignItems: 'center', marginTop: 30, marginBottom: 20 },
@@ -343,25 +352,31 @@ const s = StyleSheet.create({
   verifiedSub: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)' },
 
   // Order card (white on purple)
-  orderCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, marginTop: 20, overflow: 'hidden' },
+  orderCard: { backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 12, marginTop: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
   orderHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, paddingBottom: 8 },
   orderOid: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   orderAmt: { fontSize: 16, fontWeight: '700', color: '#FCD34D' },
-  orderPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  orderAvt: { width: 24, height: 24, borderRadius: 12, resizeMode: 'cover', marginRight: 8 },
-  orderName: { fontSize: 13, fontWeight: '600', color: '#FFF' },
-  orderPhone: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.5)', marginTop: 1 },
+  orderPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.14)' },
+  orderAvt: { width: 28, height: 28, borderRadius: 14, resizeMode: 'cover', marginRight: 8 },
+  orderName: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  orderPhone: { fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
   orderIco: { width: 30, height: 30, resizeMode: 'contain' },
   orderCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
+  contactBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  contactIcoCall: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
+  contactIcoWa: { width: 30, height: 30, resizeMode: 'contain' },
+  // Pickup darkstore call button — matches the orange call style used elsewhere.
+  dsCallBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
+  dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
   orderRoute: { paddingHorizontal: 12, paddingVertical: 10 },
   orderRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
   orderTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
   orderDot: { width: 8, height: 8, borderRadius: 4 },
-  orderLine: { width: 1.5, flex: 1, minHeight: 8, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 3 },
+  orderLine: { width: 1.5, flex: 1, minHeight: 8, backgroundColor: 'rgba(255,255,255,0.35)', marginVertical: 3 },
   orderRBody: { flex: 1, paddingBottom: 10 },
-  orderRLbl: { fontSize: 11, fontWeight: '600', letterSpacing: 0.3, marginBottom: 3 },
-  orderRTitle: { fontSize: 13, fontWeight: '600', color: '#FFF' },
-  orderRSub: { fontSize: 12, fontWeight: '400', color: 'rgba(255,255,255,0.55)', lineHeight: 17, marginTop: 1 },
+  orderRLbl: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3 },
+  orderRTitle: { fontSize: 13.5, fontWeight: '700', color: '#FFF' },
+  orderRSub: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.88)', lineHeight: 17, marginTop: 1 },
 });
 
 export default withV4Navigation(OrderOtpVerify);

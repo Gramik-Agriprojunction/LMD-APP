@@ -10,6 +10,9 @@ import ShimmerLoader from '../components/ShimmerLoader';
 import NetBanner from '../components/NetBanner';
 import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSubscribe, KEYS } from '../utils/dataCache';
 import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
+import { getStatus } from '../utils/statusColors';
+import { preloadImages } from '../components/CachedImage';
+import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
 
@@ -54,6 +57,13 @@ class LMDDashboard extends Component {
         if (j.status) {
           const data = j.data || {};
           cacheSet(KEYS.DASHBOARD, data);
+          // Pre-warm any product/farmer images so cards render instantly.
+          const urls = [];
+          (data?.today_deliveries || []).forEach((o) => {
+            if (typeof o?.farmer_data?.image === 'string') urls.push(o.farmer_data.image);
+            (o?.order_items || []).forEach((it) => { if (typeof it?.image === 'string') urls.push(it.image); });
+          });
+          preloadImages(urls);
           this.setState({ loading: false, refreshing: false, data, notif: Number(data.notification_count || 0) });
         } else this.setState({ loading: false, refreshing: false });
       })
@@ -83,86 +93,19 @@ class LMDDashboard extends Component {
   n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
   mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0, 2) + '****' + s.slice(-2); };
 
-  badge = (s) => {
-    const m = { PENDING:{bg:'#EA580C',c:'#FFF'}, DELIVERED:{bg:'#16A34A',c:'#FFF'}, PICKUP:{bg:'#7C3AED',c:'#FFF'}, INTRANSIT:{bg:'#2563EB',c:'#FFF'}, RESCHEDULE:{bg:'#7C3AED',c:'#FFF'}, RTO:{bg:'#DC2626',c:'#FFF'}, CANCELLED:{bg:'#F87171',c:'#FFF'} };
-    return m[s] || { bg: '#F1F5F9', c: '#475569' };
-  };
+  badge = (s) => ({ bg: getStatus(s).bg, c: '#FFF' });
 
-  statusLabel = (s) => {
-    const m = { PENDING:'Pending', DELIVERED:'Delivered', PICKUP:'Picked Up', INTRANSIT:'In Transit', RESCHEDULE:'Reschedule', RTO:'RTO', CANCELLED:'Cancelled' };
-    return m[s] || s;
-  };
+  statusLabel = (s) => getStatus(s).label;
 
-  renderItem = ({ item }) => {
-    const st = (item?.status || '').toUpperCase();
-    const b = this.badge(st);
-    const ds = item?.dark_store;
-
-    return (
-      <TouchableOpacity activeOpacity={0.75} onPress={() => this.props.navigation.navigate('DeliveryDetails', { order: item })} style={$.dlv}>
-        {/* Order ID + Status */}
-        <View style={$.dlvHead}>
-          <Text style={$.dlvOid}>#{item?.order_id}</Text>
-          <View style={{ flex: 1 }} />
-          <View style={[$.chip, { backgroundColor: b.bg }]}><Text style={[$.chipT, { color: b.c }]}>{this.statusLabel(st)}</Text></View>
-        </View>
-
-        {/* Farmer */}
-        <View style={$.dlvPerson}>
-          <Image source={require('./assets/farmer.png')} style={$.dlvAvt} />
-          <View style={{ flex: 1 }}>
-            <Text style={$.dlvName}>{item?.farmer_name || '-'}</Text>
-            <Text style={$.dlvPhone}>{this.mask(item?.farmer_mobile)}</Text>
-          </View>
-          <TouchableOpacity onPress={() => this.dial(item?.farmer_mobile)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}><Image source={require('./assets/call.png')} style={$.ico} /></TouchableOpacity>
-          <TouchableOpacity onPress={() => this.wa(item?.farmer_mobile)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 8 }}><Image source={require('./assets/whatsapp.png')} style={$.ico} /></TouchableOpacity>
-        </View>
-
-        {/* Route: Pickup → Drop */}
-        <View style={$.routeWrap}>
-          {/* Pickup */}
-          <View style={$.routeRow}>
-            <View style={$.routeTl}>
-              <View style={[$.dot, { backgroundColor: '#0DA60D' }]} />
-              <View style={$.routeLine} />
-            </View>
-            <View style={$.routeBody}>
-              <Text style={[$.routeLbl, { color: '#0DA60D' }]}>Pickup</Text>
-              <Text style={$.routeTitle}>{ds?.name || '-'}</Text>
-              {ds?.mobile ? <Text style={$.routePhone}>{ds.mobile}</Text> : null}
-              <Text style={$.routeAddr}>{ds?.location || `${ds?.city || ''}${ds?.pincode ? `, ${ds.pincode}` : ''}`}</Text>
-            </View>
-            {ds?.mobile ? (
-              <TouchableOpacity onPress={() => this.dial(ds.mobile)} activeOpacity={0.7} style={$.dsCallBtn}>
-                <Image source={require('./assets/call.png')} style={$.dsCallIco} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {/* Drop */}
-          <View style={$.routeRow}>
-            <View style={$.routeTl}>
-              <View style={[$.dot, { backgroundColor: '#EF4444' }]} />
-            </View>
-            <View style={[$.routeBody, { paddingBottom: 0 }]}>
-              <Text style={[$.routeLbl, { color: '#EF4444' }]}>Drop</Text>
-              <Text style={$.routeAddr}>{item?.shipping_address || '-'}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Footer: payment info + amount */}
-        <View style={$.dlvFoot}>
-          {item?.payment_mode ? <View style={[$.pill, { backgroundColor: '#475569' }]}><Text style={[$.pillT, { color: '#FFF' }]}>{item.payment_mode}</Text></View> : null}
-          <View style={[$.pill, { backgroundColor: item?.payment_status === 'paid' ? '#16A34A' : '#B45309' }]}>
-            <Text style={[$.pillT, { color: '#FFF' }]}>{item?.payment_status === 'paid' ? 'Paid' : 'Unpaid'}</Text>
-          </View>
-          <View style={{ flex: 1 }} />
-          <Text style={$.dlvAmt}>₹{this.n(item?.amount)}</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  renderItem = ({ item }) => (
+    <OrderCard
+      order={item}
+      onPress={() => this.props.navigation.navigate('DeliveryDetails', { order: item })}
+      onCall={(p) => this.dial(p)}
+      onWhatsApp={(p) => this.wa(p)}
+      onCallStore={(p) => this.dial(p)}
+    />
+  );
 
   a = (i) => ({ opacity: this.anims[Math.min(i,4)].o, transform: [{ translateY: this.anims[Math.min(i,4)].y }] });
 
@@ -183,13 +126,21 @@ class LMDDashboard extends Component {
         <View style={$.hdr}>
           <SafeAreaView edges={['top']}>
             <View style={$.hdrRow}>
-              <TouchableOpacity style={$.hdrBtn} onPress={() => this.props.navigation.navigate('Profile')} activeOpacity={0.7}>
-                <Image source={require('./assets/profile.png')} style={$.profIco} />
+              {/* Profile chip + welcome name together = one big tap target */}
+              <TouchableOpacity
+                style={$.hdrLeft}
+                onPress={() => this.props.navigation.navigate('Profile')}
+                activeOpacity={0.7}
+                hitSlop={{ top: 6, bottom: 6 }}
+              >
+                <View style={$.hdrBtn}>
+                  <Image source={require('./assets/profile.png')} style={$.profIco} />
+                </View>
+                <View style={$.hdrInfo}>
+                  <Text style={$.hdrSub}>Swagat</Text>
+                  <Text style={$.hdrName} numberOfLines={1}>{name || '-'}</Text>
+                </View>
               </TouchableOpacity>
-              <View style={$.hdrInfo}>
-                <Text style={$.hdrSub}>Welcome</Text>
-                <Text style={$.hdrName} numberOfLines={1}>{name || '-'}</Text>
-              </View>
               <TouchableOpacity style={$.hdrBtn} onPress={() => this.props.navigation.navigate('Notifications')} activeOpacity={0.7}>
                 <Image source={require('./assets/bell.png')} style={$.hdrIco} />
                 {this.state.notif > 0 && <View style={$.hdrBadge}><Text style={$.hdrBadgeT}>{this.state.notif}</Text></View>}
@@ -212,28 +163,37 @@ class LMDDashboard extends Component {
 
               <Animated.View style={[$.earnRow, this.a(1)]}>
                 <View style={[$.earnCard, { backgroundColor: '#16A34A' }]}>
-                  <Text style={$.earnLbl}>Earnings</Text>
+                  <Text style={$.earnLbl}>Kamai</Text>
                   <Text style={$.earnVal}>₹ {fmt(earn)}</Text>
                 </View>
                 <View style={{ width: 8 }} />
-                <View style={[$.earnCard, { backgroundColor: '#DC2626' }]}>
-                  <Text style={$.earnLbl}>Penalties</Text>
-                  <Text style={$.earnVal}>₹ {fmt(pen)}</Text>
-                </View>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => this.props.navigation.navigate('PenaltyOrders')}
+                  style={[$.earnCard, $.penCard, { backgroundColor: '#EF4444' }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={$.earnLbl}>Penalty</Text>
+                    <Text style={$.earnVal}>₹ {fmt(pen)}</Text>
+                  </View>
+                  <View style={$.penArrow}>
+                    <Image source={require('./assets/arrow.png')} style={$.penArrowIco} />
+                  </View>
+                </TouchableOpacity>
               </Animated.View>
 
               <Animated.View style={[$.card, this.a(2)]}>
                 <View style={$.cardH}>
                   <Text style={$.cardT}>Live Orders <Text style={{ color: P }}>({this.n(live?.all_orders ?? allCount(live))})</Text></Text>
-                  <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>View All ›</Text></View></TouchableOpacity>
+                  <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
                 </View>
                 <LiveOrdersGrid live={live} onPress={this.go} />
               </Animated.View>
 
               <Animated.View style={this.a(3)}>
                 <View style={$.dlvHeader}>
-                  <Text style={$.cardT}>Today's Deliveries</Text>
-                  <TouchableOpacity onPress={() => this.go('TODAY')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>View All ›</Text></View></TouchableOpacity>
+                  <Text style={$.cardT}>Aaj Ki Deliveries</Text>
+                  <TouchableOpacity onPress={() => this.go('TODAY')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
                 </View>
                 {today.length > 0 ? (
                   <FlatList data={today} keyExtractor={(it, i) => `${it?.order_id || i}`} renderItem={this.renderItem} scrollEnabled={false} />
@@ -241,12 +201,12 @@ class LMDDashboard extends Component {
               </Animated.View>
 
               <Animated.View style={this.a(4)}>
-                <Text style={$.secT}>Quick Actions</Text>
+                <Text style={$.secT}>Quick Actions</Text>{/* keep — widely understood */}
                 <View style={$.actRow}>
                   {[
-                    { l: 'Deposit', ico: require('./assets/purse.png'), bg: '#DDD6FE', c: '#4C1D95', nav: 'SettlementList' },
+                    { l: 'Jama Karein', ico: require('./assets/purse.png'), bg: '#DDD6FE', c: '#4C1D95', nav: 'SettlementList' },
                     { l: 'History', ico: require('./assets/dlh.png'), bg: '#BFDBFE', c: '#1E3A8A', nav: 'ALL' },
-                    { l: 'Support', ico: require('./assets/help2.png'), bg: '#A7F3D0', c: '#064E3B', nav: 'support' },
+                    { l: 'Madad', ico: require('./assets/help2.png'), bg: '#A7F3D0', c: '#064E3B', nav: 'support' },
                   ].map(q => (
                     <TouchableOpacity key={q.l} style={[$.qa, { backgroundColor: q.bg }]} activeOpacity={0.8}
                       onPress={() => q.nav === 'support' ? this.dial(this.state.data?.Support) : q.nav === 'ALL' ? this.go('ALL') : this.props.navigation.navigate(q.nav)}>
@@ -273,10 +233,11 @@ const $ = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#E8ECF4' },
 
   hdr: { backgroundColor: P, paddingBottom: 4 },
-  hdrRow: { height: 50, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' },
-  hdrBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  hdrRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  hdrBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   hdrIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
   profIco: { width: 36, height: 36, borderRadius: 18, resizeMode: 'contain' },
+  hdrLeft: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   hdrInfo: { flex: 1, marginLeft: 12 },
   hdrSub: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
   hdrName: { fontSize: 15, fontWeight: '600', color: '#FFF' },
@@ -293,6 +254,17 @@ const $ = StyleSheet.create({
   earnCard: { flex: 1, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3 },
   earnLbl: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '500' },
   earnVal: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 3 },
+  penCard: { flexDirection: 'row', alignItems: 'center' },
+  penArrow: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  penArrowIco: { width: 9, height: 9, resizeMode: 'contain', tintColor: '#EF4444' },
 
   card: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
   cardH: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },

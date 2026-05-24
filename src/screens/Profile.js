@@ -171,32 +171,20 @@ class Profile extends Component {
               </TouchableOpacity>
 
               {(!!name || !!avatar || !!phone || !!role) && (
-              <View style={styles.profileRow}>
-                <View style={styles.avatar}>
-                  <Image source={require('./assets/profile.png')} style={styles.avatarFallbackImg} />
+                <View style={styles.profileRow}>
+                  <View style={styles.avatar}>
+                    <Image source={require('./assets/profile.png')} style={styles.avatarFallbackImg} />
+                  </View>
+                  <View style={styles.nameCol}>
+                    {!!name && (
+                      <Text style={styles.name} numberOfLines={1}>{name}</Text>
+                    )}
+                    {!!phone && (
+                      <Text style={styles.phoneText} numberOfLines={1}>{phone}</Text>
+                    )}
+                  </View>
                 </View>
-
-                <View style={{ flex: 1,alignSelf:'center' }}>
-                  {!!name && (
-                    <Text style={styles.name} numberOfLines={1}>
-                      {name}
-                    </Text>
-                  )}
-
-                  {/* {!!role && (
-                    <Text style={styles.role} numberOfLines={1}>
-                      {role}
-                    </Text>
-                  )} */}
-
-                  {!!phone && (
-                    <Text style={styles.phoneText} numberOfLines={1}>
-                      {phone}
-                    </Text>
-                  )}
-                </View>
-              </View>
-          )}
+              )}
             </View>
           </SafeAreaView>
         </View>
@@ -250,7 +238,7 @@ class Profile extends Component {
             <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/flow.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Settlement History</Text>
-              <Text style={styles.actionSub}>View all settlements & status</Text>
+              <Text style={styles.actionSub}>Saare settlements aur status dekhein</Text>
             </View>
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
@@ -259,7 +247,7 @@ class Profile extends Component {
              <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/purse.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Cash Settlement</Text>
-              <Text style={styles.actionSub}>Upload proof & submit for verification</Text>
+              <Text style={styles.actionSub}>Proof upload karein aur verify ke liye bhejein</Text>
             </View>
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
@@ -268,7 +256,7 @@ class Profile extends Component {
                 <Image style={{height:35,width:38,marginRight:20,resizeMode:'contain'}} source={require('./assets/exit.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Logout</Text>
-              <Text style={styles.actionSub}>Account Logout</Text>
+              <Text style={styles.actionSub}>Account se logout karein</Text>
             </View>
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
@@ -290,14 +278,14 @@ class Profile extends Component {
             <View style={{ padding: 24, paddingTop: 8, alignItems: 'center' }}>
               <Image style={{ width: 50, height: 50, resizeMode: 'contain', marginBottom: 16 }} source={require('./assets/exit.png')} />
               <Text style={{ fontSize: 20, fontWeight: '800', color: '#E35335', marginBottom: 8 }}>Logout</Text>
-              <Text style={{ fontSize: 14, fontWeight: '400', color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Are you sure you want to logout of this account?</Text>
+              <Text style={{ fontSize: 14, fontWeight: '400', color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Kya aap waqai logout karna chahte hain?</Text>
               <View style={{ flexDirection: 'row', width: '100%' }}>
                 <TouchableOpacity
                   onPress={() => this.setState({ show_login: false })}
                   style={{ flex: 1, height: 46, borderRadius: 10, borderWidth: 1, borderColor: '#E6EAF0', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
                   activeOpacity={0.85}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Cancel</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Nahi</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => this.setState({ show_login: false }, () => this.onLogout())}
@@ -321,9 +309,9 @@ const styles = StyleSheet.create({
 
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
-  headerRow: {  paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center',paddingBottom:12 },
-  headerIconBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center',alignSelf:'center',paddingTop:10 },
-  backImg: { width: 25, height: 25, resizeMode: 'contain', tintColor: '#FFF',alignSelf:'center' },
+  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
   container: { padding:8, paddingBottom: 20 },
@@ -342,25 +330,26 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignSelf:'center'
   },
-  profileRow: { flexDirection: 'row', alignItems: 'center',paddingTop:10 },
+  profileRow: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  nameCol: { flex: 1, marginLeft: 12, justifyContent: 'center' },
 
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     overflow: 'hidden',
     backgroundColor: '#FFF',
-    marginRight: 12,
-    resizeMode:'cover'
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  avatarImg: { width: '100%', height: '100%', resizeMode: 'cover',marginTop:2 },
+  avatarImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   avatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  avatarFallbackImg: { width: 48, height: 48, borderRadius: 24, resizeMode: 'contain' },
+  avatarFallbackImg: { width: 38, height: 38, borderRadius: 19, resizeMode: 'contain' },
   avatarFallbackText: { fontSize: 18, fontWeight: '900', color: '#111827' },
 
-  name: { fontSize: 16, fontWeight: '900', color: '#fff' },
+  name: { fontSize: 15, fontWeight: '700', color: '#FFF' },
   role: { marginTop: 4, fontSize: 12, fontWeight: '700', color: '#fff' },
-  phoneText: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#fff' },
+  phoneText: { marginTop: 1, fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
 
   sectionCard: {
     backgroundColor: '#fff',
