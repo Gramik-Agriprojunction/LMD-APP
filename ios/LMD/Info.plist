@@ -35,6 +35,11 @@
 		<string>whatsapp</string>
 		<string>tel</string>
 		<string>https</string>
+		<string>upi</string>
+		<string>tez</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>gpay</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
@@ -46,7 +51,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>PIN code auto-fill ke liye aapki location use hoti hai.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

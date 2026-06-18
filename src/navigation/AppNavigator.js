@@ -22,6 +22,10 @@ import PenaltyOrders from '../screens/PenaltyOrders';
 import BatchPickupOtp from '../screens/BatchPickupOtp';
 import MarkDispute from '../screens/MarkDispute';
 import RejectDelivery from '../screens/RejectDelivery';
+import SoilOrders from '../screens/SoilOrders';
+import SoilOrderDetail from '../screens/SoilOrderDetail';
+import CreateSoilOrder from '../screens/CreateSoilOrder';
+import SelectFarmer from '../screens/SelectFarmer';
 
 const Stack = createNativeStackNavigator();
 
@@ -59,6 +63,10 @@ export default function AppNavigator() {
         <Stack.Screen name="BatchPickupOtp" component={BatchPickupOtp} />
         <Stack.Screen name="MarkDispute" component={MarkDispute} />
         <Stack.Screen name="RejectDelivery" component={RejectDelivery} />
+        <Stack.Screen name="SoilOrders" component={SoilOrders} />
+        <Stack.Screen name="SoilOrderDetail" component={SoilOrderDetail} />
+        <Stack.Screen name="CreateSoilOrder" component={CreateSoilOrder} />
+        <Stack.Screen name="SelectFarmer" component={SelectFarmer} />
       </Stack.Navigator>
     </NavigationContainer>
   );

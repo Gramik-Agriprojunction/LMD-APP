@@ -29,5 +29,12 @@ const strings = {
   penaltyOrders : baseurl + 'lmd/penalty-orders',
   bulkPickupGenerateOtp : baseurl + 'lmd/bulk-pickup-generate-otp',
   bulkPickupOtpVerify : baseurl + 'lmd/bulk-pickup-otp-verify',
+  soilOrders : baseurl + 'soil-testing/soil-order',
+  soilOrderDetail : baseurl + 'soil-testing/soil-order/',
+  cancelSoilOrder : baseurl + 'soil-testing/soil-order-cancelled/',
+  soilPackages : baseurl + 'soil-testing/soil-package',
+  createSoilOrder : baseurl + 'soil-testing/soil-order',
+  getPostOffice : baseurl + 'user/get-post-office',
+  allFarmers : baseurl + 'user/all-farmer',
 };
 export default strings;

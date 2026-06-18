@@ -1,94 +1,104 @@
-import React from 'react';
+import React, {
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef,
+} from 'react';
+import { StyleSheet } from 'react-native';
 import {
-  View, Modal, StyleSheet, TouchableWithoutFeedback,
-  Dimensions, Animated, PanResponder,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+  BottomSheetModal,
+  BottomSheetBackdrop,
+  BottomSheetView,
+  BottomSheetScrollView,
+} from '@gorhom/bottom-sheet';
 
-const SH = Dimensions.get('window').height;
+const BottomSheet = forwardRef(function BottomSheet(props, ref) {
+  const {
+    visible = true,
+    children,
+    onSheetClose,
+    enablePanDownToClose = true,
+    enableContentPanningGesture: contentPanningGesture,
+    onChange,
+    scrollable = false,
+    snapPoint = '92%',
+    dynamicSize = false,
+    maxDynamicContentSize,
+  } = props;
 
-export default class BottomSheet extends React.Component {
-  static defaultProps = { enablePanDownToClose: true };
+  const modalRef = useRef(null);
+  const snapPoints = useMemo(() => [snapPoint], [snapPoint]);
+  const contentPanning = contentPanningGesture ?? enablePanDownToClose;
 
-  constructor(props) {
-    super(props);
-    this.translateY = new Animated.Value(SH);
+  useImperativeHandle(ref, () => ({
+    close: () => modalRef.current?.dismiss(),
+  }));
 
-    // Drag-to-close from anywhere inside the sheet.
-    // - Capture phase fires before children (ScrollViews, lists, buttons) get
-    //   the gesture, so a downward drag steals focus even when the touch lands
-    //   on scrollable / tappable content.
-    // - Direction guard (dy bigger than dx, downward only) prevents stealing
-    //   from horizontal swipes or upward scrolls.
-    // Lower threshold = snappier drag pickup. Direction guard keeps horizontal
-    // swipes / upward scrolls from being stolen.
-    const isDownwardDrag = (g) => g.dy > 6 && g.dy > Math.abs(g.dx) * 1.4;
-    this.pan = PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponder: (_, g) => isDownwardDrag(g),
-      onMoveShouldSetPanResponderCapture: (_, g) => isDownwardDrag(g),
-      onPanResponderGrant: () => {
-        // Stop any in-flight spring so the drag tracks the finger from 0.
-        this.translateY.stopAnimation();
-      },
-      onPanResponderMove: (_, g) => { if (g.dy > 0) this.translateY.setValue(g.dy); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) this.close();
-        else Animated.spring(this.translateY, { toValue: 0, friction: 10, tension: 50, useNativeDriver: true }).start();
-      },
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
-    });
-  }
+  useEffect(() => {
+    if (visible) modalRef.current?.present();
+    else modalRef.current?.dismiss();
+  }, [visible]);
 
-  componentDidMount() {
-    Animated.spring(this.translateY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }).start();
-    if (typeof this.props.onChange === 'function') this.props.onChange(0);
-  }
+  const renderBackdrop = useCallback((backdropProps) => (
+    <BottomSheetBackdrop
+      {...backdropProps}
+      disappearsOnIndex={-1}
+      appearsOnIndex={0}
+      opacity={0.5}
+      pressBehavior="close"
+    />
+  ), []);
 
-  close = () => {
-    Animated.timing(this.translateY, { toValue: SH, duration: 250, useNativeDriver: true }).start(() => {
-      if (typeof this.props.onSheetClose === 'function') this.props.onSheetClose();
-      if (typeof this.props.onChange === 'function') this.props.onChange(-1);
-    });
-  };
+  const handleChange = useCallback((index) => {
+    onChange?.(index);
+  }, [onChange]);
 
-  render() {
-    const { visible, children } = this.props;
-    if (visible === false) return null;
+  const handleDismiss = useCallback(() => {
+    onSheetClose?.();
+    onChange?.(-1);
+  }, [onSheetClose, onChange]);
 
-    return (
-      <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={() => this.close()}>
-        <View style={$.root}>
-          <TouchableWithoutFeedback onPress={() => this.close()}>
-            <View style={$.touchArea} />
-          </TouchableWithoutFeedback>
-          <Animated.View
-            {...this.pan.panHandlers}
-            style={[$.sheet, { maxHeight: SH * 0.9, transform: [{ translateY: this.translateY }] }]}
-          >
-            <View style={$.handleWrap}>
-              <View style={$.handle} />
-            </View>
-            <SafeAreaView edges={['bottom']}>
-              {children}
-            </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
-    );
-  }
-}
+  const Wrapper = scrollable ? BottomSheetScrollView : BottomSheetView;
+
+  return (
+    <BottomSheetModal
+      ref={modalRef}
+      snapPoints={dynamicSize ? undefined : snapPoints}
+      enableDynamicSizing={dynamicSize}
+      maxDynamicContentSize={maxDynamicContentSize}
+      enablePanDownToClose={enablePanDownToClose}
+      enableContentPanningGesture={contentPanning}
+      enableHandlePanningGesture={enablePanDownToClose}
+      backdropComponent={renderBackdrop}
+      onChange={handleChange}
+      onDismiss={handleDismiss}
+      handleIndicatorStyle={$.handle}
+      backgroundStyle={$.sheetBg}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+    >
+      <Wrapper
+        style={scrollable ? $.scrollWrap : $.content}
+        contentContainerStyle={scrollable ? $.scrollInner : undefined}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </Wrapper>
+    </BottomSheetModal>
+  );
+});
+
+BottomSheet.defaultProps = { enablePanDownToClose: true };
+
+export { BottomSheetScrollView };
+export default BottomSheet;
 
 const $ = StyleSheet.create({
-  root: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  touchArea: { flex: 1 },
-  sheet: {
+  sheetBg: {
     backgroundColor: '#FFF',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 6,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
-  handleWrap: { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
-  handle: { width: 44, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1' },
+  handle: { width: 44, height: 5, backgroundColor: '#CBD5E1' },
+  content: { flexGrow: 0 },
+  scrollWrap: { flex: 1 },
+  scrollInner: { paddingBottom: 8 },
 });

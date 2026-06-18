@@ -252,6 +252,32 @@ class Profile extends Component {
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.92}
+            onPress={() => this.props?.navigation?.navigate('SoilOrders')}
+          >
+            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/planting.png')} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Soil Testing</Text>
+              <Text style={styles.actionSub}>Mitti jaanch orders dekhein aur track karein</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.92}
+            onPress={() => this.props?.navigation?.navigate('CreateSoilOrder')}
+          >
+            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/fertilizer.png')} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Create Soil Order</Text>
+              <Text style={styles.actionSub}>Naya soil test package book karein</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
            <TouchableOpacity onPress={()=> this.setState({show_login : true})} style={styles.actionCard} activeOpacity={0.92}>
                 <Image style={{height:35,width:38,marginRight:20,resizeMode:'contain'}} source={require('./assets/exit.png')} />
             <View style={{ flex: 1 }}>

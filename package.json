@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "android:release": "cd android && ./gradlew assembleRelease",
+    "android:bundle": "cd android && ./gradlew bundleRelease",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
@@ -14,6 +16,7 @@
     "@gorhom/bottom-sheet": "^5.2.13",
     "@react-native-async-storage/async-storage": "^3.0.2",
     "@react-native-clipboard/clipboard": "^1.16.3",
+    "@react-native-community/geolocation": "^3.4.0",
     "@react-native-community/netinfo": "^12.0.1",
     "@react-native-community/push-notification-ios": "^1.12.0",
     "@react-native-firebase/app": "^24.0.0",
@@ -32,11 +35,13 @@
     "react-native-gesture-handler": "^2.31.2",
     "react-native-image-crop-picker": "^0.51.1",
     "react-native-push-notification": "^8.1.1",
+    "react-native-razorpay": "^3.0.0",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.24.0",
     "react-native-share": "^12.3.1",
     "react-native-simple-toast": "^3.3.2",
+    "react-native-webview": "^13.16.1",
     "react-native-worklets": "^0.8.3"
   },
   "devDependencies": {

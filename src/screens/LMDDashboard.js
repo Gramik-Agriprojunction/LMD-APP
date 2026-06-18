@@ -205,7 +205,7 @@ class LMDDashboard extends Component {
                 <View style={$.actRow}>
                   {[
                     { l: 'Jama Karein', ico: require('./assets/purse.png'), bg: '#DDD6FE', c: '#4C1D95', nav: 'SettlementList' },
-                    { l: 'History', ico: require('./assets/dlh.png'), bg: '#BFDBFE', c: '#1E3A8A', nav: 'ALL' },
+                    { l: 'Mitti Jaanch', ico: require('./assets/planting.png'), bg: '#D1FAE5', c: '#065F46', nav: 'SoilOrders' },
                     { l: 'Madad', ico: require('./assets/help2.png'), bg: '#A7F3D0', c: '#064E3B', nav: 'support' },
                   ].map(q => (
                     <TouchableOpacity key={q.l} style={[$.qa, { backgroundColor: q.bg }]} activeOpacity={0.8}

@@ -33,7 +33,23 @@ const NAME_MAP = {
   orderVerifyOtp:    'Order Verify OTP',
   farmerSurveyForm:  'Farmer Survey Form',
   fillSurvey:        'Fill Survey',
+  soilOrders:        'Soil Order List',
+  soilOrderDetail:   'Soil Order Detail',
+  cancelSoilOrder:   'Cancel Soil Order',
+  soilPackages:      'Soil Packages',
+  createSoilOrder:   'Create Soil Order',
+  getPostOffice:     'Get Post Office',
+  allFarmers:        'All Farmers',
 };
+
+// Same URL, different methods — disambiguate log labels.
+const METHOD_OVERRIDES = [
+  { match: 'soil-testing/soil-order', method: 'GET', name: 'Soil Order List' },
+  { match: 'soil-testing/soil-order', method: 'POST', name: 'Create Soil Order' },
+  { match: 'soil-testing/soil-package', method: 'GET', name: 'Soil Packages' },
+  { match: 'user/all-farmer', method: 'GET', name: 'All Farmers' },
+  { match: 'user/get-post-office', method: 'POST', name: 'Get Post Office' },
+];
 
 // Build URL → name lookup once at module load.
 const URL_TO_NAME = {};
@@ -46,8 +62,14 @@ Object.entries(constants || {}).forEach(([key, url]) => {
 const isLogEndpoint = (url) =>
   typeof url === 'string' && url.indexOf('localhost:8081/log') !== -1;
 
-function getApiName(url) {
+function getApiName(url, method) {
   if (!url || typeof url !== 'string') return 'API';
+  const m = String(method || 'GET').toUpperCase();
+  if (/\/soil-testing\/soil-order-cancelled\/\d+/.test(url)) return 'Cancel Soil Order';
+  if (/\/soil-testing\/soil-order\/\d+/.test(url)) return 'Soil Order Detail';
+  for (const o of METHOD_OVERRIDES) {
+    if (url.indexOf(o.match) !== -1 && m === o.method) return o.name;
+  }
   // Exact match
   if (URL_TO_NAME[url]) return URL_TO_NAME[url];
   // Prefix match (handles URLs with appended path/query, e.g. settleHistory?status=...)
@@ -96,7 +118,7 @@ global.fetch = async (input, init) => {
     return originalFetch(input, init);
   }
 
-  const name = getApiName(url);
+  const name = getApiName(url, method);
 
   console.log(`${name} API URL== ${method} ${url}`);
   if (opts.body != null) {
