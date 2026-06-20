@@ -14,6 +14,7 @@ import { STATUS } from '../utils/statusColors';
 // Bulk pickup → use the canonical PICKUP status colour so the screen reads
 // as part of the pickup flow (same cyan as the status chip / Pickup tile).
 const BG = STATUS.PICKUP.bg;
+const OTP_ROW_W = 312; // 5 × 56 + 4 × 8 gap — matches OrderOtpVerify
 
 class BatchPickupOtp extends Component {
   constructor(props) {
@@ -182,12 +183,7 @@ class BatchPickupOtp extends Component {
               <>
                 <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
                   <Text style={s.title}>OTP Daalein</Text>
-                </Animated.View>
-
-                {/* Hint banner */}
-                <Animated.View style={[s.hint, { opacity: this.titleFade }]}>
-                  <View style={s.hintIco}><Text style={s.hintIcoT}>!</Text></View>
-                  <Text style={s.hintT}>Ask the darkstore for the OTP to confirm the orders pickup.</Text>
+                  <Text style={s.subtitle}>Warehouse ne jo 5-digit code diya hai, woh daalein</Text>
                 </Animated.View>
 
                 {/* OTP input + verify button (above the orders card) */}
@@ -276,14 +272,9 @@ const s = StyleSheet.create({
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   backIco: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
 
-  titleWrap: { alignItems: 'center', marginBottom: 10, marginTop: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 4 },
-
-  // Yellow hint banner
-  hint: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 14, borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
-  hintIco: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  hintIcoT: { color: '#FFF', fontSize: 14, fontWeight: '900', lineHeight: 16 },
-  hintT: { flex: 1, fontSize: 12.5, fontWeight: '600', color: '#92400E', lineHeight: 17 },
+  titleWrap: { alignItems: 'center', marginBottom: 6, marginTop: 4 },
+  title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 6 },
+  subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 20 },
 
   // Summary card (count + order list)
   summaryCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 14, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
@@ -306,11 +297,15 @@ const s = StyleSheet.create({
   moreT: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: 6 },
 
   formWrap: { alignItems: 'center' },
-  otpView: { width: '100%', height: 65, marginBottom: 16 },
-  otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 32, fontWeight: '800' },
+  otpView: { alignSelf: 'center', width: OTP_ROW_W, height: 65, marginBottom: 16 },
+  otpField: {
+    width: 56, height: 60, borderRadius: 12,
+    backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent',
+    color: BG, fontSize: 32, fontWeight: '800',
+  },
   otpActive: { borderColor: '#FCD34D', borderWidth: 2.5 },
 
-  btn: { width: '100%', height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  btn: { width: OTP_ROW_W, height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   btnT: { fontSize: 15, fontWeight: '800', color: BG, letterSpacing: 0.3 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
 

@@ -37,9 +37,9 @@ const W = Dimensions.get('window').width;
 const H = Dimensions.get('window').height;
 const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
 const PAD = 10;
-const FOOTER_PAD = 14;
-const FOOTER_ROW_H = 56;
-const FOOTER_H = 58;
+const FOOTER_PAD = 20;
+const FOOTER_ROW_H = 48;
+const FOOTER_H = 52;
 const FOOTER_BOTTOM = Math.max(Math.round((initialWindowMetrics?.insets?.bottom || 0) * 0.35), 6);
 const PAY_GREEN = '#26BD26';
 const HIT = { top: 10, bottom: 10, left: 10, right: 10 };
@@ -130,6 +130,7 @@ const farmerPhone = (f) => f?.mobile || f?.phone || f?.farmer_mobile || f?.conta
 const farmerEmail = (f) => f?.email || f?.farmer_email || '';
 const farmerVillage = (f) => f?.village || f?.city || f?.district || f?.address || '';
 const farmerId = (f) => f?.id || f?.farmer_id || f?.user_id;
+const isValidFarmer = (f) => !!(f && (farmerId(f) || String(farmerName(f)).trim()));
 const initials = (name) => String(name || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '+';
 
 const payShortLabel = (code, name) => {
@@ -226,7 +227,6 @@ class CreateSoilOrder extends Component {
     this._momentum = false;
     this._totalListener = null;
     this.pkgRefs = {};
-    this.farmerRef = null;
     this.scrollRef = null;
     this.sheetY = 0;
     this.jaankariY = 0;
@@ -253,11 +253,27 @@ class CreateSoilOrder extends Component {
 
   applyFarmerFromNav = () => {
     const farmer = this.props.navigation.getParam('selectedFarmer');
-    if (farmer) this.setState({ selectedFarmer: farmer }, () => this.farmerRef?.pulse?.(500));
+    if (isValidFarmer(farmer)) {
+      const curId = farmerId(this.state.selectedFarmer);
+      const nextId = farmerId(farmer);
+      if (String(nextId || '') !== String(curId || '')) {
+        this.setState({ selectedFarmer: farmer }, () => this.sectionRefs.farmer?.pulse?.(500));
+      }
+      return;
+    }
+    if (farmer != null) {
+      this.props.navigation.setParams?.({ selectedFarmer: undefined });
+    }
+    if (this.state.selectedFarmer && !isValidFarmer(this.state.selectedFarmer)) {
+      this.setState({ selectedFarmer: null });
+    }
   };
 
   openSelectFarmer = () => {
     if (this.state.highlightField === 'farmer') this.clearHighlight();
+    if (!isValidFarmer(this.state.selectedFarmer)) {
+      this.props.navigation.setParams?.({ selectedFarmer: undefined });
+    }
     this.props.navigation.navigate('SelectFarmer');
   };
 
@@ -288,7 +304,7 @@ class CreateSoilOrder extends Component {
   getMissingField = () => {
     const { selectedPackageId, selectedFarmer, pincode, state, district, fullAddress, postOffice, dateObj } = this.state;
     if (!selectedPackageId) return { key: 'package', section: 'package', message: 'Package chunein' };
-    if (!selectedFarmer) return { key: 'farmer', section: 'farmer', message: 'Farmer chunein' };
+    if (!isValidFarmer(selectedFarmer)) return { key: 'farmer', section: 'farmer', message: 'Farmer chunein' };
     if (pincode.length !== 6) return { key: 'pin', section: 'address', message: '6 digit PIN daalein' };
     if (!state.trim()) return { key: 'state', section: 'address', message: 'State daalein' };
     if (!district.trim()) return { key: 'district', section: 'address', message: 'District daalein' };
@@ -737,7 +753,11 @@ class CreateSoilOrder extends Component {
 
   renderFixedBanner = () => {
     const { pageData, heroImgFailed } = this.state;
-    const bannerUri = pageData?.banner?.image;
+    const bannerUri = pageData?.banner?.image
+      || pageData?.banner?.url
+      || (typeof pageData?.banner === 'string' ? pageData.banner : null)
+      || pageData?.banner_image
+      || pageData?.hero_image;
     const showBanner = !!bannerUri && !heroImgFailed;
     const bannerH = this.scrollY.interpolate({
       inputRange: [0, COLLAPSE_DIST],
@@ -943,7 +963,7 @@ class CreateSoilOrder extends Component {
   renderFarmer = () => {
     const { selectedFarmer, highlightField } = this.state;
     const farmerHi = highlightField === 'farmer';
-    if (!selectedFarmer) {
+    if (!isValidFarmer(selectedFarmer)) {
       return (
         <Pressable onPress={this.openSelectFarmer} style={({ pressed }) => [$.farmerEmpty, farmerHi && $.fieldHighlight, pressed && { opacity: 0.85 }]}>
           <View style={$.farmerAddIco}>
@@ -960,20 +980,18 @@ class CreateSoilOrder extends Component {
     const phone = farmerPhone(selectedFarmer);
     const village = farmerVillage(selectedFarmer);
     return (
-      <Animatable.View ref={(r) => { this.farmerRef = r; }} animation="fadeIn" duration={240} useNativeDriver>
-        <Pressable onPress={this.openSelectFarmer} style={({ pressed }) => [$.farmerCard, pressed && { opacity: 0.9 }]}>
-          <View style={$.avatar}><Text style={$.avatarT}>{initials(name)}</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={$.farmerName} numberOfLines={1}>{name}</Text>
-            {!!phone && <Text style={$.farmerMeta}>📱 {phone}</Text>}
-            {!!village && <Text style={$.farmerMeta} numberOfLines={1}>{village}</Text>}
-          </View>
-          <View style={$.changePill}>
-            <Image source={I.edit} style={$.changeIco} />
-            <Text style={$.changePillT}>Badlein</Text>
-          </View>
-        </Pressable>
-      </Animatable.View>
+      <Pressable onPress={this.openSelectFarmer} style={({ pressed }) => [$.farmerCard, pressed && { opacity: 0.9 }]}>
+        <View style={$.avatar}><Text style={$.avatarT}>{initials(name)}</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={$.farmerName} numberOfLines={1}>{name}</Text>
+          {!!phone && <Text style={$.farmerMeta}>📱 {phone}</Text>}
+          {!!village && <Text style={$.farmerMeta} numberOfLines={1}>{village}</Text>}
+        </View>
+        <View style={$.changePill}>
+          <Image source={I.edit} style={$.changeIco} />
+          <Text style={$.changePillT}>Badlein</Text>
+        </View>
+      </Pressable>
     );
   };
 
@@ -1992,37 +2010,37 @@ const $ = StyleSheet.create({
 
   footerWrap: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: FOOTER_PAD, paddingTop: 5,
+    paddingHorizontal: FOOTER_PAD, paddingTop: 4,
     borderTopWidth: 1, borderTopColor: CARD_BORDER,
   },
   footerRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8, width: '100%', minHeight: FOOTER_ROW_H },
   payViaBox: {
-    width: 118, flexShrink: 0,
-    backgroundColor: '#FAFBFC', borderRadius: 12, borderWidth: 1, borderColor: CARD_BORDER,
-    paddingHorizontal: 10, justifyContent: 'center', height: FOOTER_ROW_H,
+    width: 112, flexShrink: 0,
+    backgroundColor: '#FAFBFC', borderRadius: 11, borderWidth: 1, borderColor: CARD_BORDER,
+    paddingHorizontal: 8, justifyContent: 'center', height: FOOTER_ROW_H,
   },
   payViaRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   payViaIco: {
-    width: 34, height: 34, borderRadius: 9, backgroundColor: '#FFF',
-    alignItems: 'center', justifyContent: 'center', marginRight: 8, overflow: 'hidden',
+    width: 28, height: 28, borderRadius: 8, backgroundColor: '#FFF',
+    alignItems: 'center', justifyContent: 'center', marginRight: 6, overflow: 'hidden',
     borderWidth: 1, borderColor: CARD_BORDER,
   },
   payViaImg: { width: '100%', height: '100%' },
   payViaFb: { width: 18, height: 18, tintColor: S.SUB, resizeMode: 'contain' },
   payViaTextCol: { flex: 1, minWidth: 0 },
-  payViaLbl: { fontSize: 9.5, fontWeight: '500', color: S.SUB },
-  payViaName: { fontSize: 12, fontWeight: '700', color: S.TXT, marginTop: 1 },
-  payViaChev: { width: 10, height: 10, tintColor: S.MUTED, resizeMode: 'contain', marginLeft: 4 },
+  payViaLbl: { fontSize: 9, fontWeight: '500', color: S.SUB },
+  payViaName: { fontSize: 11.5, fontWeight: '700', color: S.TXT, marginTop: 1 },
+  payViaChev: { width: 9, height: 9, tintColor: S.MUTED, resizeMode: 'contain', marginLeft: 3 },
   payNowBtn: {
     flex: 1, flexGrow: 1, flexShrink: 1, minWidth: 0,
-    backgroundColor: PAY_GREEN, borderRadius: 12,
+    backgroundColor: PAY_GREEN, borderRadius: 11,
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 10, height: FOOTER_ROW_H,
   },
   payBtnBusy: { opacity: 0.75 },
-  payNowInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 4 },
-  payNowLbl: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.1 },
-  payBtnArrow: { width: 14, height: 14, tintColor: '#FFF', resizeMode: 'contain' },
+  payNowInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
+  payNowLbl: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.1 },
+  payBtnArrow: { width: 13, height: 13, tintColor: '#FFF', resizeMode: 'contain' },
   payDiscBadge: {
     backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 6,
     paddingHorizontal: 7, paddingVertical: 3, marginLeft: 4,

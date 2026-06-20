@@ -1,9 +1,10 @@
 import React, { Component } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Image,
-  ActivityIndicator, RefreshControl, Animated, Dimensions, LayoutAnimation,
-  Platform, UIManager, Pressable, Easing,
+  ActivityIndicator, RefreshControl, LayoutAnimation, Platform, UIManager, Pressable,
+  Animated, Dimensions,
 } from 'react-native';
+import { initialWindowMetrics } from 'react-native-safe-area-context';
 import moment from 'moment';
 import constants from '../utils/constants';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
@@ -15,12 +16,15 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const W = Dimensions.get('window').width;
-const PAD = 8;
-const FOOTER_PAD = 20;
-const FOOTER = 56;
+const PAD = 10;
+const FOOTER_PAD = 24;
+const FOOTER_H = 58;
+const FOOTER_BOTTOM = Math.max(Math.round((initialWindowMetrics?.insets?.bottom || 0) * 0.35), 6);
+const SCREEN_BG = '#edf1f7';
 const BOOK_GREEN = '#28AD54';
-const BOOK_GREEN_DARK = '#1E8A42';
+const SCREEN_W = Dimensions.get('window').width;
+const TAB_PAD = 4;
+const TAB_INNER = SCREEN_W - PAD * 2 - TAB_PAD * 2;
 
 const titleCase = (s) => {
   const t = String(s || '').toLowerCase();
@@ -28,37 +32,33 @@ const titleCase = (s) => {
 };
 
 const TABS = [
-  { key: 'all', label: 'All', apiTab: '', ico: I.order },
-  { key: 'pickup', label: 'Pickup', apiTab: 'pending', ico: I.clock },
-  { key: 'lab', label: 'Lab', apiTab: 'lab', ico: I.fertilizer },
-  { key: 'ready', label: 'Ready', apiTab: 'ready', ico: I.doc },
+  { key: 'all', label: 'All', apiTab: '' },
+  { key: 'pickup', label: 'Pickup', apiTab: 'pending' },
+  { key: 'lab', label: 'Lab', apiTab: 'lab' },
+  { key: 'ready', label: 'Ready', apiTab: 'ready' },
 ];
 
+const TAB_W = TAB_INNER / TABS.length;
+
 const STAGE = {
-  pickup: { color: S.ORANGE, fill: S.ORANGE, bg: S.ORANGE_BG, ico: I.clock, label: 'Pickup pending' },
-  lab: { color: S.BLUE, fill: S.BLUE, bg: S.BLUE_BG, ico: I.fertilizer, label: 'In lab' },
-  ready: { color: S.GREEN_DARK, fill: S.GREEN, bg: S.GREEN_BG, ico: I.doc, label: 'Report ready' },
-  cancelled: { color: S.RED, fill: S.RED, bg: S.RED_BG, ico: I.close, label: 'Cancelled' },
+  pickup: { color: S.ORANGE, fill: S.ORANGE, bg: S.ORANGE_BG, label: 'Pickup pending', icon: I.clock },
+  lab: { color: S.BLUE, fill: S.BLUE, bg: S.BLUE_BG, label: 'In lab', icon: I.fertilizer },
+  ready: { color: S.GREEN_DARK, fill: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Report ready', icon: I.doc },
+  cancelled: { color: S.RED, fill: S.RED, bg: S.RED_BG, label: 'Cancelled', icon: I.close },
 };
 
 const PKG = {
-  BASIC: { color: S.GREEN_DARK, fill: S.GREEN_BG, accent: S.GREEN },
-  ADVANCE: { color: S.P_DARK, fill: S.P_TINT, accent: S.P },
-  PREMIUM: { color: S.AMBER, fill: S.AMBER_BG, accent: S.AMBER },
+  BASIC: { color: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Basic' },
+  ADVANCE: { color: S.P_DARK, bg: S.P_TINT, label: 'Advance' },
+  PREMIUM: { color: S.AMBER, bg: S.AMBER_BG, label: 'Premium' },
 };
 
 const EMPTY_COPY = {
-  all: { title: 'Koi order nahi mila', sub: 'Apna pehla soil test book karein aur yahan track karein' },
-  pickup: { title: 'Pickup orders nahi hain', sub: 'Jab sample pickup hoga, order yahan dikhega' },
-  lab: { title: 'Lab mein koi sample nahi', sub: 'Testing ke dauran orders yahan dikhenge' },
-  ready: { title: 'Report ready nahi hai', sub: 'Jab report ban jayega, yahan dikhega' },
+  all: { title: 'Koi order nahi', sub: 'Neeche se soil test book karein' },
+  pickup: { title: 'Pickup pending nahi', sub: 'Pickup ke baad yahan dikhega' },
+  lab: { title: 'Lab sample nahi', sub: 'Testing ke dauran dikhega' },
+  ready: { title: 'Report ready nahi', sub: 'Report banne par dikhega' },
 };
-
-const EMPTY_STEPS = [
-  { ico: I.clock, label: 'Pickup', fill: '#FFF3E6', icoColor: '#D97706' },
-  { ico: I.fertilizer, label: 'Lab test', fill: '#E8EEFF', icoColor: '#4F6FD6' },
-  { ico: I.doc, label: 'Report', fill: '#E6F7F0', icoColor: BOOK_GREEN },
-];
 
 const getStage = (o) => {
   const stt = String(o?.status || '').toLowerCase();
@@ -73,8 +73,10 @@ const getStage = (o) => {
 const getPkg = (o) => {
   const line = o?.packages?.[0];
   const p = line?.package || {};
+  const name = String(p?.name || 'BASIC').toUpperCase();
   return {
-    type: String(p?.type || p?.name || 'Soil Test').toUpperCase(),
+    key: name,
+    label: PKG[name]?.label || titleCase(name),
     price: o?.final_total_amount || line?.package_amount || p?.price || 0,
     qty: line?.quantity || 1,
   };
@@ -83,130 +85,33 @@ const getPkg = (o) => {
 const payLbl = (m) => {
   const s = String(m || '').toLowerCase();
   if (s === 'cash_on_delivery' || s === 'cod') return 'COD';
+  if (s.includes('google')) return 'GPay';
   if (s === 'online' || s === 'upi') return 'Online';
-  return m || '-';
+  return titleCase(s.replace(/_/g, ' ')) || '-';
 };
 
-class EmptyState extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.o = new Animated.Value(0);
-    this.y = new Animated.Value(16);
-  }
-  componentDidMount() {
-    Animated.parallel([
-      Animated.timing(this.o, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(this.y, { toValue: 0, friction: 8, tension: 55, useNativeDriver: true }),
-    ]).start();
-  }
-  render() {
-    const { tab } = this.props;
-    const copy = EMPTY_COPY[tab] || EMPTY_COPY.all;
-    return (
-      <Animated.View style={[st.empty, { opacity: this.o, transform: [{ translateY: this.y }] }]}>
-        <View style={st.emptyCard}>
-          <View style={st.emptyIconOuter}>
-            <View style={st.emptyIconRing} />
-            <View style={st.emptyIconCircle}>
-              <Image source={I.plant} style={st.emptyIco} />
-            </View>
-          </View>
+const CARD_ICO = {
+  cal: require('./assets/cal.png'),
+  money: require('./assets/money.png'),
+  pay: require('./assets/pay.png'),
+  doc: require('./assets/doc.png'),
+  tick: require('./assets/tick.png'),
+  soil: require('./assets/soil.png'),
+};
 
-          <Text style={st.emptyT}>{copy.title}</Text>
-          <Text style={st.emptyS}>{copy.sub}</Text>
+const SWAP = { duration: 180, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'easeInEaseOut' } };
 
-          <View style={st.emptySteps}>
-            {EMPTY_STEPS.map((s) => (
-              <View key={s.label} style={[st.emptyStep, { backgroundColor: s.fill }]}>
-                <Image source={s.ico} style={[st.emptyStepIco, { tintColor: s.icoColor }]} />
-                <Text style={[st.emptyStepTxt, { color: s.icoColor }]}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={st.emptyHint}>
-            <Image source={I.down} style={st.emptyHintIco} />
-            <Text style={st.emptyHintTxt}>Neeche "Book Soil Test" dabayein</Text>
-          </View>
-        </View>
-      </Animated.View>
-    );
-  }
-}
-
-const SWAP = { duration: 240, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'easeInEaseOut' } };
-
-class FadeCard extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.o = new Animated.Value(0);
-    this.y = new Animated.Value(12);
-  }
-  componentDidMount() {
-    const d = Math.min((this.props.delay || 0) * 50, 250);
-    Animated.parallel([
-      Animated.timing(this.o, { toValue: 1, duration: 300, delay: d, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.spring(this.y, { toValue: 0, friction: 8, tension: 65, delay: d, useNativeDriver: true }),
-    ]).start();
-  }
-  render() {
-    return (
-      <Animated.View style={{ opacity: this.o, transform: [{ translateY: this.y }] }}>
-        {this.props.children}
-      </Animated.View>
-    );
-  }
-}
-
-class PressCard extends React.PureComponent {
-  s = new Animated.Value(1);
-  in = () => Animated.spring(this.s, { toValue: 0.98, friction: 8, tension: 120, useNativeDriver: true }).start();
-  out = () => Animated.spring(this.s, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
-  render() {
-    const { onPress, style, children } = this.props;
-    return (
-      <Animated.View style={{ transform: [{ scale: this.s }] }}>
-        <Pressable onPress={onPress} onPressIn={this.in} onPressOut={this.out} style={style}>
-          {children}
-        </Pressable>
-      </Animated.View>
-    );
-  }
-}
-
-class BookArrow extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.slide = new Animated.Value(0);
-    this._loop = null;
-  }
-  componentDidMount() {
-    this._loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(this.slide, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(this.slide, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]),
-    );
-    this._loop.start();
-  }
-  componentWillUnmount() {
-    this._loop?.stop();
-  }
-  render() {
-    const tx = this.slide.interpolate({ inputRange: [0, 1], outputRange: [0, 4] });
-    return (
-      <Animated.Image source={I.arrow} style={[st.bookArrowIco, { transform: [{ translateX: tx }] }]} />
-    );
-  }
-}
+const FootItem = ({ icon, text, textColor }) => (
+  <View style={st.footItem}>
+    <Image source={icon} style={st.footIco} resizeMode="contain" />
+    <Text style={[st.footTxt, textColor && { color: textColor }]} numberOfLines={1}>{text}</Text>
+  </View>
+);
 
 class SoilOrders extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { loading: true, refreshing: false, orders: [], tab: 'all' };
-    this.pillX = new Animated.Value(0);
-    this.fetchSeq = 0;
-  }
+  state = { loading: true, refreshing: false, orders: [], tab: 'all' };
+  fetchSeq = 0;
+  tabX = new Animated.Value(0);
 
   componentDidMount() {
     this.fetchOrders();
@@ -215,12 +120,15 @@ class SoilOrders extends Component {
   goBack = () => this.props?.navigation?.goBack?.();
   onBook = () => this.props.navigation.navigate('CreateSoilOrder');
 
-  segW = () => (W - PAD * 2 - 8) / TABS.length;
-
   switchTab = (key) => {
     if (key === this.state.tab) return;
     const idx = TABS.findIndex((t) => t.key === key);
-    Animated.spring(this.pillX, { toValue: idx * this.segW(), friction: 10, tension: 110, useNativeDriver: true }).start();
+    Animated.spring(this.tabX, {
+      toValue: idx * TAB_W,
+      useNativeDriver: true,
+      friction: 9,
+      tension: 90,
+    }).start();
     this.setState({ tab: key, loading: true, orders: [] }, () => this.fetchOrders(key));
   };
 
@@ -250,19 +158,17 @@ class SoilOrders extends Component {
 
   onRefresh = () => this.setState({ refreshing: true }, () => this.fetchOrders());
 
-  renderTabs = () => {
+  renderTabBar = () => {
     const { tab } = this.state;
-    const sw = this.segW();
     return (
-      <View style={st.tabWrap}>
-        <View style={st.seg}>
-          <Animated.View style={[st.segPill, { width: sw, transform: [{ translateX: this.pillX }] }]} />
+      <View style={st.tabBarWrap}>
+        <View style={st.tabBar}>
+          <Animated.View style={[st.tabIndicator, { width: TAB_W, transform: [{ translateX: this.tabX }] }]} />
           {TABS.map((t) => {
             const on = tab === t.key;
             return (
-              <TouchableOpacity key={t.key} style={[st.segItem, { width: sw }]} activeOpacity={0.75} onPress={() => this.switchTab(t.key)}>
-                <Image source={t.ico} style={[st.segIco, { tintColor: on ? S.P : 'rgba(255,255,255,0.75)' }]} />
-                <Text style={[st.segTxt, on && st.segTxtOn]}>{t.label}</Text>
+              <TouchableOpacity key={t.key} style={st.tabBtn} activeOpacity={0.85} onPress={() => this.switchTab(t.key)}>
+                <Text style={[st.tabLbl, on && st.tabLblOn]}>{t.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -271,9 +177,19 @@ class SoilOrders extends Component {
     );
   };
 
-  renderCard = ({ item, index }) => {
+  renderListHeader = () => {
+    const { orders, tab } = this.state;
+    if (!orders.length) return null;
+    const tabLbl = TABS.find((t) => t.key === tab)?.label || 'All';
+    return (
+      <Text style={st.listCount}>
+        {orders.length} {tabLbl.toLowerCase()} order{orders.length !== 1 ? 's' : ''}
+      </Text>
+    );
+  };
+
+  renderCard = ({ item }) => {
     const pkg = getPkg(item);
-    const pt = PKG[pkg.type] || PKG.BASIC;
     const stage = getStage(item);
     const sm = STAGE[stage] || STAGE.pickup;
     const pickup = item?.sample_pickup_date ? moment(item.sample_pickup_date).format('DD MMM') : '-';
@@ -283,92 +199,60 @@ class SoilOrders extends Component {
     const hasPdf = Array.isArray(item?.report) && item.report.length > 0;
     const pdfCount = hasPdf ? item.report.length : 0;
     const farmer = item?.farmer?.name || 'Farmer';
-    const district = item?.farmer?.address || item?.address?.district || '';
+    const loc = item?.farmer?.address || item?.address?.district || '';
 
     return (
-      <FadeCard delay={index < 6 ? index : 0}>
-        <PressCard
-          style={st.card}
-          onPress={() => this.props.navigation.navigate('SoilOrderDetail', { orderId: item.id, order: item })}
-        >
-          <View style={[st.cardAccent, { backgroundColor: sm.fill }]} />
-
-          <View style={st.cardBody}>
-            <View style={st.cardHead}>
-              <View style={[st.pkgIco, { backgroundColor: pt.fill }]}>
-                <Image source={I.plant} style={[st.pkgIcoImg, { tintColor: pt.accent }]} />
-              </View>
-              <View style={st.cardHeadInfo}>
-                <View style={st.cardTitleRow}>
-                  <Text style={st.cTitle} numberOfLines={1}>{titleCase(pkg.type)} Soil Test</Text>
-                  <Text style={st.cPrice}>₹{pkg.price}</Text>
-                </View>
-                <Text style={st.cFarmer} numberOfLines={1}>
-                  {farmer}{district ? ` · ${district}` : ''}
-                </Text>
-                <View style={st.badgeRow}>
-                  <View style={[st.statusBadge, { backgroundColor: sm.bg }]}>
-                    <Image source={sm.ico} style={[st.statusBadgeIco, { tintColor: sm.color }]} />
-                    <Text style={[st.statusBadgeTxt, { color: sm.color }]} numberOfLines={1}>{report}</Text>
-                  </View>
-                  {unpaid && (
-                    <View style={st.unpaidBadge}>
-                      <Text style={st.unpaidTxt}>Unpaid</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-
-            <View style={st.cardFoot}>
-              <View style={st.metaGroup}>
-                <View style={st.metaItem}>
-                  <Image source={I.calendar} style={st.metaIco} />
-                  <Text style={st.metaTxt}>{pickup}</Text>
-                </View>
-                <View style={st.metaSep} />
-                <View style={st.metaItem}>
-                  <Image source={I.wallet} style={st.metaIco} />
-                  <Text style={st.metaTxt}>{pay}</Text>
-                </View>
-                <View style={st.metaSep} />
-                <View style={st.metaItem}>
-                  <Image source={I.bag} style={st.metaIco} />
-                  <Text style={st.metaTxt}>×{pkg.qty}</Text>
-                </View>
-              </View>
-
-              {hasPdf ? (
-                <View style={st.pdfBadge}>
-                  <Image source={I.doc} style={st.pdfBadgeIco} />
-                  <Text style={st.pdfBadgeTxt}>{pdfCount} PDF</Text>
-                </View>
-              ) : (
-                <View style={st.arrowBtn}>
-                  <Image source={I.arrow} style={st.arrowIco} />
-                </View>
-              )}
-            </View>
+      <Pressable
+        style={({ pressed }) => [st.card, { borderLeftColor: sm.fill }, pressed && st.cardPressed]}
+        onPress={() => this.props.navigation.navigate('SoilOrderDetail', { orderId: item.id, order: item })}
+      >
+        <View style={st.cardTop}>
+          <View style={[st.soilIco, { backgroundColor: sm.bg }]}>
+            <Image source={CARD_ICO.soil} style={st.soilImg} resizeMode="contain" />
           </View>
-        </PressCard>
-      </FadeCard>
+          <View style={st.cardMid}>
+            <View style={st.nameRow}>
+              <Text style={st.farmerName} numberOfLines={1}>{farmer}</Text>
+              <Text style={st.price}>₹{Number(pkg.price).toLocaleString('en-IN')}</Text>
+              <Image source={I.arrow} style={st.chev} resizeMode="contain" />
+            </View>
+            <Text style={st.metaTxt} numberOfLines={1}>
+              {pkg.label} · #{item.id}{loc ? ` · ${loc}` : ''}
+            </Text>
+          </View>
+        </View>
+        <View style={[st.cardBot, { backgroundColor: sm.bg }]}>
+          <View style={st.statusRow}>
+            <View style={[st.statusDot, { backgroundColor: sm.color }]} />
+            <Text style={[st.statusTxt, { color: sm.color }]} numberOfLines={1}>{report}</Text>
+          </View>
+          {hasPdf && <Text style={st.pdfT}>{pdfCount} PDF</Text>}
+          <View style={st.spacer} />
+          <FootItem icon={CARD_ICO.cal} text={pickup} />
+          <Text style={st.metaDot}>·</Text>
+          <FootItem icon={CARD_ICO.pay} text={pay} />
+          {unpaid && (
+            <>
+              <Text style={st.metaDot}>·</Text>
+              <FootItem icon={CARD_ICO.money} text="Unpaid" textColor={S.AMBER} />
+            </>
+          )}
+        </View>
+      </Pressable>
     );
   };
 
   renderEmpty = () => {
     if (this.state.loading) return null;
-    return <EmptyState tab={this.state.tab} />;
+    const copy = EMPTY_COPY[this.state.tab] || EMPTY_COPY.all;
+    return (
+      <View style={st.empty}>
+        <Image source={require('./assets/soil.png')} style={st.emptyIco} />
+        <Text style={st.emptyT}>{copy.title}</Text>
+        <Text style={st.emptyS}>{copy.sub}</Text>
+      </View>
+    );
   };
-
-  renderFooter = () => (
-    <View style={st.footer}>
-      <PressCard onPress={this.onBook} style={st.bookBtn}>
-        <Image source={I.plant} style={st.bookPlantIco} />
-        <Text style={st.bookTxt}>Book Soil Test</Text>
-        <BookArrow />
-      </PressCard>
-    </View>
-  );
 
   render() {
     const { loading, refreshing, orders } = this.state;
@@ -378,21 +262,26 @@ class SoilOrders extends Component {
         <StatusBar barStyle="light-content" backgroundColor={S.P} />
         <NavigationEvents onDidFocus={() => this.fetchOrders()} />
 
-        <ScreenHeader
-          bg={S.P}
-          kicker="Aapke soil test orders"
-          title="Mitti Jaanch"
-          onBack={this.goBack}
-          right={
-            <TouchableOpacity activeOpacity={0.7} onPress={() => this.props.navigation.navigate('Notifications')} style={st.hdrBtn}>
-              <Image source={I.bell} style={st.hdrBtnIco} />
-            </TouchableOpacity>
-          }
-        />
-
-        {this.renderTabs()}
+        <View style={st.hdrWrap}>
+          <ScreenHeader
+            bg={S.P}
+            kicker="Soil test orders"
+            title="Mitti Jaanch"
+            onBack={this.goBack}
+            right={(
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => this.props.navigation.navigate('Notifications')}
+                style={st.bellBtn}
+              >
+                <Image source={I.bell} style={st.bellIco} />
+              </TouchableOpacity>
+            )}
+          />
+        </View>
 
         <View style={st.body}>
+          {this.renderTabBar()}
           {loading && !refreshing ? (
             <View style={st.loader}><ActivityIndicator color={S.P} size="small" /></View>
           ) : (
@@ -400,135 +289,115 @@ class SoilOrders extends Component {
               data={orders}
               keyExtractor={(it, i) => `soil-${it?.id || i}`}
               renderItem={this.renderCard}
-              ListHeaderComponent={orders.length > 0 ? (
-                <View style={st.listHdr}>
-                  <Text style={st.listLabel}>{orders.length} order{orders.length !== 1 ? 's' : ''}</Text>
-                </View>
-              ) : null}
+              ListHeaderComponent={this.renderListHeader}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
               ListEmptyComponent={this.renderEmpty}
-              contentContainerStyle={[st.list, orders.length === 0 && { flexGrow: 1 }]}
+              contentContainerStyle={[
+                st.listInner,
+                orders.length === 0 && { flexGrow: 1 },
+              ]}
+              style={st.list}
               showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={this.onRefresh} colors={[S.P]} tintColor={S.P} />}
             />
           )}
         </View>
 
-        {this.renderFooter()}
+        <View style={[st.footerSafe, { paddingBottom: FOOTER_BOTTOM }]}>
+          <View style={st.footer}>
+            <TouchableOpacity style={st.bookBtn} activeOpacity={0.88} onPress={this.onBook}>
+              <Image source={require('./assets/soil.png')} style={st.bookIco} />
+              <Text style={st.bookTxt}>Book Soil Test</Text>
+              <Image source={I.arrow} style={st.bookArrow} />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     );
   }
 }
 
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: S.BG },
+  root: { flex: 1, backgroundColor: SCREEN_BG },
 
-  hdrBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  hdrBtnIco: { width: 16, height: 16, tintColor: '#FFF', resizeMode: 'contain' },
-
-  tabWrap: { paddingHorizontal: PAD, paddingTop: 10, paddingBottom: 6, backgroundColor: S.P },
-  seg: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 12, padding: 3, position: 'relative' },
-  segPill: {
-    position: 'absolute', top: 3, bottom: 3, left: 3, borderRadius: 9, backgroundColor: '#FFF',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 3,
+  hdrWrap: { backgroundColor: S.P },
+  bellBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  segItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, gap: 5, zIndex: 1 },
-  segIco: { width: 13, height: 13, resizeMode: 'contain' },
-  segTxt: { fontSize: 11.5, fontWeight: '600', color: 'rgba(255,255,255,0.65)' },
-  segTxtOn: { color: S.P_DARK },
+  bellIco: { width: 15, height: 15, tintColor: '#FFF', resizeMode: 'contain' },
 
-  body: { flex: 1, backgroundColor: S.BG },
+  body: { flex: 1, backgroundColor: SCREEN_BG },
+
+  tabBarWrap: { paddingHorizontal: PAD, paddingTop: 10, paddingBottom: 6 },
+  tabBar: {
+    flexDirection: 'row', backgroundColor: S.P_SOFT, borderRadius: 12, padding: TAB_PAD,
+    borderWidth: 1, borderColor: S.P_GLOW, position: 'relative',
+  },
+  tabIndicator: {
+    position: 'absolute', top: TAB_PAD, left: TAB_PAD, bottom: TAB_PAD,
+    backgroundColor: '#FFF', borderRadius: 9,
+    shadowColor: S.P, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 2,
+  },
+  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9 },
+  tabLbl: { fontSize: 12, fontWeight: '500', color: S.P_DARK, opacity: 0.65 },
+  tabLblOn: { color: S.P, fontWeight: '600', opacity: 1 },
+
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingHorizontal: PAD + 2, paddingBottom: FOOTER, paddingTop: 4 },
-  listHdr: { paddingTop: 12, paddingBottom: 8 },
-  listLabel: { fontSize: 12, fontWeight: '600', color: S.SUB },
+  list: { flex: 1, paddingHorizontal: PAD },
+  listInner: { paddingBottom: FOOTER_H + 6 },
+  listCount: { fontSize: 11, fontWeight: '500', color: S.MUTED, marginBottom: 4 },
 
   card: {
-    flexDirection: 'row', backgroundColor: S.CARD, borderRadius: 14, marginBottom: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: S.BORDER,
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E8ECF1',
+    borderLeftWidth: 4, overflow: 'hidden',
+    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
   },
-  cardAccent: { width: 4 },
-  cardBody: { flex: 1, padding: 12 },
-  cardHead: { flexDirection: 'row', alignItems: 'flex-start' },
-  pkgIco: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  pkgIcoImg: { width: 20, height: 20, resizeMode: 'contain' },
-  cardHeadInfo: { flex: 1 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  cTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: S.TXT, marginRight: 8 },
-  cPrice: { fontSize: 14, fontWeight: '700', color: S.TXT },
-  cFarmer: { fontSize: 11.5, fontWeight: '500', color: S.SUB, marginBottom: 8 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusBadgeIco: { width: 11, height: 11, resizeMode: 'contain', marginRight: 4 },
-  statusBadgeTxt: { fontSize: 10.5, fontWeight: '600' },
-  unpaidBadge: { backgroundColor: S.AMBER_BG, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#FDE68A' },
-  unpaidTxt: { fontSize: 10, fontWeight: '600', color: S.AMBER },
+  cardPressed: { opacity: 0.96 },
 
-  cardFoot: {
-    flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: S.BORDER,
+  cardTop: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: 11, paddingTop: 11, paddingBottom: 9,
   },
-  metaGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaIco: { width: 12, height: 12, tintColor: S.MUTED, resizeMode: 'contain' },
-  metaTxt: { fontSize: 11, fontWeight: '500', color: S.SUB },
-  metaSep: { width: 1, height: 12, backgroundColor: S.BORDER, marginHorizontal: 8 },
-  pdfBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: S.GREEN_BG,
-    paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, gap: 4,
+  soilIco: {
+    width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 9,
   },
-  pdfBadgeIco: { width: 11, height: 11, tintColor: S.GREEN_DARK, resizeMode: 'contain' },
-  pdfBadgeTxt: { fontSize: 10.5, fontWeight: '700', color: S.GREEN_DARK },
-  arrowBtn: {
-    width: 28, height: 28, borderRadius: 8, backgroundColor: S.P_TINT,
-    alignItems: 'center', justifyContent: 'center',
+  soilImg: { width: 24, height: 24 },
+  cardMid: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3, gap: 6 },
+  farmerName: { fontSize: 14, fontWeight: '600', color: S.TXT, flex: 1 },
+  metaTxt: { fontSize: 10.5, fontWeight: '400', color: S.SUB },
+  spacer: { flex: 1, minWidth: 4 },
+  cardBot: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 11, paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.06)',
   },
-  arrowIco: { width: 10, height: 10, tintColor: S.P, resizeMode: 'contain' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusTxt: { fontSize: 10.5, fontWeight: '600' },
+  pdfT: { fontSize: 10, fontWeight: '600', color: S.GREEN_DARK },
+  price: { fontSize: 13.5, fontWeight: '600', color: S.TXT },
+  chev: { width: 8, height: 8, tintColor: '#CBD5E1' },
+  metaDot: { fontSize: 10, color: '#CBD5E1' },
+  footItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  footIco: { width: 18, height: 18 },
+  footTxt: { fontSize: 10, fontWeight: '600', color: S.TXT },
 
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: PAD, paddingBottom: 24, paddingTop: 8 },
-  emptyCard: {
-    width: '100%', backgroundColor: S.CARD, borderRadius: 16, paddingVertical: 28, paddingHorizontal: 20, alignItems: 'center',
-    borderWidth: 1, borderColor: S.BORDER,
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
-  },
-  emptyIconOuter: { width: 88, height: 88, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
-  emptyIconRing: {
-    position: 'absolute', width: 88, height: 88, borderRadius: 44, backgroundColor: S.GREEN_BG, opacity: 0.9,
-  },
-  emptyIconCircle: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: BOOK_GREEN,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: BOOK_GREEN_DARK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3,
-  },
-  emptyIco: { width: 30, height: 30, tintColor: '#FFF', resizeMode: 'contain' },
-  emptyT: { fontSize: 16, fontWeight: '700', color: S.TXT, textAlign: 'center', marginBottom: 6 },
-  emptyS: { fontSize: 12.5, fontWeight: '400', color: S.SUB, textAlign: 'center', lineHeight: 18, paddingHorizontal: 8 },
-  emptySteps: { flexDirection: 'row', gap: 8, marginTop: 20, marginBottom: 18 },
-  emptyStep: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 10 },
-  emptyStepIco: { width: 16, height: 16, resizeMode: 'contain', marginBottom: 5 },
-  emptyStepTxt: { fontSize: 10, fontWeight: '600' },
-  emptyHint: { flexDirection: 'row', alignItems: 'center', backgroundColor: S.BG, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  emptyHintIco: { width: 12, height: 12, tintColor: BOOK_GREEN, resizeMode: 'contain', marginRight: 6 },
-  emptyHintTxt: { fontSize: 11.5, fontWeight: '500', color: S.SUB },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 40, gap: 6 },
+  emptyIco: { width: 44, height: 44, resizeMode: 'contain', marginBottom: 6, opacity: 0.85 },
+  emptyT: { fontSize: 14, fontWeight: '600', color: S.TXT },
+  emptyS: { fontSize: 11.5, fontWeight: '400', color: S.SUB },
 
-  footer: {
-    backgroundColor: S.BG,
-    paddingHorizontal: FOOTER_PAD,
-    paddingTop: 6,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 10,
-    borderTopWidth: 1,
-    borderTopColor: S.BORDER,
-  },
+  footerSafe: { backgroundColor: '#FFF', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E8ECF1' },
+  footer: { paddingHorizontal: FOOTER_PAD, paddingTop: 8 },
   bookBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: BOOK_GREEN, borderRadius: 12,
-    paddingVertical: 14, paddingHorizontal: 18, gap: 8,
-    marginBottom: 5,
-    shadowColor: BOOK_GREEN_DARK, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: BOOK_GREEN, borderRadius: 12, minHeight: 48, paddingVertical: 13,
   },
-  bookPlantIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
-  bookTxt: { fontSize: 15, fontWeight: '700', color: '#FFF', letterSpacing: 0.15 },
-  bookArrowIco: { width: 14, height: 14, tintColor: '#FFF', resizeMode: 'contain' },
+  bookIco: { width: 18, height: 18, resizeMode: 'contain' },
+  bookTxt: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  bookArrow: { width: 10, height: 10, tintColor: '#FFF', resizeMode: 'contain' },
 });
 
 export default withV4Navigation(SoilOrders);

@@ -65,8 +65,16 @@ export default function AppNavigator() {
         <Stack.Screen name="RejectDelivery" component={RejectDelivery} />
         <Stack.Screen name="SoilOrders" component={SoilOrders} />
         <Stack.Screen name="SoilOrderDetail" component={SoilOrderDetail} />
-        <Stack.Screen name="CreateSoilOrder" component={CreateSoilOrder} />
-        <Stack.Screen name="SelectFarmer" component={SelectFarmer} />
+        <Stack.Screen
+          name="CreateSoilOrder"
+          component={CreateSoilOrder}
+          options={{ contentStyle: { backgroundColor: '#edf1f7' } }}
+        />
+        <Stack.Screen
+          name="SelectFarmer"
+          component={SelectFarmer}
+          options={{ contentStyle: { backgroundColor: '#edf1f7' } }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

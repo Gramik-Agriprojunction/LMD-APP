@@ -51,7 +51,9 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>PIN code auto-fill ke liye aapki location use hoti hai.</string>
+	<string>LMD uses your location while the app is open to auto-fill PIN code for soil test pickup address.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>LMD uses your location to auto-fill PIN code for soil test pickup address when you allow location access.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -173,7 +173,7 @@ class Profile extends Component {
               {(!!name || !!avatar || !!phone || !!role) && (
                 <View style={styles.profileRow}>
                   <View style={styles.avatar}>
-                    <Image source={require('./assets/profile.png')} style={styles.avatarFallbackImg} />
+                    <Image source={require('./assets/logo.png')} style={styles.avatarFallbackImg} />
                   </View>
                   <View style={styles.nameCol}>
                     {!!name && (

@@ -33,24 +33,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 
+const P = '#5D3FD3';
+
 const THEME = {
-  green: '#5D3FD3',
-  greenDark: '#2F7D67',
+  green: P,
   bg: '#E8ECF4',
-  card: '#FFFFFF',
-  border: '#E6EAF0',
-  text: '#111827',
-  subText: '#000',
-  muted: '#9CA3AF',
-  orange: '#F37A20',
-  yellow: '#F6C34A',
-  danger: '#7A1B1B',
-  settledGreenBg: '#DDF4EA', // old ALL bg -> now SETTLED
-  pendingBg: '#FCEED7',
-  greyBg: '#EEF2F6',
+  border: '#E2E8F0',
+  text: '#1E293B',
+  subText: '#64748B',
+  muted: '#94A3B8',
+  orange: '#EA580C',
   blue: '#0B5CAD',
-  dot: '#36454F',
-  labelGrey: '#6B7280',
 };
 
 class SettlementList extends Component {
@@ -270,17 +263,6 @@ class SettlementList extends Component {
   // ------------------------
   tabColors = { all: { bg: '#E6F4FF', border: THEME.blue, text: THEME.blue }, pending: { bg: '#FEF3C7', border: '#B45309', text: '#B45309' }, settled: { bg: '#DCFCE7', border: '#16A34A', text: '#16A34A' }, disputed: { bg: '#FEE2E2', border: '#DC2626', text: '#DC2626' } };
 
-  tabStyle = (key) => {
-    const active = this.state.activeTab === key;
-    const c = this.tabColors[key] || this.tabColors.all;
-    return [styles.statusTab, { backgroundColor: c.bg }, active ? [styles.statusTabActive, { borderColor: c.border }] : null];
-  };
-
-  tabValueStyle = (key) => {
-    const c = this.tabColors[key] || this.tabColors.all;
-    return [styles.statusTabValue, { color: c.text }];
-  };
-
   // ------------------------
   // Row
   // ------------------------
@@ -321,22 +303,21 @@ class SettlementList extends Component {
         onPress={() => { if (isPending) this.toggleSelect(orderId); }}
         style={[styles.rowCard, selected && styles.rowCardSelected]}
       >
-        {/* Header */}
-        <View style={styles.rowHead}>
-          <Text style={styles.rowOid}>#{codeDisplay || orderId || 'N/A'}</Text>
-          <View style={{ flex: 1 }} />
-          <View style={[styles.rowStatusPill, { backgroundColor: isPending ? '#FEF3C7' : '#DCFCE7' }]}>
-            <Text style={[styles.rowStatusT, { color: isPending ? '#B45309' : '#16A34A' }]}>{isPending ? 'Pending' : 'Settled'}</Text>
-          </View>
-          {isPending ? (
-            <View style={[styles.checkBox, selected ? styles.checkBoxOn : null]}>
-              {selected ? <Text style={styles.checkTick}>{'✓'}</Text> : null}
+        <View style={[styles.rowTop, selected && styles.rowTopSelected]}>
+          <View style={styles.rowHead}>
+            <Text style={styles.rowOid}>#{codeDisplay || orderId || 'N/A'}</Text>
+            <View style={{ flex: 1 }} />
+            <View style={[styles.rowStatusPill, { backgroundColor: isPending ? '#EA580C' : '#16A34A' }]}>
+              <Text style={styles.rowStatusT}>{isPending ? 'Pending' : 'Settled'}</Text>
             </View>
-          ) : null}
-        </View>
+            {isPending ? (
+              <View style={[styles.checkBox, selected && styles.checkBoxOn]}>
+                {selected ? <Text style={styles.checkTick}>✓</Text> : null}
+              </View>
+            ) : null}
+          </View>
 
-        {/* Farmer + call/whatsapp */}
-        <View style={styles.rowFarmer}>
+          <View style={styles.rowFarmer}>
           <Image source={require('./assets/farmer.png')} style={styles.rowAvt} />
           <View style={{ flex: 1 }}>
             <Text style={styles.rowFarmerName}>{farmerName || '-'}</Text>
@@ -352,6 +333,7 @@ class SettlementList extends Component {
               </TouchableOpacity>
             </>
           ) : null}
+          </View>
         </View>
 
         {/* Route: Pickup -> Drop */}
@@ -410,54 +392,64 @@ class SettlementList extends Component {
   // Header inside list
   // ------------------------
   renderListHeader = () => {
-    const { search, counts, stats } = this.state;
-
+    const { counts, stats } = this.state;
     const activeTab = this.state.activeTab;
 
     return (
       <View>
-        {/* Summary - colored stats */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <View style={[styles.summaryItem, { backgroundColor: '#EEF2FF' }]}>
-              <Text style={styles.summaryItemVal}>{this.toNum(stats?.todaysOrders)}</Text>
-              <Text style={styles.summaryItemLbl}>Orders</Text>
+        <View style={styles.mainCard}>
+          <Text style={styles.cardTitle}>Today's Settlement</Text>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statCell}>
+              <Text style={styles.statVal}>{this.toNum(stats?.todaysOrders)}</Text>
+              <Text style={styles.statLbl}>Orders</Text>
             </View>
-            <View style={[styles.summaryItem, { backgroundColor: '#FFF7ED' }]}>
-              <Text style={[styles.summaryItemVal, { color: '#EA580C' }]}>{'₹'}{this.money(stats?.codCollected)}</Text>
-              <Text style={styles.summaryItemLbl}>COD</Text>
+            <View style={styles.statSep} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statVal, { color: THEME.orange }]}>₹{this.money(stats?.codCollected) || '0'}</Text>
+              <Text style={styles.statLbl}>COD</Text>
             </View>
-            <View style={[styles.summaryItem, { backgroundColor: '#F0FDF4' }]}>
-              <Text style={[styles.summaryItemVal, { color: '#16A34A' }]}>{'₹'}{this.money(stats?.cashDeposited)}</Text>
-              <Text style={styles.summaryItemLbl}>Deposited</Text>
+            <View style={styles.statSep} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statVal, { color: '#16A34A' }]}>₹{this.money(stats?.cashDeposited) || '0'}</Text>
+              <Text style={styles.statLbl}>Deposited</Text>
             </View>
-            <View style={[styles.summaryItem, { backgroundColor: '#EDE9FE' }]}>
-              <Text style={[styles.summaryItemVal, { color: '#7C3AED' }]}>{'₹'}{this.money(stats?.upiCollected)}</Text>
-              <Text style={styles.summaryItemLbl}>UPI</Text>
+            <View style={styles.statSep} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statVal, { color: P }]}>₹{this.money(stats?.upiCollected) || '0'}</Text>
+              <Text style={styles.statLbl}>UPI</Text>
             </View>
+          </View>
+
+          <View style={styles.cardDivider} />
+
+          <View style={styles.tabsRow}>
+            {[
+              { key: 'all', label: 'All', count: counts.all },
+              { key: 'pending', label: 'Pending', count: counts.pending },
+              { key: 'settled', label: 'Settled', count: counts.settled },
+              { key: 'disputed', label: 'Disputed', count: counts.disputed },
+            ].map((t) => {
+              const c = this.tabColors[t.key] || this.tabColors.all;
+              const isActive = activeTab === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  activeOpacity={0.85}
+                  onPress={() => this.onTabChange(t.key)}
+                  style={[styles.tab, isActive && { backgroundColor: c.bg, borderColor: c.border }]}
+                >
+                  <Text style={[styles.tabT, isActive && { color: c.text, fontWeight: '700' }]}>
+                    {t.label} ({t.count})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
-        {/* Status tabs */}
-        <View style={styles.tabsOuter}>
-          {[
-            { key: 'all', label: 'All', count: counts.all },
-            { key: 'pending', label: 'Pending', count: counts.pending },
-            { key: 'settled', label: 'Settled', count: counts.settled },
-            { key: 'disputed', label: 'Disputed', count: counts.disputed },
-          ].map(t => {
-            const c = this.tabColors[t.key] || this.tabColors.all;
-            const isActive = activeTab === t.key;
-            return (
-              <TouchableOpacity key={t.key} activeOpacity={0.8} onPress={() => this.onTabChange(t.key)}
-                style={[styles.statusTab, isActive && { backgroundColor: c.bg, borderColor: c.border }]}>
-                <Text style={[styles.statusTabTitle, isActive && { color: c.text, fontWeight: '700' }]}>{t.label} ({t.count})</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={styles.instructionText}>Verify and mark cash orders as settled</Text>
+        <Text style={styles.subHint}>Pending orders select karke settle karein</Text>
       </View>
     );
   };
@@ -509,11 +501,15 @@ class SettlementList extends Component {
               ListHeaderComponent={this.renderListHeader}
               ListEmptyComponent={() => (
                 <View style={styles.emptyWrap}>
-                  {loading ? <ActivityIndicator size="large" color={THEME.green} /> : (
+                  {loading ? (
+                    <ActivityIndicator size="large" color={P} />
+                  ) : (
                     <>
-                      <Image source={require('./assets/dlh.png')} style={{ width: 70, height: 70, resizeMode: 'contain', marginBottom: 14 }} />
+                      <Image source={require('./assets/dlh.png')} style={styles.emptyImg} />
                       <Text style={styles.emptyTitle}>No orders found</Text>
-                      <Text style={styles.emptySub}>{this.state.search ? 'Try a different search' : 'No settlement orders for this filter'}</Text>
+                      <Text style={styles.emptySub}>
+                        {this.state.search ? 'Try a different search' : 'No settlement orders for this filter'}
+                      </Text>
                     </>
                   )}
                 </View>
@@ -523,32 +519,30 @@ class SettlementList extends Component {
               keyboardShouldPersistTaps="handled"
             />
 
-            {/* Fixed bottom — SafeAreaView edges bottom handles Android 15+ gesture nav + iPhone home indicator dynamically */}
-            <SafeAreaView edges={['bottom']} style={styles.footerWrap}>
-              <View style={styles.footerTopRow}>
-                <View style={{ flex: 1 }}>
+            {/* Fixed bottom bar */}
+            <View style={styles.footerWrap}>
+              <View style={styles.footerRow}>
+                <View style={styles.footerLeft}>
                   <Text style={styles.totalLabel}>Total Cash</Text>
-                  <Text style={styles.totalValue}>{`₹ ${this.money(totals.total)}`}</Text>
+                  <Text style={styles.totalValue}>₹ {this.money(totals.total) || '0'}</Text>
+                  {selectedCount > 0 ? (
+                    <Text style={styles.footerSel}>{selectedCount} selected</Text>
+                  ) : null}
                 </View>
-
                 <TouchableOpacity
-                  activeOpacity={0.92}
+                  activeOpacity={0.9}
                   disabled={submitting || selectedCount === 0}
                   onPress={this.submitSettlement}
-                  style={[styles.settleBtn, selectedCount === 0 ? { opacity: 0.55 } : null]}
+                  style={[styles.settleBtn, selectedCount === 0 && styles.settleBtnOff]}
                 >
                   {submitting ? (
                     <ActivityIndicator size="small" color="#FFF" />
                   ) : (
-                    <>
-                      <Text style={styles.settleBtnText}>Settle Now</Text>
-                      <Text style={styles.settleBtnAmt}>{`₹ ${this.money(totals.total)}`}</Text>
-                    </>
+                    <Text style={styles.settleBtnText}>Settle Now · ₹ {this.money(totals.total) || '0'}</Text>
                   )}
                 </TouchableOpacity>
               </View>
-
-            </SafeAreaView>
+            </View>
           </View>
       </View>
     );
@@ -558,131 +552,111 @@ class SettlementList extends Component {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
 
-  // Header
-  headerWrap: { backgroundColor: THEME.green },
-  headerSafe: { backgroundColor: THEME.green },
+  headerWrap: { backgroundColor: P, paddingBottom: 8 },
+  headerSafe: { backgroundColor: P },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#fff' },
-  headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '800' },
-  headerSearch: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, height: 38, paddingHorizontal: 10, marginRight: 8 },
-  headerSearchIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },
-  headerSearchInput: { flex: 1, fontSize: 13, color: '#FFF', paddingVertical: 0 },
-  headerCrossBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  headerCrossIco: { width: 10, height: 10, resizeMode: 'contain', tintColor: '#FFF' },
-
-  bodySafe: { flex: 1, backgroundColor: THEME.bg },
-
-  listContent: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 170 },
-
-  // Summary
-  summaryCard: { marginBottom: 8 },
-  summaryRow: { flexDirection: 'row' },
-  summaryItem: { flex: 1, borderRadius: 8, padding: 8, marginHorizontal: 2, alignItems: 'center' },
-  summaryItemVal: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
-  summaryItemLbl: { fontSize: 9, fontWeight: '500', color: '#64748B', marginTop: 2 },
-
-  // Tabs
-  tabsOuter: { backgroundColor: '#FFF', borderRadius: 12, flexDirection: 'row', padding: 4, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  statusTab: { flex: 1, borderRadius: 10, paddingVertical: 10, marginHorizontal: 2, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
-  statusTabTitle: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-
-  instructionText: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginBottom: 4 },
-
-  emptyWrap: { alignItems: 'center', paddingVertical: 60 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#475569', marginBottom: 6 },
-  emptySub: { fontSize: 13, fontWeight: '400', color: '#94A3B8' },
-
-
-  // Row card
-  rowCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    padding: 12,
-    marginTop: 8,
+  headerIconBtn: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 4, marginRight: 10,
   },
-  rowCardSelected: { borderColor: '#5D3FD3', backgroundColor: '#FAFAFF' },
-  rowHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  rowOid: { fontSize: 13, fontWeight: '700', color: '#5D3FD3' },
-  rowStatusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, marginRight: 8 },
-  rowStatusT: { fontSize: 10, fontWeight: '700' },
+  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#fff' },
+  headerSearch: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10, height: 38, paddingHorizontal: 10,
+  },
+  headerSearchIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },
+  headerSearchInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0 },
+  headerCrossBtn: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
+  headerCrossIco: { width: 8, height: 8, resizeMode: 'contain', tintColor: '#FFF' },
 
-  rowFarmer: { flexDirection: 'row', alignItems: 'center', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  listContent: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 120 },
+
+  mainCard: {
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10,
+    marginBottom: 6, borderWidth: 1, borderColor: THEME.border,
+  },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: THEME.text, marginBottom: 12 },
+  statsRow: { flexDirection: 'row', alignItems: 'center' },
+  statCell: { flex: 1, alignItems: 'center' },
+  statVal: { fontSize: 15, fontWeight: '800', color: THEME.text },
+  statLbl: { fontSize: 10, fontWeight: '500', color: THEME.subText, marginTop: 3 },
+  statSep: { width: 1, height: 28, backgroundColor: '#E2E8F0' },
+  cardDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  tabsRow: { flexDirection: 'row' },
+  tab: {
+    flex: 1, borderRadius: 8, paddingVertical: 9, marginHorizontal: 2,
+    alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent',
+  },
+  tabT: { fontSize: 11, fontWeight: '600', color: THEME.subText },
+
+  subHint: { fontSize: 11, color: THEME.muted, marginBottom: 8, marginLeft: 4 },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: 50 },
+  emptyImg: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 12 },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#475569', marginBottom: 4 },
+  emptySub: { fontSize: 12, color: THEME.muted, textAlign: 'center', paddingHorizontal: 32 },
+
+  rowCard: {
+    backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: THEME.border,
+    marginTop: 8, overflow: 'hidden',
+  },
+  rowCardSelected: { borderColor: P, borderWidth: 2 },
+  rowTop: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
+  rowTopSelected: { backgroundColor: '#EDE9FE' },
+  rowHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  rowOid: { fontSize: 11, fontWeight: '800', color: P },
+  rowStatusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginRight: 8 },
+  rowStatusT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
+
+  rowFarmer: { flexDirection: 'row', alignItems: 'center' },
   rowAvt: { width: 28, height: 28, borderRadius: 14, resizeMode: 'cover', marginRight: 8 },
-  rowFarmerName: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  rowAddr: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 1 },
-  rowIco: { width: 28, height: 28, resizeMode: 'contain' },
+  rowFarmerName: { fontSize: 13, fontWeight: '700', color: THEME.text },
+  rowAddr: { fontSize: 11, color: THEME.muted, marginTop: 1 },
+  rowIco: { width: 26, height: 26, resizeMode: 'contain' },
 
-  rowRoute: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  rowRoute: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   rowRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
   rowTl: { width: 12, alignItems: 'center', marginRight: 8, paddingTop: 3 },
   rowDot: { width: 7, height: 7, borderRadius: 4 },
   rowLine: { width: 1.5, flex: 1, minHeight: 6, backgroundColor: '#D1D5DB', marginVertical: 2 },
   rowRouteBody: { flex: 1, paddingBottom: 6 },
-  rowRouteLbl: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, marginBottom: 2 },
-  rowRouteTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  rowRouteVal: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
+  rowRouteLbl: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3, marginBottom: 2 },
+  rowRouteTitle: { fontSize: 12.5, fontWeight: '700', color: THEME.text },
+  rowRouteVal: { fontSize: 11.5, color: THEME.subText, lineHeight: 16, marginTop: 1 },
 
-  rowAmounts: { flexDirection: 'row', paddingTop: 8, paddingBottom: 8 },
+  rowAmounts: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8 },
   rowAmtItem: { flex: 1, alignItems: 'center' },
-  rowAmtLabel: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginBottom: 2 },
-  rowAmtVal: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  rowAmtLabel: { fontSize: 10, fontWeight: '500', color: THEME.muted, marginBottom: 2 },
+  rowAmtVal: { fontSize: 13, fontWeight: '800', color: THEME.text },
 
-  rowFooter: { flexDirection: 'row', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  rowTypePill: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, marginRight: 8 },
-  rowTypeT: { fontSize: 10, fontWeight: '600', color: '#475569' },
-  rowSlot: { fontSize: 11, fontWeight: '400', color: '#94A3B8' },
-  rowAmtTotal: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
+  rowFooter: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  rowTypePill: { backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+  rowTypeT: { fontSize: 9, fontWeight: '700', color: '#475569' },
+  rowSlot: { fontSize: 11, color: THEME.muted },
+  rowAmtTotal: { fontSize: 15, fontWeight: '800', color: '#16A34A' },
 
   checkBox: {
-    marginLeft: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginLeft: 8, width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+    borderColor: '#CBD5E1', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center',
   },
-  checkBoxOn: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
-  checkTick: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: -1 },
+  checkBoxOn: { backgroundColor: P, borderColor: P },
+  checkTick: { color: '#FCD34D', fontSize: 13, fontWeight: '900', marginTop: -1 },
 
-  // Footer fixed — paddingBottom is provided by SafeAreaView edges={['bottom']} now
   footerWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#FFF',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: '#FFF', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 13,
+    borderTopWidth: 1, borderTopColor: '#E2E8F0',
   },
-  footerTopRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 6, paddingRight: 5 },
-
-  totalLabel: { fontSize: 11, fontWeight: '700', color: '#000' },
-  totalValue: { marginTop: 6, fontSize: 18, fontWeight: '800', color: THEME.orange },
-
+  footerRow: { flexDirection: 'row', alignItems: 'center' },
+  footerLeft: { width: 100, marginRight: 12 },
+  totalLabel: { fontSize: 10, fontWeight: '600', color: THEME.subText },
+  totalValue: { fontSize: 18, fontWeight: '800', color: THEME.orange, marginTop: 2 },
+  footerSel: { fontSize: 10, fontWeight: '600', color: P, marginTop: 3 },
   settleBtn: {
-    height: 45,
-    borderRadius: 10,
-    backgroundColor: '#16A34A',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginLeft: 12,
-    justifyContent: 'space-between',
-    flex: 1,
+    flex: 1, height: 48, borderRadius: 12, backgroundColor: '#16A34A',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16,
   },
-  settleBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  settleBtnAmt: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  settleBtnOff: { opacity: 0.5 },
+  settleBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });
 export default withV4Navigation(SettlementList);

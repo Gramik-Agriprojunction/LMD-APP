@@ -40,6 +40,7 @@ const NAME_MAP = {
   createSoilOrder:   'Create Soil Order',
   getPostOffice:     'Get Post Office',
   allFarmers:        'All Farmers',
+  exotelCall:        'Exotel Call',
 };
 
 // Same URL, different methods — disambiguate log labels.

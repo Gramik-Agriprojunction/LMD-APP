@@ -16,6 +16,33 @@ import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
 
+const QUICK_ACTIONS = [
+  {
+    l: 'Jama Karein',
+    ico: require('./assets/money.png'),
+    bg: '#EDE9FE',
+    border: '#C4B5FD',
+    accent: '#5D3FD3',
+    nav: 'SettlementList',
+  },
+  {
+    l: 'Mitti Jaanch',
+    ico: require('./assets/soil.png'),
+    bg: '#DCFCE7',
+    border: '#86EFAC',
+    accent: '#059669',
+    nav: 'SoilOrders',
+  },
+  {
+    l: 'Madad',
+    ico: require('./assets/consultation.png'),
+    bg: '#DBEAFE',
+    border: '#93C5FD',
+    accent: '#2563EB',
+    nav: 'support',
+  },
+];
+
 class LMDDashboard extends Component {
   constructor() {
     super();
@@ -134,7 +161,7 @@ class LMDDashboard extends Component {
                 hitSlop={{ top: 6, bottom: 6 }}
               >
                 <View style={$.hdrBtn}>
-                  <Image source={require('./assets/profile.png')} style={$.profIco} />
+                  <Image source={require('./assets/logo.png')} style={$.profIco} />
                 </View>
                 <View style={$.hdrInfo}>
                   <Text style={$.hdrSub}>Swagat</Text>
@@ -149,7 +176,7 @@ class LMDDashboard extends Component {
           </SafeAreaView>
         </View>
 
-        <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+        <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
           {this.state.loading && !this.state.refreshing ? <ShimmerLoader /> : (
             <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.refresh} tintColor={P} colors={[P]} />}>
@@ -200,26 +227,30 @@ class LMDDashboard extends Component {
                 ) : <View style={[$.card, { alignItems: 'center', paddingVertical: 14 }]}><Image source={require('./assets/dlh.png')} style={{ width: 64, height: 64, resizeMode: 'contain', marginBottom: 6 }} /><Text style={$.empty}>No deliveries for today</Text></View>}
               </Animated.View>
 
-              <Animated.View style={this.a(4)}>
-                <Text style={$.secT}>Quick Actions</Text>{/* keep — widely understood */}
+              <Animated.View style={[$.card, this.a(4), { paddingBottom: 14 }]}>
+                <Text style={$.cardT}>Quick Actions</Text>
                 <View style={$.actRow}>
-                  {[
-                    { l: 'Jama Karein', ico: require('./assets/purse.png'), bg: '#DDD6FE', c: '#4C1D95', nav: 'SettlementList' },
-                    { l: 'Mitti Jaanch', ico: require('./assets/planting.png'), bg: '#D1FAE5', c: '#065F46', nav: 'SoilOrders' },
-                    { l: 'Madad', ico: require('./assets/help2.png'), bg: '#A7F3D0', c: '#064E3B', nav: 'support' },
-                  ].map(q => (
-                    <TouchableOpacity key={q.l} style={[$.qa, { backgroundColor: q.bg }]} activeOpacity={0.8}
-                      onPress={() => q.nav === 'support' ? this.dial(this.state.data?.Support) : q.nav === 'ALL' ? this.go('ALL') : this.props.navigation.navigate(q.nav)}>
+                  {QUICK_ACTIONS.map((q) => (
+                    <TouchableOpacity
+                      key={q.l}
+                      style={[$.qa, { backgroundColor: q.bg, borderColor: q.border }]}
+                      activeOpacity={0.85}
+                      onPress={() => (
+                        q.nav === 'support'
+                          ? this.dial(this.state.data?.Support)
+                          : this.props.navigation.navigate(q.nav)
+                      )}
+                    >
                       <Image source={q.ico} style={$.qaImg} resizeMode="contain" />
-                      <Text style={[$.qaL, { color: q.c }]}>{q.l}</Text>
+                      <Text style={[$.qaL, { color: q.accent }]}>{q.l}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </Animated.View>
-              <View style={{ height: 12 }} />
+              <View style={{ height: 8 }} />
             </ScrollView>
           )}
-        </SafeAreaView>
+        </View>
         <NetBanner />
       </View>
     );
@@ -244,7 +275,7 @@ const $ = StyleSheet.create({
   hdrBadge: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: P },
   hdrBadgeT: { color: '#FFF', fontSize: 8, fontWeight: '700' },
 
-  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
+  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 28 },
 
   ruleCard: { backgroundColor: '#FFFBEB', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
   ruleDot: { display: 'none' },
@@ -305,23 +336,23 @@ const $ = StyleSheet.create({
   dlvAmt: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
 
   empty: { textAlign: 'center', color: '#475569', fontSize: 13, fontWeight: '500', paddingVertical: 4 },
-  secT: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 10, marginTop: 8 },
-  actRow: { flexDirection: 'row', gap: 10 },
+  actRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   qa: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    shadowColor: '#64748B',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  qaImg: { width: 40, height: 40, marginBottom: 10, resizeMode: 'contain' },
-  qaL: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  qaImg: { width: 48, height: 48, marginBottom: 8 },
+  qaL: { fontSize: 11.5, fontWeight: '700', textAlign: 'center', letterSpacing: 0.1 },
 });
 
 export default withV4Navigation(LMDDashboard);

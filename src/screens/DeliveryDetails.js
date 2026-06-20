@@ -19,7 +19,7 @@ import {
   UIManager,
   Share,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import ShimmerLoader from '../components/ShimmerLoader';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
@@ -30,6 +30,19 @@ import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 import ScreenHeader from '../components/ScreenHeader';
 import OrderCard from '../components/OrderCard';
+import { initiateExotelCall } from '../utils/exotelCall';
+import { soilIcons as I } from '../utils/soilTheme';
+
+const SUM_ICO = {
+  cal: require('./assets/sch.png'),
+  truck: require('./assets/trk.png'),
+  box: require('./assets/order.png'),
+  wallet: I.wallet,
+  check: I.check,
+  rupee: I.rupee,
+  cash: require('./assets/cashb.png'),
+  clock: I.clock,
+};
 
 class DeliveryDetails extends Component {
   constructor(props) {
@@ -65,6 +78,8 @@ class DeliveryDetails extends Component {
       // Invoice download state
       invoiceDownloading: false,
       invoiceProgress: 0,
+
+      callInitiating: false,
     };
 
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -303,19 +318,22 @@ class DeliveryDetails extends Component {
 
   // ---------- ACTIONS ----------
   onCall = async () => {
-    const phoneRaw = this.state?.details?.farmer_data?.phone;
-    if (!phoneRaw) return console.log('farmer_data.phone missing');
-
-    const phone = String(phoneRaw).replace(/\s+/g, '');
-    const url = `tel:${phone}`;
-
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (can) return Linking.openURL(url);
-      console.log('Cannot open dialer:', url);
-    } catch (e) {
-      console.log('Call error:', e);
+    if (this.state.callInitiating) return;
+    const d = this.state?.details;
+    const phoneRaw = d?.farmer_data?.phone;
+    if (!phoneRaw) {
+      Toast.show('Farmer phone nahi mila', Toast.SHORT);
+      return;
     }
+    const orderId = d?.order_id || d?.id;
+    this.setState({ callInitiating: true });
+    await initiateExotelCall({
+      orderId,
+      toPhone: phoneRaw,
+      callType: 'farmer',
+      context: 'delivery',
+    });
+    this.setState({ callInitiating: false });
   };
 
   onWhatsApp = async () => {
@@ -800,18 +818,13 @@ class DeliveryDetails extends Component {
                   return { bg: '#FFEDD5', fg: '#C2410C' };
                 })();
 
-                // Unified neutral surface across all stat boxes — color comes from
-                // the icon disc only so the grid reads as one cohesive block.
-                const Box = ({ icon, iconChar, color, lbl, valueText, valueColor, chipFg, chipText, full, valSmall }) => {
+                // Tinted outline icons — one consistent style across the grid.
+                const Box = ({ icon, tint = '#64748B', lbl, valueText, valueColor, chipFg, chipText, full, valSmall }) => {
                   return (
                     <View style={[styles.sumBox, full && styles.sumBoxFull]}>
-                      <View style={[styles.sumBoxIcon, { backgroundColor: color }]}>
-                        {icon ? (
-                          <Image source={icon} style={styles.sumBoxIconImg} />
-                        ) : (
-                          <Text style={styles.sumBoxIconChar}>{iconChar}</Text>
-                        )}
-                      </View>
+                      {icon ? (
+                        <Image source={icon} style={[styles.sumBoxIconImg, { tintColor: tint }]} resizeMode="contain" />
+                      ) : null}
                       <View style={styles.sumBoxContent}>
                         <Text style={styles.sumBoxLbl} numberOfLines={1}>{lbl}</Text>
                         {chipText ? (
@@ -835,13 +848,6 @@ class DeliveryDetails extends Component {
 
                 return (
                   <View style={styles.summaryCard}>
-                    <View style={styles.summaryHeader}>
-                      <View style={[styles.summaryHdrIconWrap, { backgroundColor: '#5D3FD3' }]}>
-                        <Image source={require('./assets/wlt.png')} style={[styles.summaryHdrIcon, { tintColor: '#FFF' }]} />
-                      </View>
-                      <Text style={styles.summaryTitle}>Payment & Settlement</Text>{/* English — universally understood */}
-                    </View>
-
                     {/* Critical alerts */}
                     {details?.penalty_text ? (
                       <View style={styles.alertBanner}>
@@ -868,67 +874,77 @@ class DeliveryDetails extends Component {
                       </View>
                     ) : null}
 
-                    {/* Strict 2x2 grid — everything half-width, alerts above stay full-width */}
-                    <View style={styles.sumGrid}>
-                      {details?.order_date ? (
-                        <Box iconChar="🗓️" color="#0891B2" lbl="Order Date" valueText={details.order_date} valSmall />
-                      ) : null}
-                      {details?.delivery_date ? (
-                        <Box iconChar="📅" color="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} valSmall />
-                      ) : null}
-                      <Box icon={require('./assets/box.png')} color="#6366F1" lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
-                      <Box icon={require('./assets/wlt.png')} color="#2563EB" lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
-                      <Box
-                        icon={require('./assets/check.png')}
-                        color={paymentPaid ? '#16A34A' : '#B45309'}
-                        lbl="Payment Status"
-                        chipFg={paymentPaid ? '#15803D' : '#B45309'}
-                        chipText={String(details?.payment_status || '-').toUpperCase()}
-                      />
-                      <Box iconChar="₹" color="#F37A20" lbl="COD Amount" valueText={`₹ ${cod}`} />
-                      <Box
-                        iconChar="↓"
-                        color="#16A34A"
-                        lbl="Collected"
-                        valueText={`₹ ${collected}`}
-                        valueColor={collected > 0 ? '#15803D' : '#0F172A'}
-                      />
-                      <Box
-                        icon={require('./assets/clock.png')}
-                        color={settleChip.fg}
-                        lbl="Settlement"
-                        chipFg={settleChip.fg}
-                        chipText={(details?.settlement_status || 'pending').toUpperCase()}
-                      />
-                      <Box
-                        iconChar="✓"
-                        color="#9333EA"
-                        lbl="Settled Amount"
-                        valueText={`₹ ${settleAmt}`}
-                        valueColor={settleAmt > 0 ? '#15803D' : '#0F172A'}
-                      />
-
-                      {/* Conditional settlement audit fields from API */}
-                      {details?.settlement_submitted ? (
+                    <View style={[styles.summarySubSection, (details?.penalty_text || details?.dispute_date) && styles.summarySubSectionSep]}>
+                      <View style={styles.summarySubHeader}>
+                        <Image source={SUM_ICO.wallet} style={[styles.summaryHdrIcon, { tintColor: '#2563EB' }]} resizeMode="contain" />
+                        <Text style={styles.summarySubTitle}>Payment</Text>
+                      </View>
+                      <View style={styles.sumGrid}>
+                        {details?.order_date ? (
+                          <Box icon={SUM_ICO.cal} tint="#0891B2" lbl="Order Date" valueText={details.order_date} valSmall />
+                        ) : null}
+                        {details?.delivery_date ? (
+                          <Box icon={SUM_ICO.truck} tint="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} valSmall />
+                        ) : null}
+                        <Box icon={SUM_ICO.box} tint="#6366F1" lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
+                        <Box icon={SUM_ICO.wallet} tint="#2563EB" lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
                         <Box
-                          icon={require('./assets/flow.png')}
-                          color="#0891B2"
-                          lbl="Settled On"
-                          valueText={String(details.settlement_submitted)}
-                          valSmall
+                          icon={SUM_ICO.check}
+                          tint={paymentPaid ? '#15803D' : '#B45309'}
+                          lbl="Payment Status"
+                          chipFg={paymentPaid ? '#15803D' : '#B45309'}
+                          chipText={String(details?.payment_status || '-').toUpperCase()}
                         />
-                      ) : null}
-
-                      {details?.settlement_approve_reject ? (
+                        <Box icon={SUM_ICO.rupee} tint="#EA580C" lbl="COD Amount" valueText={`₹ ${cod}`} />
                         <Box
-                          icon={require('./assets/flow.png')}
-                          color="#0891B2"
-                          lbl="Updated On"
-                          valueText={String(details.settlement_approve_reject)}
-                          valSmall
+                          icon={SUM_ICO.cash}
+                          tint="#059669"
+                          lbl="Collected"
+                          valueText={`₹ ${collected}`}
+                          valueColor={collected > 0 ? '#15803D' : '#0F172A'}
                         />
-                      ) : null}
+                      </View>
+                    </View>
 
+                    <View style={[styles.summarySubSection, styles.summarySubSectionSep]}>
+                      <View style={styles.summarySubHeader}>
+                        <Image source={SUM_ICO.clock} style={[styles.summaryHdrIcon, { tintColor: '#7C3AED' }]} resizeMode="contain" />
+                        <Text style={styles.summarySubTitle}>Settlement</Text>
+                      </View>
+                      <View style={styles.sumGrid}>
+                        <Box
+                          icon={SUM_ICO.clock}
+                          tint={settleChip.fg}
+                          lbl="Settlement Status"
+                          chipFg={settleChip.fg}
+                          chipText={(details?.settlement_status || 'pending').toUpperCase()}
+                        />
+                        <Box
+                          icon={SUM_ICO.check}
+                          tint="#7C3AED"
+                          lbl="Settled Amount"
+                          valueText={`₹ ${settleAmt}`}
+                          valueColor={settleAmt > 0 ? '#15803D' : '#0F172A'}
+                        />
+                        {details?.settlement_submitted ? (
+                          <Box
+                            icon={SUM_ICO.cal}
+                            tint="#64748B"
+                            lbl="Settled On"
+                            valueText={String(details.settlement_submitted)}
+                            valSmall
+                          />
+                        ) : null}
+                        {details?.settlement_approve_reject ? (
+                          <Box
+                            icon={SUM_ICO.cal}
+                            tint="#64748B"
+                            lbl="Updated On"
+                            valueText={String(details.settlement_approve_reject)}
+                            valSmall
+                          />
+                        ) : null}
+                      </View>
                     </View>
 
                     {/* Delivery Partner — the LMD themselves; read-only, no call button */}
@@ -1403,15 +1419,26 @@ class DeliveryDetails extends Component {
             // give the close animation a beat before triggering navigation/popup
             setTimeout(() => fn?.(), 220);
           };
+          const actionCount =
+            ((isPending || isReschedule) ? 1 : 0) +
+            (isPending ? 1 : 0) +
+            (st !== 'disputed' ? 1 : 0);
+          const safeBottom = initialWindowMetrics?.insets?.bottom ?? 0;
+          const sheetMax = Math.min(
+            130 + actionCount * 72 + 56 + safeBottom,
+            Math.round(Dimensions.get('window').height * 0.55),
+          );
           return (
             <BottomSheet
               ref={r => (this.moreSheetRef = r)}
               visible={true}
+              dynamicSize
+              maxDynamicContentSize={sheetMax}
               onSheetClose={() => this.setState({ show_more_options: false })}
               enablePanDownToClose={true}
               onChange={(status) => (status == -1 ? this.setState({ show_more_options: false }) : '')}
             >
-              <View style={styles.moreSheetWrap}>
+              <View style={[styles.moreSheetWrap, { paddingBottom: 12 + safeBottom }]}>
                 <View style={styles.moreSheetHeadRow}>
                   <View style={styles.moreSheetHeadIco}>
                     <Text style={styles.moreSheetHeadIcoT}>⋯</Text>
@@ -1736,7 +1763,7 @@ const styles = StyleSheet.create({
   moreOptsT: { color: '#334155', fontSize: 13.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },
 
   // More Options bottom-sheet — tile-based, taller, easier to scan.
-  moreSheetWrap: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 20 },
+  moreSheetWrap: { paddingHorizontal: 18, paddingTop: 4 },
 
   moreSheetHeadRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   moreSheetHeadIco: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
@@ -1799,18 +1826,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  summaryHdrIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  summarySubSection: {
+    marginBottom: 10,
   },
-  summaryHdrIcon: { width: 14, height: 14, resizeMode: 'contain' },
+  summarySubSectionSep: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  summarySubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  summarySubTitle: { fontSize: 12.5, fontWeight: '700', color: '#334155' },
+  summaryHdrIcon: { width: 18, height: 18, marginRight: 8, resizeMode: 'contain' },
   summaryTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
 
-  // 2-column grid of unified stat boxes — neutral surface, color only on the icon disc.
+  // 2-column grid of stat boxes — icons shown inline without background discs.
   sumGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1829,17 +1863,7 @@ const styles = StyleSheet.create({
   },
   sumBoxFull: { width: '100%' },
   sumBoxAlignTop: { alignItems: 'flex-start' },
-  sumBoxIconTop: { marginTop: 2 },
-  sumBoxIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 9,
-  },
-  sumBoxIconImg: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF' },
-  sumBoxIconChar: { color: '#FFF', fontSize: 13, fontWeight: '700', lineHeight: 16, textAlign: 'center' },
+  sumBoxIconImg: { width: 22, height: 22, marginRight: 9, resizeMode: 'contain' },
   sumBoxContent: {
     flex: 1,
     alignItems: 'flex-start',

@@ -71,5 +71,17 @@ export const normalizeStatus = (s) => {
 
 export const getStatus = (s) => STATUS[normalizeStatus(s)] || STATUS.ALL;
 
+// Priority pills — solid bg + white text (same treatment as status chips).
+export const PRIORITY = {
+  low:    { bg: '#CA8A04', tint: '#FEF3C7', accent: '#854D0E', label: 'Low' },
+  medium: { bg: '#EA580C', tint: '#FFEDD5', accent: '#9A3412', label: 'Medium' },
+  high:   { bg: '#DC2626', tint: '#FEE2E2', accent: '#991B1B', label: 'High' },
+};
+
+export const getPriority = (p) => {
+  const key = String(p || 'low').toLowerCase();
+  return PRIORITY[key] || PRIORITY.low;
+};
+
 // Convenience accessor used by older code that only needs the solid color.
 export const getStatusBg = (s) => getStatus(s).bg;

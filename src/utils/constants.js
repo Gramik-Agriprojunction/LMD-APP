@@ -36,5 +36,6 @@ const strings = {
   createSoilOrder : baseurl + 'soil-testing/soil-order',
   getPostOffice : baseurl + 'user/get-post-office',
   allFarmers : baseurl + 'user/all-farmer',
+  exotelCall : baseurl + 'lmd/exotel/call',
 };
 export default strings;

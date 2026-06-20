@@ -31,6 +31,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const P = '#5D3FD3';
 const DANGER = '#DC2626';
+const TAB_LIGHT_RED = '#FEE2E2';
+const TAB_INACTIVE = '#B91C1C';
 const PAGE_LIMIT = 20;
 
 const TABS = [
@@ -313,12 +315,13 @@ class PenaltyOrders extends Component {
       <FadeInItem delay={delayIndex}>
         <OrderCard
           order={item}
+          compactChips
           onPress={() => this.props.navigation.navigate('DeliveryDetails', { order: item })}
           onCall={(p) => this.dial(p)}
           onWhatsApp={(p) => this.wa(p)}
           onCallStore={(p) => this.dial(p)}
           extraHeaderRight={
-            <View style={[styles.statusPill, { backgroundColor: badge.bg, marginLeft: 6 }]}>
+            <View style={[styles.statusPill, { backgroundColor: badge.bg }]}>
               <Text style={[styles.statusT, { color: badge.c }]}>{badge.label}</Text>
             </View>
           }
@@ -493,18 +496,15 @@ const styles = StyleSheet.create({
   tabBarWrap: { paddingHorizontal: 8, paddingTop: 8 },
 
   tabBar: {
-    backgroundColor: DANGER,
+    backgroundColor: TAB_LIGHT_RED,
     borderRadius: 14,
     padding: 4,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'stretch',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   tabIndicator: {
     position: 'absolute',
@@ -513,17 +513,17 @@ const styles = StyleSheet.create({
     bottom: 4,
     backgroundColor: '#FFF',
     borderRadius: 10,
-    shadowColor: '#000',
+    shadowColor: '#991B1B',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.1,
     shadowRadius: 3,
-    elevation: 2,
+    elevation: 1,
   },
   tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 11, flexDirection: 'row', justifyContent: 'center' },
-  tabVal: { color: 'rgba(255,255,255,0.95)', fontSize: 16, fontWeight: '800', includeFontPadding: false, marginRight: 6 },
-  tabLbl: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false },
+  tabVal: { color: TAB_INACTIVE, fontSize: 16, fontWeight: '800', includeFontPadding: false, marginRight: 6 },
+  tabLbl: { color: TAB_INACTIVE, fontSize: 12.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false, opacity: 0.85 },
   tabValActive: { color: DANGER },
-  tabLblActive: { color: DANGER },
+  tabLblActive: { color: DANGER, opacity: 1 },
 
   card: {
     backgroundColor: '#FFF',
@@ -538,8 +538,8 @@ const styles = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
   orderId: { fontSize: 12, fontWeight: '700', color: P, maxWidth: '65%' },
   // Match the OrderCard's status chip exactly (rounded 8, smaller font).
-  statusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  statusT: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3 },
+  statusPill: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, marginLeft: 4, alignItems: 'center', justifyContent: 'center' },
+  statusT: { fontSize: 7.5, fontWeight: '700', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 10 },
 
   farmerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10 },
   farmerAvt: { width: 32, height: 32, borderRadius: 16, marginRight: 10, resizeMode: 'cover' },

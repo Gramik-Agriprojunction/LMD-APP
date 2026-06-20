@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList,
   StatusBar, Image, Animated, RefreshControl, Linking, Alert, ActivityIndicator,
-  LayoutAnimation, Platform, UIManager, Easing, Pressable,
+  LayoutAnimation, Platform, UIManager, Easing, Pressable, Dimensions,
 } from 'react-native';
 
 // Fade + slide-up wrapper so paged-in rows animate when they appear.
@@ -38,15 +38,16 @@ const SWAP_ANIM = {
   update: { type: 'easeInEaseOut' },
   delete: { type: 'easeInEaseOut', property: 'opacity' },
 };
-import { SafeAreaView, SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
 import Clipboard from '@react-native-clipboard/clipboard';
 import constants from '../utils/constants';
 import ShimmerLoader from '../components/ShimmerLoader';
 import Toast from 'react-native-simple-toast';
+import BottomSheet from '../components/BottomSheet';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSubscribe, KEYS, invalidateOrderRelated } from '../utils/dataCache';
 import LiveOrdersGrid from '../components/LiveOrdersGrid';
-import { STATUS, STATUS_SEQUENCE, getStatus } from '../utils/statusColors';
+import { STATUS, STATUS_SEQUENCE, getStatus, getPriority } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 
 // Best-effort: walk an order tree and yank any http(s) image URLs we'd render.
@@ -63,8 +64,144 @@ const extractImageUrls = (orders) => {
 };
 
 const P = '#5D3FD3';
+const HIT = { top: 10, bottom: 10, left: 10, right: 10 };
 
 const STATUSES = STATUS_SEQUENCE;
+
+// orderList returns pincode groups: [{ pincode, data: [orders...] }, ...]
+const flattenOrderList = (raw) => {
+  if (!Array.isArray(raw)) return [];
+  if (raw.length > 0 && Array.isArray(raw[0]?.data)) {
+    return raw.flatMap((group) =>
+      (Array.isArray(group.data) ? group.data : []).map((order) => ({
+        ...order,
+        group_pincode: group.pincode || order.pincode,
+      })),
+    );
+  }
+  return raw;
+};
+
+const GROUP_FILTERS = [
+  { id: 'farmer', label: 'Farmer wise', sub: 'Farmer ke naam se group karein', icon: require('./assets/farmer.png'), tint: '#EDE9FE', accent: P },
+  { id: 'darkstore', label: 'Darkstore wise', sub: 'Darkstore ke naam se group karein', icon: require('./assets/shop2.png'), iconTint: '#0284C7', tint: '#E0F2FE', accent: '#0284C7' },
+  { id: 'pickup', label: 'Pickup wise', sub: 'Pickup location se group karein', icon: require('./assets/gps.png'), iconTint: '#16A34A', tint: '#DCFCE7', accent: '#16A34A' },
+  { id: 'drop', label: 'Drop wise', sub: 'Delivery address se group karein', icon: require('./assets/location.png'), iconTint: '#DC2626', tint: '#FEE2E2', accent: '#DC2626' },
+  { id: 'pincode', label: 'Pin Code wise', sub: 'PIN code se group karein', icon: require('./assets/pin.png'), iconTint: '#CA8A04', tint: '#FEF9C3', accent: '#CA8A04' },
+  { id: 'priority', label: 'Priority wise', sub: 'Priority ke hisaab se group karein', icon: require('./assets/star.png'), iconTint: '#DC2626', tint: '#FEE2E2', accent: '#DC2626' },
+];
+
+const FILTER_ROW_H = 68;
+
+const extractPincode = (address) => {
+  const m = String(address || '').match(/\b(\d{6})\b(?!.*\d{6})/);
+  return m ? m[1] : '';
+};
+
+const normalizeSearchText = (v) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Search haystack — every field visible on the order card + status label.
+const orderSearchHaystack = (order) => {
+  const ds = order?.dark_store || {};
+  const farmerMobile = String(order?.farmer_mobile || '');
+  const dsMobile = String(ds?.mobile || '');
+  const parts = [
+    order?.order_id,
+    order?.id,
+    order?.farmer_name,
+    farmerMobile,
+    farmerMobile.replace(/\D/g, ''),
+    order?.shipping_address,
+    order?.group_pincode,
+    order?.pincode,
+    extractPincode(order?.shipping_address),
+    ds?.name,
+    ds?.mobile,
+    dsMobile.replace(/\D/g, ''),
+    ds?.location,
+    ds?.city,
+    ds?.pincode,
+    order?.amount,
+    order?.payment_mode,
+    order?.payment_status,
+    order?.status,
+    order?.priority,
+    getStatus(order?.status).label,
+  ];
+  return normalizeSearchText(parts.filter(Boolean).join(' '));
+};
+
+const isPendingOrder = (item) => getStatus(item?.status).key === 'PENDING';
+
+const filterOrdersByQuery = (orders, query) => {
+  const q = normalizeSearchText(query);
+  if (!q) return orders || [];
+  const compactQ = q.replace(/\s/g, '');
+  return (orders || []).filter((order) => {
+    const hay = orderSearchHaystack(order);
+    if (hay.includes(q)) return true;
+    if (compactQ.length >= 3) {
+      return hay.replace(/\s/g, '').includes(compactQ);
+    }
+    return false;
+  });
+};
+
+const PRIORITY_GROUP_ORDER = { High: 0, Medium: 1, Low: 2 };
+
+const groupKeyFor = (order, groupBy) => {
+  switch (groupBy) {
+    case 'farmer':
+      return String(order?.farmer_name || 'Unknown farmer').trim() || 'Unknown farmer';
+    case 'darkstore':
+      return String(order?.dark_store?.name || 'Unknown darkstore').trim() || 'Unknown darkstore';
+    case 'pickup':
+      return String(order?.dark_store?.location || order?.dark_store?.name || 'Unknown pickup').trim() || 'Unknown pickup';
+    case 'drop':
+      return String(order?.shipping_address || 'Unknown drop').trim() || 'Unknown drop';
+    case 'pincode':
+      return String(order?.group_pincode || extractPincode(order?.shipping_address) || order?.dark_store?.pincode || 'Unknown PIN').trim();
+    case 'priority':
+      return getPriority(order?.priority).label;
+    default:
+      return '';
+  }
+};
+
+const sortGroupEntries = (entries, groupBy) => {
+  if (groupBy === 'priority') {
+    return entries.sort((a, b) => {
+      const pa = PRIORITY_GROUP_ORDER[a[0]] ?? 99;
+      const pb = PRIORITY_GROUP_ORDER[b[0]] ?? 99;
+      return pa - pb;
+    });
+  }
+  return entries.sort((a, b) => a[0].localeCompare(b[0]));
+};
+
+const buildGroupedRows = (orders, groupBy) => {
+  if (!groupBy) return (orders || []).map((item) => ({ type: 'order', item, key: `o-${item?.id || item?.order_id}` }));
+  const map = new Map();
+  (orders || []).forEach((order) => {
+    const title = groupKeyFor(order, groupBy);
+    if (!map.has(title)) map.set(title, []);
+    map.get(title).push(order);
+  });
+  const rows = [];
+  [...sortGroupEntries([...map.entries()], groupBy)].forEach(([title, items]) => {
+    rows.push({ type: 'header', title, count: items.length, key: `h-${groupBy}-${title}` });
+    items.forEach((item) => rows.push({ type: 'order', item, key: `o-${item?.id || item?.order_id}` }));
+  });
+  return rows;
+};
+
+const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+
+const filterSheetMaxHeight = (hasActive) => {
+  const listH = GROUP_FILTERS.length * FILTER_ROW_H;
+  const total = 108 + listH + (hasActive ? 42 : 0) + 78 + SAFE_BOTTOM;
+  return Math.min(total, Math.round(Dimensions.get('window').height * 0.82));
+};
 
 class TrackOrders extends Component {
   constructor(props) {
@@ -87,8 +224,12 @@ class TrackOrders extends Component {
       page: 1,
       totalPages: 1,
       hasMore: false,
+      groupBy: null,
+      filterDraft: null,
+      showFilterSheet: false,
     };
     this.fetchSeq = 0;
+    this.filterSheetRef = null;
     this.anims = [0,1,2].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
     this.ctaArrowX = new Animated.Value(0);
     this._ctaArrowLoop = null;
@@ -108,13 +249,28 @@ class TrackOrders extends Component {
     }
   };
 
-  cacheKey = () => `${KEYS.ORDERS}_${this.state.selected}`;
+  cacheKeyFor = (selected, groupBy) => `${KEYS.ORDERS}_${selected}_${groupBy || ''}`;
 
-  componentDidMount() {
-    this.unsubscribe = cacheSubscribe(this.cacheKey(), (v) => {
+  cacheKey = () => this.cacheKeyFor(this.state.selected, this.state.groupBy);
+
+  resubscribeCache = () => {
+    if (this.unsubscribe) this.unsubscribe();
+    const key = this.cacheKey();
+    this.unsubscribe = cacheSubscribe(key, (v) => {
       if (!v) return;
+      LayoutAnimation.configureNext(SWAP_ANIM);
       this.setState({ orders: v.orders || [], live: v.live || {} });
     });
+  };
+
+  reloadOrders = () => {
+    this.setState({ page: 1, hasMore: false, selectedIds: new Set() }, () => {
+      this.resubscribeCache();
+      this.load(true, { page: 1, append: false });
+    });
+  };
+  componentDidMount() {
+    this.resubscribeCache();
     this.load(cacheHas(this.cacheKey()));
   }
 
@@ -130,13 +286,13 @@ class TrackOrders extends Component {
     // Snapshot the tab the request was issued for, so a stale response can't
     // overwrite the rows of a tab the user has since switched away from.
     const requestedFor = this.state.selected;
+    const requestedGroup = this.state.groupBy || '';
     const seq = ++this.fetchSeq;
-    const q = String(this.state.query || '').trim();
     const body = {
       status: requestedFor === 'ALL' ? '' : requestedFor.toLowerCase(),
       page,
       limit: 20,
-      ...(q ? { search: q } : {}),
+      group_by: requestedGroup,
     };
     fetch(constants.orderList, {
       method: 'POST',
@@ -146,7 +302,7 @@ class TrackOrders extends Component {
       .then(r => r.json())
       .then(j => {
         if (seq !== this.fetchSeq) return;
-        const fresh = j?.status && Array.isArray(j.data) ? j.data : [];
+        const fresh = j?.status ? flattenOrderList(j.data) : [];
         const live = j?.live || this.state.live;
         const pg = j?.pagination || j?.meta || {};
         const currentPage = Math.max(1, Number(pg?.currentPage || pg?.page || page) || page);
@@ -156,10 +312,11 @@ class TrackOrders extends Component {
           : currentPage < totalPages;
 
         const nextOrders = append ? [...this.state.orders, ...fresh] : fresh;
-        cacheSet(`${KEYS.ORDERS}_${requestedFor}`, { orders: nextOrders, live });
+        cacheSet(this.cacheKeyFor(requestedFor, requestedGroup), { orders: nextOrders, live });
         // Warm the image cache for any product/farmer photos the rows will render.
         preloadImages(extractImageUrls(fresh));
         if (this.state.selected !== requestedFor) return; // user switched tab; cache only
+        if ((this.state.groupBy || '') !== requestedGroup) return; // filter changed; cache only
         LayoutAnimation.configureNext(SWAP_ANIM);
         this.setState({
           loading: false,
@@ -175,6 +332,7 @@ class TrackOrders extends Component {
       .catch(() => {
         if (seq !== this.fetchSeq) return;
         if (this.state.selected !== requestedFor) return;
+        if ((this.state.groupBy || '') !== requestedGroup) return;
         this.setState({ loading: false, refreshing: false, loadingMore: false });
       });
   };
@@ -194,7 +352,7 @@ class TrackOrders extends Component {
   pick = (s) => {
     if (s === this.state.selected) return;
     if (this.unsubscribe) this.unsubscribe();
-    const newKey = `${KEYS.ORDERS}_${s}`;
+    const newKey = this.cacheKeyFor(s, this.state.groupBy);
     const cached = cacheGet(newKey);
 
     // Keep the FlatList mounted (no shimmer swap) and animate the row replacement
@@ -219,7 +377,7 @@ class TrackOrders extends Component {
     });
   };
 
-  // -------- Multi-select (Pending tab) --------
+  // -------- Multi-select (pending orders — any tab) --------
   getOrderKey = (item) => String(item?.id || item?.order_id || '');
 
   toggleSelect = (key) => {
@@ -318,27 +476,181 @@ class TrackOrders extends Component {
     return { bg: st.bg };
   };
 
-  // Search is server-side now — the API receives the query string and returns
-  // the filtered list. No client-side filtering.
+  // Client-side search across all order fields — instant, works with grouping too.
   onQueryChange = (text) => {
+    LayoutAnimation.configureNext(SWAP_ANIM);
     this.setState({ query: text });
-    if (this._searchTimer) clearTimeout(this._searchTimer);
-    this._searchTimer = setTimeout(() => {
-      this.setState({ page: 1, hasMore: false }, () =>
-        this.load(true, { page: 1, append: false }),
-      );
-    }, 400);
   };
 
   clearQuery = () => {
-    if (this._searchTimer) clearTimeout(this._searchTimer);
-    this.setState({ query: '', page: 1, hasMore: false }, () =>
-      this.load(true, { page: 1, append: false }),
+    LayoutAnimation.configureNext(SWAP_ANIM);
+    this.setState({ query: '' });
+  };
+
+  openFilterSheet = () => {
+    this.setState({ showFilterSheet: true, filterDraft: this.state.groupBy });
+  };
+
+  closeFilterSheet = () => {
+    this.filterSheetRef?.close?.();
+  };
+
+  onFilterSheetClosed = () => {
+    this.setState({ showFilterSheet: false });
+  };
+
+  selectFilterDraft = (id) => {
+    this.setState({ filterDraft: this.state.filterDraft === id ? null : id });
+  };
+
+  applyFilters = () => {
+    LayoutAnimation.configureNext(SWAP_ANIM);
+    this.setState({ groupBy: this.state.filterDraft }, () => {
+      this.closeFilterSheet();
+      this.reloadOrders();
+    });
+  };
+
+  clearFilters = () => {
+    LayoutAnimation.configureNext(SWAP_ANIM);
+    this.setState({ groupBy: null, filterDraft: null }, () => {
+      this.closeFilterSheet();
+      this.reloadOrders();
+    });
+  };
+
+  groupedRows = () => {
+    const filtered = filterOrdersByQuery(this.state.orders, this.state.query);
+    return buildGroupedRows(filtered, this.state.groupBy);
+  };
+
+  filteredOrderCount = () => filterOrdersByQuery(this.state.orders, this.state.query).length;
+
+  renderPriorityBadge = (priority) => {
+    const pri = getPriority(priority);
+    return (
+      <View style={[s.chip, s.priorityChip, { backgroundColor: pri.bg }]}>
+        <Text style={s.chipT}>{pri.label}</Text>
+      </View>
     );
   };
 
-  renderItem = ({ item, index }) => {
-    const inner = this.renderOrderCard({ item, index });
+  renderGroupHeader = (title, count, groupBy) => {
+    const isPriority = groupBy === 'priority';
+    const pri = isPriority ? getPriority(title) : null;
+    return (
+      <View style={[
+        s.groupHdr,
+        isPriority && { backgroundColor: pri.tint, borderLeftColor: pri.bg },
+      ]}>
+        <View style={[s.groupHdrDot, isPriority && { backgroundColor: pri.bg }]} />
+        <Text style={[s.groupHdrT, isPriority && { color: pri.accent }]} numberOfLines={2}>{title}</Text>
+        <View style={[s.groupHdrCount, isPriority && { backgroundColor: pri.bg }]}>
+          <Text style={s.groupHdrCountT}>{count}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  renderFilterSheet = () => {
+    const { showFilterSheet, filterDraft, groupBy } = this.state;
+    if (!showFilterSheet) return null;
+    const activeOpt = GROUP_FILTERS.find((g) => g.id === groupBy);
+    const sheetMax = filterSheetMaxHeight(!!groupBy);
+
+    return (
+      <BottomSheet
+        ref={(r) => { this.filterSheetRef = r; }}
+        visible
+        dynamicSize
+        maxDynamicContentSize={sheetMax}
+        onSheetClose={this.onFilterSheetClosed}
+      >
+        <View style={s.fsRoot}>
+          <View style={s.fsBanner}>
+            <View style={s.fsBannerGlow} />
+            <View style={s.fsBannerRow}>
+              <View style={s.fsBannerIco}>
+                <Image source={require('./assets/sort.png')} style={s.fsBannerIcoImg} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.fsBannerTitle}>Group Orders</Text>
+                <Text style={s.fsBannerSub}>List ko organize karne ka tareeka chunein</Text>
+              </View>
+              <TouchableOpacity onPress={this.closeFilterSheet} style={s.fsBannerClose} hitSlop={HIT}>
+                <Image source={require('./assets/cross.png')} style={s.fsBannerCloseIco} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={s.fsList}>
+            {GROUP_FILTERS.map((opt, idx) => {
+              const on = filterDraft === opt.id;
+              const last = idx === GROUP_FILTERS.length - 1;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  activeOpacity={0.82}
+                  style={[s.fsRow, on && s.fsRowOn, last && s.fsRowLast]}
+                  onPress={() => this.selectFilterDraft(opt.id)}
+                >
+                  {on ? <View style={[s.fsRowBar, { backgroundColor: opt.accent }]} /> : null}
+                  <View style={[
+                    s.fsRowIco,
+                    { borderColor: on ? opt.accent : `${opt.accent}40`, backgroundColor: on ? opt.tint : '#FFF' },
+                  ]}>
+                    <Image
+                      source={opt.icon}
+                      style={[s.fsRowIcoImg, opt.iconTint ? { tintColor: opt.iconTint } : null]}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.fsRowT, on && { color: opt.accent }]}>{opt.label}</Text>
+                    <Text style={s.fsRowS}>{opt.sub}</Text>
+                  </View>
+                  <View style={[s.fsRadio, on && { borderColor: opt.accent, backgroundColor: opt.tint }]}>
+                    {on ? <View style={[s.fsRadioDot, { backgroundColor: opt.accent }]} /> : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {!!groupBy && activeOpt ? (
+            <View style={s.fsActivePill}>
+              <View style={[s.fsActiveDot, { backgroundColor: activeOpt.accent }]} />
+              <Text style={s.fsActiveTxt} numberOfLines={1}>
+                Abhi active: <Text style={{ fontWeight: '800', color: activeOpt.accent }}>{activeOpt.label}</Text>
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={[s.fsActions, { paddingBottom: 10 + SAFE_BOTTOM }]}>
+            <TouchableOpacity
+              style={[s.fsResetBtn, (!filterDraft && !groupBy) && s.fsResetBtnOff]}
+              activeOpacity={0.85}
+              onPress={this.clearFilters}
+              disabled={!filterDraft && !groupBy}
+            >
+              <Text style={[s.fsResetT, (!filterDraft && !groupBy) && { opacity: 0.45 }]}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.fsDoneBtn} activeOpacity={0.88} onPress={this.applyFilters}>
+              <Text style={s.fsDoneT}>Apply</Text>
+              <View style={s.fsDoneArrow}>
+                <Image source={require('./assets/arrow.png')} style={s.fsDoneArrowIco} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </BottomSheet>
+    );
+  };
+
+  renderItem = ({ item: row, index }) => {
+    if (row.type === 'header') {
+      return this.renderGroupHeader(row.title, row.count, this.state.groupBy);
+    }
+    const inner = this.renderOrderCard({ item: row.item, index });
     return <FadeInItem delay={index < 6 ? index : 0}>{inner}</FadeInItem>;
   };
 
@@ -358,7 +670,7 @@ class TrackOrders extends Component {
     const ds = item?.dark_store;
     const statusLabel = getStatus(st).label;
 
-    const isPendingTab = this.state.selected === 'PENDING';
+    const canSelect = isPendingOrder(item);
     const orderKey = this.getOrderKey(item);
     const isChecked = this.state.selectedIds.has(orderKey);
     const goToDetails = () => this.props.navigation.navigate('DeliveryDetails', { order: item });
@@ -367,7 +679,7 @@ class TrackOrders extends Component {
       <TouchableOpacity
         activeOpacity={0.75}
         onPress={goToDetails}
-        onLongPress={isPendingTab ? () => this.toggleSelect(orderKey) : undefined}
+        onLongPress={canSelect ? () => this.toggleSelect(orderKey) : undefined}
         delayLongPress={250}
         style={[s.dlv, isChecked && s.dlvSelected]}
       >
@@ -384,7 +696,8 @@ class TrackOrders extends Component {
               <Text style={s.oidCopy}>⎘</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
-            <View style={[s.chip, { backgroundColor: b.bg }]}>
+            {this.renderPriorityBadge(item?.priority)}
+            <View style={[s.chip, { backgroundColor: b.bg, marginLeft: 6 }]}>
               <Text style={s.chipT}>{statusLabel}</Text>
             </View>
           </View>
@@ -436,7 +749,7 @@ class TrackOrders extends Component {
             is just a status indicator (pointerEvents="none"). The inner
             Pressable wins the responder over the parent card's onPress so
             navigation never accidentally fires from here. */}
-        {isPendingTab ? (
+        {canSelect ? (
           <Pressable
             onPress={() => this.toggleSelect(orderKey)}
             hitSlop={{ top: 12, bottom: 8, left: 12, right: 12 }}
@@ -484,11 +797,14 @@ class TrackOrders extends Component {
   a = (i) => ({ opacity: this.anims[Math.min(i,2)].o, transform: [{ translateY: this.anims[Math.min(i,2)].y }] });
 
   render() {
-    const { loading, refreshing, query, selected, live, selectedIds } = this.state;
-    const data = this.state.orders;
-    const isPendingTab = selected === 'PENDING';
+    const { loading, refreshing, query, selected, live, selectedIds, groupBy } = this.state;
+    const rows = this.groupedRows();
+    const orderCount = this.filteredOrderCount();
     const selectedCount = selectedIds.size;
-    const showCta = isPendingTab && selectedCount > 0;
+    const pendingInView = filterOrdersByQuery(this.state.orders, query).filter(isPendingOrder).length;
+    const showCta = selectedCount > 0;
+    const showSelectHint = pendingInView > 0;
+    const activeFilter = GROUP_FILTERS.find((g) => g.id === groupBy);
 
     return (
       <View style={s.root}>
@@ -510,16 +826,20 @@ class TrackOrders extends Component {
                   </TouchableOpacity>
                 )}
               </View>
+              <TouchableOpacity onPress={this.openFilterSheet} activeOpacity={0.85} style={[s.filterBtn, !!groupBy && s.filterBtnOn]}>
+                <Image source={require('./assets/filter.png')} style={s.filterBtnIco} />
+                {!!groupBy && <View style={s.filterDot} />}
+              </TouchableOpacity>
             </View>
           </SafeAreaView>
         </View>
 
-        <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+        <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
           {loading && !refreshing ? <ShimmerLoader /> : (
             <FlatList
-              data={data}
-              extraData={`${selected}-${selectedCount}`}
-              keyExtractor={(item, i) => `${selected}-${item?.id || item?.order_id || i}`}
+              data={rows}
+              extraData={`${selected}-${selectedCount}-${groupBy}-${query}`}
+              keyExtractor={(row) => row.key || `${selected}-${row?.item?.id || row?.item?.order_id}`}
               renderItem={this.renderItem}
               contentContainerStyle={[s.scroll, showCta && { paddingBottom: 120 }]}
               showsVerticalScrollIndicator={false}
@@ -536,15 +856,20 @@ class TrackOrders extends Component {
                   </Animated.View>
 
                   <Animated.View style={[this.a(1), s.secRow]}>
-                    <Text style={s.secTitle}>{selected === 'ALL' ? 'All Orders' : getStatus(selected).label} ({data.length})</Text>
-                    {isPendingTab && selectedCount > 0 && (
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.secTitle}>{selected === 'ALL' ? 'All Orders' : getStatus(selected).label} ({orderCount})</Text>
+                      {!!activeFilter && (
+                        <Text style={s.secFilterNote} numberOfLines={1}>Grouped: {activeFilter.label}</Text>
+                      )}
+                    </View>
+                    {selectedCount > 0 && (
                       <View style={s.selCountChip}>
                         <Text style={s.selCountChipT}>{selectedCount} order{selectedCount > 1 ? 's' : ''} selected</Text>
                       </View>
                     )}
                   </Animated.View>
 
-                  {isPendingTab && data.length > 0 && (
+                  {showSelectHint && (
                     <View style={s.selHint}>
                       <Text style={s.selHintIco}>☑</Text>
                       <Text style={s.selHintT}>Batch pickup ke liye checkbox tap karein. Details ke liye card tap karein.</Text>
@@ -594,7 +919,8 @@ class TrackOrders extends Component {
               )}
             </SafeAreaInsetsContext.Consumer>
           )}
-        </SafeAreaView>
+          {this.renderFilterSheet()}
+        </View>
       </View>
     );
   }
@@ -613,14 +939,25 @@ const s = StyleSheet.create({
   searchBarInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0, letterSpacing: 0 },
   clearIco: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
   clearIcoImg: { width: 8, height: 8, resizeMode: 'contain', tintColor: '#FFF' },
+  filterBtn: {
+    width: 38, height: 38, borderRadius: 10, marginLeft: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+  },
+  filterBtnOn: { backgroundColor: 'rgba(255,255,255,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  filterBtnIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: '#FFF' },
+  filterDot: {
+    position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: 4,
+    backgroundColor: '#FCD34D', borderWidth: 1, borderColor: P,
+  },
 
-  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
+  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 28 },
 
   card: { backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 10, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   cardTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
 
   secRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, marginBottom: 8 },
   secTitle: { fontSize: 12, fontWeight: '700', color: '#475569', letterSpacing: 0.3 },
+  secFilterNote: { fontSize: 10.5, fontWeight: '600', color: P, marginTop: 2 },
   selCountChip: { backgroundColor: STATUS.PICKUP.bg, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
   selCountChipT: { color: '#FFF', fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
   selHint: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#EDE9FE', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: P },
@@ -651,6 +988,17 @@ const s = StyleSheet.create({
   oidCopy: { fontSize: 20, fontWeight: '600', color: P, marginLeft: 6, opacity: 0.85, includeFontPadding: false, lineHeight: 22 },
   chip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   chipT: { fontSize: 9, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
+  priorityChip: { marginRight: 6 },
+
+  groupHdr: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#EDE9FE',
+    borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 8, marginTop: 2,
+    borderLeftWidth: 3, borderLeftColor: P,
+  },
+  groupHdrDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: P, marginRight: 8 },
+  groupHdrT: { flex: 1, fontSize: 12, fontWeight: '700', color: '#312E81', lineHeight: 16 },
+  groupHdrCount: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: P, alignItems: 'center', justifyContent: 'center', marginLeft: 8, paddingHorizontal: 6 },
+  groupHdrCountT: { fontSize: 10, fontWeight: '700', color: '#FFF' },
 
   checkBox: { marginLeft: 10, width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   // Visible 26 × 26 checkbox chip — sits on the LEFT of the payment pills.
@@ -725,6 +1073,96 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   ctaArrowIco: { width: 12, height: 12, resizeMode: 'contain', tintColor: STATUS.PICKUP.bg },
+
+  fsRoot: { overflow: 'hidden' },
+
+  fsBanner: {
+    backgroundColor: P,
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 14,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    overflow: 'hidden',
+  },
+  fsBannerGlow: {
+    position: 'absolute', top: -30, right: -20, width: 100, height: 100,
+    borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  fsBannerRow: { flexDirection: 'row', alignItems: 'center' },
+  fsBannerIco: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center', marginRight: 12,
+  },
+  fsBannerIcoImg: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FFF' },
+  fsBannerTitle: { fontSize: 16, fontWeight: '800', color: '#FFF', letterSpacing: -0.2 },
+  fsBannerSub: { fontSize: 11.5, color: 'rgba(255,255,255,0.78)', marginTop: 2, lineHeight: 15 },
+  fsBannerClose: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 8,
+  },
+  fsBannerCloseIco: { width: 9, height: 9, resizeMode: 'contain', tintColor: '#FFF' },
+
+  fsList: {
+    marginHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFF',
+    overflow: 'hidden',
+  },
+  fsRow: {
+    flexDirection: 'row', alignItems: 'center', minHeight: FILTER_ROW_H,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFF',
+  },
+  fsRowLast: { borderBottomWidth: 0 },
+  fsRowOn: { backgroundColor: '#FAFAFF' },
+  fsRowBar: { position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2 },
+  fsRowIco: {
+    width: 44, height: 44, borderRadius: 13, borderWidth: 1.5,
+    alignItems: 'center', justifyContent: 'center', marginRight: 12,
+  },
+  fsRowIcoImg: { width: 24, height: 24, resizeMode: 'contain' },
+  fsRowT: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  fsRowS: { fontSize: 11, color: '#94A3B8', marginTop: 2, lineHeight: 14 },
+  fsRadio: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#CBD5E1',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 10,
+  },
+  fsRadioDot: { width: 10, height: 10, borderRadius: 5 },
+
+  fsActivePill: {
+    flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 12,
+    backgroundColor: '#F8FAFC', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  fsActiveDot: { width: 7, height: 7, borderRadius: 4, marginRight: 8 },
+  fsActiveTxt: { flex: 1, fontSize: 12, fontWeight: '600', color: '#64748B' },
+
+  fsActions: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginTop: 14, paddingTop: 14,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+  },
+  fsResetBtn: {
+    flex: 1, height: 50, borderRadius: 14, borderWidth: 1.5, borderColor: '#CBD5E1',
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF',
+  },
+  fsResetBtnOff: { borderColor: '#E2E8F0' },
+  fsResetT: { fontSize: 14, fontWeight: '700', color: '#475569' },
+  fsDoneBtn: {
+    flex: 1.5, height: 50, borderRadius: 14, backgroundColor: P,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
+  },
+  fsDoneT: { fontSize: 15, fontWeight: '800', color: '#FFF' },
+  fsDoneArrow: {
+    width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  fsDoneArrowIco: { width: 10, height: 10, resizeMode: 'contain', tintColor: '#FFF' },
 });
 
 export default withV4Navigation(TrackOrders);

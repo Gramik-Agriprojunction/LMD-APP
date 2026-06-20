@@ -23,9 +23,12 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Toast from 'react-native-simple-toast';
-import { getStatus } from '../utils/statusColors';
+import { getStatus, getPriority } from '../utils/statusColors';
 
 const P = '#5D3FD3';
+
+const CALL_PURPLE = require('../screens/assets/call.png');
+const CALL_ORANGE = require('../screens/assets/phone.png');
 
 const mask = (p) => {
   if (!p) return '';
@@ -55,7 +58,8 @@ const resolve = (o = {}) => {
     '';
   const paymentMode = o.payment_mode || '';
   const paymentStatus = String(o.payment_status || '').toLowerCase();
-  return { orderId, status, farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus };
+  const priority = String(o.priority || 'low').toLowerCase();
+  return { orderId, status, farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority };
 };
 
 export default function OrderCard({
@@ -75,11 +79,14 @@ export default function OrderCard({
   hideFooter = false,
   hideRoute = false,
   extraHeaderRight = null,
+  compactChips = false,
   children = null,
 }) {
   const o = resolve(order);
   const stColor = getStatus(o.status);
   const dark = theme === 'dark';
+  const chipBox = compactChips ? s.chipSm : s.chip;
+  const chipText = compactChips ? s.chipTSm : s.chipT;
   const Wrap = onPress ? TouchableOpacity : View;
   const wrapProps = onPress ? { activeOpacity: 0.75, onPress, onLongPress, delayLongPress } : {};
 
@@ -112,8 +119,16 @@ export default function OrderCard({
             )}
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <View style={[s.chip, { backgroundColor: stColor.bg }]}>
-            <Text style={s.chipT}>{stColor.label}</Text>
+          {!!o.priority && (() => {
+            const pri = getPriority(o.priority);
+            return (
+              <View style={[chipBox, s.priChip, { backgroundColor: pri.bg }]}>
+                <Text style={chipText}>{pri.label}</Text>
+              </View>
+            );
+          })()}
+          <View style={[chipBox, { backgroundColor: stColor.bg }]}>
+            <Text style={chipText}>{stColor.label}</Text>
           </View>
           {extraHeaderRight}
         </View>
@@ -128,7 +143,7 @@ export default function OrderCard({
           </View>
           {!!onCall && (
             <TouchableOpacity onPress={() => onCall(o.farmerPhone)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={s.actBtn}>
-              <Image source={require('../screens/assets/call.png')} style={s.actIco} />
+              <Image source={CALL_PURPLE} style={s.actIco} />
             </TouchableOpacity>
           )}
           {!!onWhatsApp && (
@@ -157,16 +172,16 @@ export default function OrderCard({
             </View>
             {o.ds.mobile && onCallStore ? (
               <TouchableOpacity onPress={() => onCallStore(o.ds.mobile)} activeOpacity={0.7} style={s.dsCall}>
-                <Image source={require('../screens/assets/call.png')} style={s.dsCallIco} />
+                <Image source={CALL_ORANGE} style={s.dsCallIco} />
               </TouchableOpacity>
             ) : null}
           </View>
           <View style={s.routeRow}>
             <View style={s.routeTl}>
-              <View style={[s.dot, { backgroundColor: '#EF4444' }]} />
+              <View style={[s.dot, { backgroundColor: dark ? '#F87171' : '#EF4444' }]} />
             </View>
             <View style={[s.routeBody, { paddingBottom: 0 }]}>
-              <Text style={[s.routeLbl, { color: '#EF4444' }]}>DROP</Text>
+              <Text style={[s.routeLbl, { color: dark ? '#FCA5A5' : '#EF4444' }]}>DROP</Text>
               <Text style={[s.routeAddr, dark && { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={3}>
                 {o.dropAddress || '-'}
               </Text>
@@ -253,6 +268,9 @@ const s = StyleSheet.create({
 
   chip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
   chipT: { fontSize: 9, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
+  chipSm: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  chipTSm: { fontSize: 7.5, fontWeight: '700', color: '#FFF', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 10 },
+  priChip: { marginRight: 6 },
 
   // Selection checkbox lives in the FOOTER on the left, alongside the payment
   // pills and the amount. Visual size is still 26 × 26; hitSlop on the
@@ -277,26 +295,21 @@ const s = StyleSheet.create({
   name: { fontSize: 13.5, fontWeight: '700', color: '#1E293B' },
   phone: { fontSize: 11.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
   actBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  actIco: { width: 26, height: 26, resizeMode: 'contain' },
+  actIco: { width: 28, height: 28, resizeMode: 'contain' },
+  dsCall: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 2, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  dsCallIco: { width: 28, height: 28, resizeMode: 'contain' },
 
   routeWrap: { marginHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
   routeWrapDark: {},
   routeRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  // paddingTop tuned so the dot's vertical centre lines up with the label's
-  // optical centre (label sits at the top of routeBody with no paddingTop).
   routeTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
   dot: { width: 9, height: 9, borderRadius: 4.5 },
-  // marginBottom is 0 so the line ends flush with the bottom of the pickup row;
-  // the 3 px gap to the next dot comes from the drop row's own paddingTop,
-  // matching the 3 px marginTop above the line (symmetric on both ends).
   routeLine: { width: 1.5, flex: 1, minHeight: 10, backgroundColor: '#D1D5DB', marginTop: 3, marginBottom: 0 },
   routeBody: { flex: 1, paddingBottom: 10 },
   routeLbl: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
   routeTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
   routePhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
   routeAddr: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 16, marginTop: 1 },
-  dsCall: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 2 },
-  dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#EA580C' },
 
   foot: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#FAFBFC' },
   footDark: { backgroundColor: 'rgba(255,255,255,0.05)', borderTopColor: 'rgba(255,255,255,0.15)' },

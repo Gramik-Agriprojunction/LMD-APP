@@ -15,7 +15,7 @@ import {
   TextInput,
   Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
@@ -23,6 +23,8 @@ import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
 import ScreenHeader from '../components/ScreenHeader';
+
+const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
 import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
@@ -489,6 +491,7 @@ class MarkDispute extends Component {
           <BottomSheet
             ref={(r) => (this.confirmSheetRef = r)}
             visible={true}
+            dynamicSize
             enablePanDownToClose={true}
             onSheetClose={() => this.setState({ show_confirm: false })}
             onChange={(status) => (status === -1 ? this.setState({ show_confirm: false }) : '')}
@@ -660,7 +663,7 @@ const s = StyleSheet.create({
   // Confirm bottom sheet — iOS already gets the home-indicator inset from the
   // BottomSheet's inner SafeAreaView, so we drop the explicit bottom padding on
   // iOS to keep the action buttons close to the bottom edge.
-  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: Platform.OS === 'ios' ? 0 : 14 },
+  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 + SAFE_BOTTOM },
 
   // Hero block: theme-filled circle with white icon + title + sub. No shadow.
   sheetHero: { alignItems: 'center', marginBottom: 16 },
