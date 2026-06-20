@@ -147,7 +147,7 @@ export default function OrderCard({
             </TouchableOpacity>
           )}
           {!!onWhatsApp && (
-            <TouchableOpacity onPress={() => onWhatsApp(o.farmerPhone)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={[s.actBtn, { marginLeft: 6 }]}>
+            <TouchableOpacity onPress={() => onWhatsApp(o.farmerPhone)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={[s.actBtn, { marginLeft: 12 }]}>
               <Image source={require('../screens/assets/whatsapp.png')} style={s.actIco} />
             </TouchableOpacity>
           )}
@@ -294,8 +294,8 @@ const s = StyleSheet.create({
   avt: { width: 30, height: 30, borderRadius: 15, resizeMode: 'cover', marginRight: 10 },
   name: { fontSize: 13.5, fontWeight: '700', color: '#1E293B' },
   phone: { fontSize: 11.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
-  actBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  actIco: { width: 28, height: 28, resizeMode: 'contain' },
+  actBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  actIco: { width: 32, height: 32, resizeMode: 'contain' },
   dsCall: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 2, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   dsCallIco: { width: 28, height: 28, resizeMode: 'contain' },
 

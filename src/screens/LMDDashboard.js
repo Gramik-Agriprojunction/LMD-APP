@@ -13,8 +13,10 @@ import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
 import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import OrderCard from '../components/OrderCard';
+import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
 
 const P = '#5D3FD3';
+const SECTION_ICON = 24;
 
 const QUICK_ACTIONS = [
   {
@@ -136,12 +138,28 @@ class LMDDashboard extends Component {
 
   a = (i) => ({ opacity: this.anims[Math.min(i,4)].o, transform: [{ translateY: this.anims[Math.min(i,4)].y }] });
 
+  goSettlements = () => {
+    this.props.navigation.navigate('SettlementList', { initialTab: 'pending' });
+  };
+
+  renderSectionHead = (icon, title) => (
+    <View style={$.sectionHeadLeft}>
+      <View style={$.sectionIcoBox}>
+        <Image source={icon} style={$.sectionIco} resizeMode="contain" />
+      </View>
+      <Text style={$.sectionTitle}>{title}</Text>
+    </View>
+  );
+
   render() {
     const d = this.state.data;
     const name = d?.partner?.name || '';
     const rule = d?.partner?.rule;
     const live = d?.live_orders || {};
     const today = d?.today_deliveries || [];
+    const pendingSettlements = d?.pending_settlements || [];
+    const pendingAmount = d?.pending_settlement_amount;
+    const pendingCount = d?.pending_settlement_orders_count;
     const earn = this.n(d?.earnings?.this_month);
     const pen = this.n(d?.penalties?.this_month);
 
@@ -209,22 +227,44 @@ class LMDDashboard extends Component {
                 </TouchableOpacity>
               </Animated.View>
 
+              {pendingSettlements.length > 0 ? (
+                <Animated.View style={this.a(2)}>
+                  <PendingSettlementsCarousel
+                    items={pendingSettlements}
+                    totalAmount={pendingAmount}
+                    totalCount={pendingCount}
+                    onNavigate={this.goSettlements}
+                  />
+                </Animated.View>
+              ) : null}
+
               <Animated.View style={[$.card, this.a(2)]}>
                 <View style={$.cardH}>
-                  <Text style={$.cardT}>Live Orders <Text style={{ color: P }}>({this.n(live?.all_orders ?? allCount(live))})</Text></Text>
+                  {this.renderSectionHead(
+                    require('./assets/reward.png'),
+                    `Live Orders (${this.n(live?.all_orders ?? allCount(live))})`,
+                  )}
                   <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
                 </View>
                 <LiveOrdersGrid live={live} onPress={this.go} />
               </Animated.View>
 
-              <Animated.View style={this.a(3)}>
-                <View style={$.dlvHeader}>
-                  <Text style={$.cardT}>Aaj Ki Deliveries</Text>
+              <Animated.View style={[$.card, this.a(3), today.length ? { paddingBottom: 4 } : null]}>
+                <View style={[$.cardH, { marginBottom: today.length ? 10 : 8 }]}>
+                  {this.renderSectionHead(
+                    require('./assets/truck.png'),
+                    'Aaj Ki Deliveries',
+                  )}
                   <TouchableOpacity onPress={() => this.go('TODAY')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
                 </View>
                 {today.length > 0 ? (
                   <FlatList data={today} keyExtractor={(it, i) => `${it?.order_id || i}`} renderItem={this.renderItem} scrollEnabled={false} />
-                ) : <View style={[$.card, { alignItems: 'center', paddingVertical: 14 }]}><Image source={require('./assets/dlh.png')} style={{ width: 64, height: 64, resizeMode: 'contain', marginBottom: 6 }} /><Text style={$.empty}>No deliveries for today</Text></View>}
+                ) : (
+                  <View style={$.emptyWrap}>
+                    <Image source={require('./assets/dlh.png')} style={$.emptyImg} />
+                    <Text style={$.empty}>No deliveries for today</Text>
+                  </View>
+                )}
               </Animated.View>
 
               <Animated.View style={[$.card, this.a(4), { paddingBottom: 14 }]}>
@@ -300,10 +340,15 @@ const $ = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
   cardH: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardT: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  sectionHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 8 },
+  sectionIcoBox: { width: SECTION_ICON, height: SECTION_ICON, alignItems: 'center', justifyContent: 'center' },
+  sectionIco: { width: SECTION_ICON, height: SECTION_ICON },
+  sectionTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B' },
   viewAll: { color: P, fontSize: 11, fontWeight: '600' },
   viewAllWrap: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
 
-  dlvHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, marginTop: 6 },
+  emptyWrap: { alignItems: 'center', paddingVertical: 14 },
+  emptyImg: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 6 },
   dlv: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
 
   dlvHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, marginBottom: 2 },

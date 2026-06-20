@@ -69,7 +69,11 @@ class SettlementList extends Component {
   }
 
   componentDidMount() {
-    this.fetchList();
+    const initialTab = this.props?.navigation?.getParam?.('initialTab');
+    const tab = initialTab && ['all', 'pending', 'settled', 'disputed'].includes(initialTab)
+      ? initialTab
+      : this.state.activeTab;
+    this.setState({ activeTab: tab }, () => this.fetchList(tab));
   }
 
   goBack = () => {

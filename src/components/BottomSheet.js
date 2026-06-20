@@ -32,8 +32,13 @@ const BottomSheet = forwardRef(function BottomSheet(props, ref) {
   }));
 
   useEffect(() => {
-    if (visible) modalRef.current?.present();
-    else modalRef.current?.dismiss();
+    if (visible) {
+      const frame = requestAnimationFrame(() => {
+        modalRef.current?.present();
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    modalRef.current?.dismiss();
   }, [visible]);
 
   const renderBackdrop = useCallback((backdropProps) => (

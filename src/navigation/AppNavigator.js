@@ -8,7 +8,6 @@ import Language from '../screens/Language';
 import LMDDashboard from '../screens/LMDDashboard';
 import TrackOrders from '../screens/TrackOrders';
 import DeliveryDetails from '../screens/DeliveryDetails';
-import DeliverToFarmer from '../screens/DeliverToFarmer';
 import RescheduleDelivery from '../screens/RescheduleDelivery';
 import Survey from '../screens/Survey';
 import Profile from '../screens/Profile';
@@ -49,7 +48,6 @@ export default function AppNavigator() {
         <Stack.Screen name="LMDDashboard" component={LMDDashboard} />
         <Stack.Screen name="TrackOrders" component={TrackOrders} />
         <Stack.Screen name="DeliveryDetails" component={DeliveryDetails} />
-        <Stack.Screen name="DeliverToFarmer" component={DeliverToFarmer} />
         <Stack.Screen name="RescheduleDelivery" component={RescheduleDelivery} />
         <Stack.Screen name="Survey" component={Survey} />
         <Stack.Screen name="Profile" component={Profile} />

@@ -2,32 +2,59 @@ import React, { Component } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Image, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, ScrollView, Linking,
+  InteractionManager,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import { withV4Navigation } from '../utils/v4Compat';
+import { invalidateOrderRelated } from '../utils/dataCache';
+import { getCurrentCoordsWithPermission, warmUpLocation } from '../utils/locationHelper';
 import OrderCard from '../components/OrderCard';
+import CollectPaymentCard from '../components/CollectPaymentCard';
+import BottomSheet from '../components/BottomSheet';
+import ProofImageViewer from '../components/ProofImageViewer';
 
 import { STATUS } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
 
+let ImageCropPicker = null;
+try {
+  ImageCropPicker = require('react-native-image-crop-picker').default || require('react-native-image-crop-picker');
+} catch (e) {
+  console.log('ImageCropPicker not available');
+}
+
 const BG = STATUS.ALL.bg;
+const MAX_PROOF = 6;
+const PROOF_GAP = 6;
+const PROOF_THUMB = 68;
+const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
 
 // Each verification screen uses the colour of the status it transitions the
 // order to — Pickup → cyan, Deliver → green, RTO → red. Pulled from the
 // canonical statusColors map so it matches buttons, pills, and grid tiles.
 const THEMES = {
   pickup:  { bg: STATUS.PICKUP.bg,    accent: '#FCD34D', title: 'Pickup Verify Karein',   helper: 'warehouse',  verifyLbl: 'PICKUP',         doneTitle: 'Verify Ho Gaya!',  doneSub: 'Pickup status update ho raha hai...' },
-  deliver: { bg: STATUS.DELIVERED.bg, accent: '#FCD34D', title: 'Delivery Verify Karein', helper: 'farmer',     verifyLbl: 'DELIVER',        doneTitle: 'Verify Ho Gaya!',  doneSub: 'Delivery aage badh rahi hai...' },
+  deliver: { bg: STATUS.DELIVERED.bg, accent: '#FCD34D', title: 'Delivery Verify Karein', helper: 'farmer',     verifyLbl: 'DELIVER',        doneTitle: 'Verify Ho Gaya!',  doneSub: 'Delivery confirm ho gayi...' },
   rto:     { bg: STATUS.RTO.bg,       accent: '#FCD34D', title: 'Wapsi Verify Karein',    helper: 'warehouse',  verifyLbl: 'WAPSI CONFIRM',  doneTitle: 'Wapas Ho Gaya!',   doneSub: 'Product wapsi mark ho rahi hai...' },
 };
 
 class OrderOtpVerify extends Component {
   constructor(props) {
     super(props);
-    this.state = { otp: '', isLoading: false, verified: false };
+    this.state = {
+      otp: '',
+      isLoading: false,
+      verified: false,
+      deliveryProofs: [],
+      proofConfirmVisible: false,
+      pendingProof: null,
+      previewUri: null,
+      payment_type: 'cash',
+    };
+    this.pickLock = false;
     this.iconScale = new Animated.Value(0.5);
     this.iconFade = new Animated.Value(0);
     this.titleFade = new Animated.Value(0);
@@ -107,6 +134,10 @@ class OrderOtpVerify extends Component {
     }, 400);
 
     this.startPulse();
+
+    if (this.getActionType() === 'deliver') {
+      warmUpLocation('delivery');
+    }
   }
 
   startPulse = () => {
@@ -127,32 +158,196 @@ class OrderOtpVerify extends Component {
     arrowLoop();
   };
 
+  openProofCamera = () => {
+    if (this.state.deliveryProofs.length >= MAX_PROOF) {
+      Toast.show(`Maximum ${MAX_PROOF} photos allowed`, Toast.SHORT);
+      return;
+    }
+    if (!ImageCropPicker) {
+      Toast.show('Camera not available on this device', Toast.SHORT);
+      return;
+    }
+    if (this.pickLock) return;
+    this.captureProofFromCamera();
+  };
+
+  captureProofFromCamera = async () => {
+    if (this.pickLock || !ImageCropPicker) return;
+    this.pickLock = true;
+
+    try {
+      try { if (ImageCropPicker.clean) await ImageCropPicker.clean(); } catch (e) { /* ignore */ }
+
+      const img = await ImageCropPicker.openCamera({
+        mediaType: 'photo',
+        cropping: false,
+        compressImageQuality: 0.85,
+        forceJpg: true,
+      });
+
+      if (!img?.path) return;
+
+      this.setState({
+        pendingProof: this.toProofFile(img, 'camera', 0),
+        proofConfirmVisible: true,
+      });
+    } catch (e) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (!msg.includes('cancel')) Toast.show(e?.message || 'Unable to open camera', Toast.SHORT);
+    } finally {
+      setTimeout(() => { this.pickLock = false; }, Platform.OS === 'ios' ? 700 : 350);
+    }
+  };
+
+  usePendingProof = () => {
+    const { pendingProof, deliveryProofs } = this.state;
+    if (!pendingProof) return;
+    this.setState({
+      deliveryProofs: [...deliveryProofs, pendingProof].slice(0, MAX_PROOF),
+      pendingProof: null,
+      proofConfirmVisible: false,
+    });
+  };
+
+  retakeProofPhoto = () => {
+    this.setState({ proofConfirmVisible: false, pendingProof: null }, () => {
+      InteractionManager.runAfterInteractions(() => {
+        setTimeout(() => this.captureProofFromCamera(), Platform.OS === 'ios' ? 700 : 350);
+      });
+    });
+  };
+
+  closeProofConfirm = () => {
+    this.setState({ proofConfirmVisible: false, pendingProof: null });
+  };
+
+  toProofFile = (img, source, index) => ({
+    uri: img.path,
+    type: img?.mime || 'image/jpeg',
+    name: img?.filename || `${source}_${Date.now()}_${index}.jpg`,
+  });
+
+  removeProof = (index) => {
+    this.setState((prev) => ({
+      deliveryProofs: prev.deliveryProofs.filter((_, i) => i !== index),
+    }));
+  };
+
+  openProofPreview = (uri) => {
+    this.setState({ previewUri: uri });
+  };
+
+  closeProofPreview = () => {
+    this.setState({ previewUri: null });
+  };
+
+  resolveStatus = (actionType) => (actionType === 'deliver' ? 'delivered' : actionType);
+
+  resolveCoords = async () => {
+    const result = await getCurrentCoordsWithPermission('delivery');
+    return { lat: result.lat || '', lng: result.lng || '' };
+  };
+
+  submitStatusUpdate = (orderId, actionType, otp, coords = {}) => {
+    const status = this.resolveStatus(actionType);
+    const url = constants.updateStatus;
+    const isDeliver = actionType === 'deliver';
+    const lat = String(coords.lat ?? '');
+    const lng = String(coords.lng ?? '');
+    const paymentType = isDeliver ? (this.state.payment_type || 'cash') : '';
+
+    if (isDeliver) {
+      const { deliveryProofs } = this.state;
+      const fd = new FormData();
+      fd.append('status', status);
+      fd.append('order_id[]', String(orderId));
+      fd.append('otp', String(otp));
+      fd.append('type', paymentType);
+      fd.append('reason', '');
+      fd.append('lat', lat);
+      fd.append('long', lng);
+      deliveryProofs.forEach((file) => {
+        fd.append('delivery_proof[]', {
+          uri: file.uri,
+          type: file.type,
+          name: file.name,
+        });
+      });
+
+      return fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + global.token,
+          Accept: 'application/json',
+        },
+        body: fd,
+      });
+    }
+
+    const body = {
+      status,
+      order_id: [String(orderId)],
+      otp: String(otp),
+      type: paymentType,
+      reason: '',
+      lat,
+      long: lng,
+    };
+
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
   verifyOtp = (code) => {
     const orderId = this.getOrderId();
     const otp = code || this.state.otp;
-    if (!otp || otp.length < 5) { Toast.show('Please enter 5-digit OTP', Toast.SHORT); return; }
+    const actionType = this.getActionType();
+    const isDeliver = actionType === 'deliver';
+    const hasOtp = otp && otp.length >= 5;
+    const hasProof = this.state.deliveryProofs.length > 0;
+
+    if (isDeliver) {
+      if (!hasOtp && !hasProof) {
+        Toast.show('OTP daalein ya kam se kam 1 delivery proof photo upload karein', Toast.SHORT);
+        return;
+      }
+    } else if (!hasOtp) {
+      Toast.show('Please enter 5-digit OTP', Toast.SHORT);
+      return;
+    }
     if (this.state.isLoading) return;
+    if (!orderId) {
+      Toast.show('Order id missing', Toast.SHORT);
+      return;
+    }
 
-    this.setState({ isLoading: true, otp });
-    const body = { orderId: String(orderId), otp: otp };
-    console.log('Order Verify OTP payload== ', body);
+    const otpPayload = hasOtp ? otp : '';
+    this.setState({ isLoading: true, otp: otpPayload });
 
-    fetch(constants.orderVerifyOtp, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + global.token, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then(r => r.json())
-      .then(json => {
-        console.log('Order Verify OTP response== ', JSON.stringify(json));
+    this.resolveCoords()
+      .then((coords) => this.submitStatusUpdate(orderId, actionType, otpPayload, coords))
+      .then((r) => r.json())
+      .then((json) => {
         if (json?.status || json?.success) {
+          invalidateOrderRelated();
+          this._statusMessage = json?.message || '';
           this.showVerifiedAnimation();
         } else {
           this.setState({ isLoading: false });
-          Toast.show(json?.message || 'Invalid OTP', Toast.SHORT);
+          Toast.show(json?.message || 'Unable to verify', Toast.SHORT);
         }
       })
-      .catch(e => { this.setState({ isLoading: false }); Toast.show('Something went wrong', Toast.SHORT); });
+      .catch(() => {
+        this.setState({ isLoading: false });
+        Toast.show('Something went wrong', Toast.SHORT);
+      });
   };
 
   componentWillUnmount() {
@@ -193,36 +388,101 @@ class OrderOtpVerify extends Component {
   onOtpSuccess = () => {
     const actionType = this.getActionType();
     const order = this.getOrder();
-    const orderId = this.getOrderId();
+    const msg = this._statusMessage || 'Status updated';
+
     if (actionType === 'deliver') {
-      this.props.navigation.replace('DeliverToFarmer', { order: order });
+      Toast.show(msg, Toast.SHORT);
+      this.props.navigation.goBack();
     } else {
-      this.updateOrderStatus(orderId, actionType);
+      Toast.show(msg, Toast.SHORT);
+      this.props.navigation.goBack();
     }
   };
 
-  updateOrderStatus = (orderId, status) => {
-    const body = { status, order_id: orderId, type: '', reason: '' };
-    console.log('Update Status (post OTP) payload== ', body);
+  renderProofSection = () => {
+    const { deliveryProofs } = this.state;
+    const canAdd = deliveryProofs.length < MAX_PROOF;
 
-    fetch(constants.updateStatus, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + global.token, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then(r => r.json())
-      .then(json => {
-        console.log('Update Status (post OTP) response== ', JSON.stringify(json));
-        if (this._unmounted) return;
-        Toast.show(json?.message || 'Status updated', Toast.SHORT);
-        this.props.navigation.goBack();
-      })
-      .catch(e => {
-        console.log('Update Status (post OTP) error== ', e);
-        if (this._unmounted) return;
-        this.setState({ isLoading: false });
-        Toast.show('Something went wrong', Toast.SHORT);
-      });
+    return (
+      <View style={s.proofSection}>
+        <View style={s.proofHead}>
+          <View style={s.proofHeadIco}>
+            <Image source={require('./assets/cam2.png')} style={s.proofHeadIcoImg} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.proofTitle}>Delivery Proof</Text>
+            <Text style={s.proofSub}>Photo upload karein · max {MAX_PROOF}</Text>
+          </View>
+          <View style={s.proofCountPill}>
+            <Text style={s.proofCountT}>{deliveryProofs.length} / {MAX_PROOF}</Text>
+          </View>
+        </View>
+
+        <View style={s.proofBody}>
+          <View style={s.proofGrid}>
+            {deliveryProofs.map((file, index) => (
+              <View key={`${file.uri}-${index}`} style={[s.proofThumbWrap, { width: PROOF_THUMB, height: PROOF_THUMB }]}>
+                <TouchableOpacity activeOpacity={0.9} onPress={() => this.openProofPreview(file.uri)} style={s.proofThumbBtn}>
+                  <Image source={{ uri: file.uri }} style={s.proofThumb} resizeMode="cover" />
+                </TouchableOpacity>
+                <TouchableOpacity style={s.proofRemove} onPress={() => this.removeProof(index)} activeOpacity={0.85}>
+                  <Text style={s.proofRemoveT}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {canAdd ? (
+              <TouchableOpacity
+                style={[s.proofAdd, { width: PROOF_THUMB, height: PROOF_THUMB }]}
+                onPress={this.openProofCamera}
+                activeOpacity={0.85}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <View style={s.proofAddInner}>
+                  <Image source={require('./assets/cam.png')} style={s.proofAddIco} />
+                  <Text style={s.proofAddT}>Photo</Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {deliveryProofs.length ? (
+            <Text style={s.proofHint}>Preview dekhne ke liye photo par tap karein</Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
+  renderProofConfirmSheet = () => {
+    const { proofConfirmVisible, pendingProof } = this.state;
+    if (!proofConfirmVisible || !pendingProof) return null;
+
+    return (
+      <BottomSheet
+        visible
+        dynamicSize
+        maxDynamicContentSize={420 + SAFE_BOTTOM}
+        onSheetClose={this.closeProofConfirm}
+        enablePanDownToClose
+        onChange={(idx) => { if (idx === -1) this.closeProofConfirm(); }}
+      >
+        <View style={[s.confirmWrap, { paddingBottom: 12 + SAFE_BOTTOM }]}>
+          <Text style={s.confirmTitle}>Delivery Proof</Text>
+          <Text style={s.confirmSub}>Kya yeh photo sahi hai?</Text>
+
+          <Image source={{ uri: pendingProof.uri }} style={s.confirmPreview} resizeMode="cover" />
+
+          <TouchableOpacity activeOpacity={0.88} style={s.confirmRetake} onPress={this.retakeProofPhoto}>
+            <Text style={s.confirmRetakeT}>Re-Take Photo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.88} style={s.confirmUse} onPress={this.usePendingProof}>
+            <Text style={s.confirmUseT}>Use Photo</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
+    );
   };
 
   render() {
@@ -230,9 +490,11 @@ class OrderOtpVerify extends Component {
     const order = this.getOrder();
     const theme = THEMES[actionType] || THEMES.pickup;
     const BG_T = theme.bg;
-    const isPickup = actionType === 'pickup';
-    const disabled = this.state.isLoading || this.state.otp.length < 5;
-    const { verified } = this.state;
+    const isDeliver = actionType === 'deliver';
+    const { verified, deliveryProofs } = this.state;
+    const hasOtp = this.state.otp.length >= 5;
+    const hasProof = deliveryProofs.length > 0;
+    const disabled = this.state.isLoading || (isDeliver ? (!hasOtp && !hasProof) : !hasOtp);
 
     return (
       <View style={[s.root, { backgroundColor: BG_T }]}>
@@ -240,7 +502,11 @@ class OrderOtpVerify extends Component {
         <ScreenHeader bg={BG_T} title={theme.title} onBack={this.goBack} />
 
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: BG_T }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[s.scroll, !verified && { paddingBottom: 72 + SAFE_BOTTOM }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
 
             {verified ? (
               <View style={s.verifiedWrap}>
@@ -261,7 +527,11 @@ class OrderOtpVerify extends Component {
                 {/* Title + OTP */}
                 <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
                   <Text style={s.title}>OTP Daalein</Text>
-                  <Text style={s.subtitle}>{theme.helper === 'farmer' ? 'Farmer' : 'Warehouse'} ne jo 5-digit code diya hai, woh daalein</Text>
+                  <Text style={s.subtitle}>
+                    {isDeliver
+                      ? 'OTP daalein ya delivery proof ki photo upload karein'
+                      : `${theme.helper === 'farmer' ? 'Farmer' : 'Warehouse'} ne jo 5-digit code diya hai, woh daalein`}
+                  </Text>
                 </Animated.View>
 
                 <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
@@ -271,31 +541,32 @@ class OrderOtpVerify extends Component {
                     autoFocusOnLoad={false}
                     codeInputFieldStyle={[s.otpField, { color: BG_T }]}
                     codeInputHighlightStyle={s.otpActive}
+                    onCodeChanged={(code) => this.setState({ otp: code })}
                     onCodeFilled={(code) => {
                       this.setState({ otp: code }, () => this.verifyOtp(code));
                     }}
                   />
 
-                  <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
-                    style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
-                    {this.state.isLoading ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={BG_T} />
-                        <Text style={[s.btnT, { color: BG_T, marginLeft: 10 }]}>Verify ho raha hai...</Text>
+                  {isDeliver ? (
+                    <>
+                      <Text style={s.orDivider}>YA</Text>
+                      <View style={s.proofWrap}>{this.renderProofSection()}</View>
+                      <View style={[s.proofWrap, { marginTop: 10 }]}>
+                        <CollectPaymentCard
+                          order={order}
+                          variant="dark"
+                          paymentType={this.state.payment_type}
+                          onChange={(payment_type) => this.setState({ payment_type })}
+                        />
                       </View>
-                    ) : (
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={[s.btnT, { color: BG_T }]}>VERIFY & {theme.verifyLbl} KAREIN</Text>
-                        <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { tintColor: BG_T, transform: [{ translateX: this.arrowX }] }]} />
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                    </>
+                  ) : null}
                 </Animated.View>
               </>
             )}
 
             {/* Order details card — shared OrderCard (theme="dark" for colored bg) */}
-            <Animated.View style={{ opacity: this.formFade, marginTop: 16 }}>
+            <Animated.View style={{ opacity: this.formFade, marginTop: isDeliver ? 6 : 16 }}>
               <OrderCard
                 order={order}
                 theme="dark"
@@ -307,9 +578,38 @@ class OrderOtpVerify extends Component {
             </Animated.View>
 
           </ScrollView>
+
+          {!verified ? (
+            <View style={[s.bottomBar, { backgroundColor: BG_T, paddingBottom: SAFE_BOTTOM || 6 }]}>
+              <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
+                style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
+                {this.state.isLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color={BG_T} />
+                    <Text style={[s.btnT, isDeliver && s.btnTDeliver, { color: BG_T, marginLeft: 10 }]}>Verify ho raha hai...</Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[s.btnT, isDeliver && s.btnTDeliver, { color: BG_T }]}>
+                      {isDeliver ? 'Delivery Verify Karien' : `VERIFY & ${theme.verifyLbl} KAREIN`}
+                    </Text>
+                    <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { tintColor: BG_T, transform: [{ translateX: this.arrowX }] }]} />
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG_T }} />
+          )}
         </KeyboardAvoidingView>
 
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG_T }}/>
+        {this.renderProofConfirmSheet()}
+
+        <ProofImageViewer
+          visible={!!this.state.previewUri}
+          uri={this.state.previewUri}
+          onClose={this.closeProofPreview}
+        />
       </View>
     );
   }
@@ -317,7 +617,7 @@ class OrderOtpVerify extends Component {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  scroll: { flexGrow: 1, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 40 },
+  scroll: { flexGrow: 1, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 24 },
 
   // Align with the canonical screen header: 56-h row, no extra horizontal padding
   // beyond the ScrollView's 12px so the chip sits at 12 + 4 = 16px from the
@@ -329,19 +629,137 @@ const s = StyleSheet.create({
 
   infoCard: { display: 'none' },
 
-  titleWrap: { alignItems: 'center', marginBottom: 6 },
-  title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 6 },
-  subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 20 },
+  titleWrap: { alignItems: 'center', marginBottom: 4 },
+  title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 4 },
+  subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 10 },
 
   formWrap: { alignItems: 'center' },
-  otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 16 },
+  otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 0 },
   otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 32, fontWeight: '800' },
   otpActive: { borderColor: '#FCD34D', borderWidth: 2.5 },
+
+  orDivider: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+    marginVertical: 10,
+    letterSpacing: 1.2,
+  },
+
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
 
   // Width matched to the OTP row above (5 × 56 + 4 × 8 gap = 312).
   btn: { width: 312, height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   btnT: { fontSize: 15, fontWeight: '700', color: BG, letterSpacing: 0.3 },
+  btnTDeliver: { fontSize: 14, fontWeight: '700', letterSpacing: 0.2 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
+
+  proofWrap: { alignSelf: 'stretch', width: '100%', marginBottom: 0 },
+  proofSection: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  proofHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  proofHeadIco: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(252,211,77,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  proofHeadIcoImg: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FCD34D' },
+  proofBody: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
+  proofTitle: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  proofSub: { fontSize: 10, fontWeight: '400', color: 'rgba(255,255,255,0.55)', marginTop: 1 },
+  proofCountPill: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  proofCountT: { fontSize: 10, fontWeight: '700', color: '#FCD34D', letterSpacing: 0.3 },
+  proofGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -PROOF_GAP / 2 },
+  proofThumbWrap: { margin: PROOF_GAP / 2, position: 'relative' },
+  proofThumbBtn: { flex: 1, borderRadius: 8, overflow: 'hidden' },
+  proofThumb: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.2)' },
+  proofRemove: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+    zIndex: 2,
+  },
+  proofRemoveT: { color: '#FFF', fontSize: 9, fontWeight: '800', lineHeight: 11 },
+  proofAdd: {
+    margin: PROOF_GAP / 2,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  proofAddInner: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  proofAddIco: { width: 20, height: 20, resizeMode: 'contain', tintColor: '#FFF', marginBottom: 2 },
+  proofAddT: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  proofHint: { fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.45)', marginTop: 6, textAlign: 'center' },
+
+  confirmWrap: { paddingHorizontal: 18, paddingTop: 4 },
+  confirmTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
+  confirmSub: { fontSize: 12, fontWeight: '400', color: '#64748B', textAlign: 'center', marginTop: 4, marginBottom: 14 },
+  confirmPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 14,
+  },
+  confirmRetake: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  confirmRetakeT: { fontSize: 14, fontWeight: '600', color: '#475569' },
+  confirmUse: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16A34A',
+  },
+  confirmUseT: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 
   verifiedWrap: { alignItems: 'center', marginTop: 30, marginBottom: 20 },
   checkArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },

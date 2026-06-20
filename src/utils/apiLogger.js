@@ -1,11 +1,7 @@
-// Global fetch interceptor — automatically logs every API call:
-//   <Name> API URL== <method> <url>
-//   <Name> API Payload== <body>
-//   <Name> API Response== <parsed body>
-//   <Name> API Error== <message>
-//
-// Friendly names are derived from src/utils/constants.js so logs read like
-// "Dashboard API ..." instead of "lmd/home ...".
+// Global fetch interceptor — logs each API call:
+//   <Name> API URL== + Payload==  (immediately when fetch is called)
+//   <Name> API Response==         (when response arrives)
+//   <Name> API Error==            (on network/read failure)
 
 import constants from './constants';
 
@@ -100,12 +96,41 @@ function describeBody(body) {
     const parsed = safeParse(body);
     return parsed != null ? parsed : body;
   }
-  // FormData / Blob / ArrayBuffer — don't try to serialize
-  if (typeof FormData !== 'undefined' && body instanceof FormData) return '(FormData)';
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const parts = body._parts;
+    if (Array.isArray(parts) && parts.length) {
+      return parts.map((part) => {
+        const key = part[0];
+        const val = part[1];
+        if (val && typeof val === 'object' && val.uri) {
+          return [key, { uri: val.uri, type: val.type, name: val.name }];
+        }
+        return [key, val];
+      });
+    }
+    return '(FormData)';
+  }
   if (typeof Blob !== 'undefined' && body instanceof Blob) return `(Blob, ${body.size} bytes)`;
   if (body instanceof ArrayBuffer) return `(ArrayBuffer, ${body.byteLength} bytes)`;
   return body;
 }
+
+function logLine(tag, value) {
+  if (value === undefined || value === null) {
+    console.log(tag);
+    return;
+  }
+  if (typeof value === 'string') {
+    console.log(`${tag} ${value}`);
+    return;
+  }
+  try {
+    console.log(`${tag} ${JSON.stringify(value)}`);
+  } catch (e) {
+    console.log(tag, value);
+  }
+}
+
 
 const MAX_RESP_LEN = 8000;
 
@@ -121,39 +146,38 @@ global.fetch = async (input, init) => {
 
   const name = getApiName(url, method);
 
-  console.log(`${name} API URL== ${method} ${url}`);
+  // Log URL + payload synchronously before the request goes out
+  logLine(`${name} API URL==`, `${method} ${url}`);
   if (opts.body != null) {
-    console.log(`${name} API Payload==`, describeBody(opts.body));
+    logLine(`${name} API Payload==`, describeBody(opts.body));
   }
 
   try {
     const response = await originalFetch(input, init);
 
-    // Clone so we don't consume the body for the caller.
     try {
       const cloned = response.clone();
-      cloned.text().then(text => {
+      cloned.text().then((text) => {
         let toLog = text || '';
         const truncated = toLog.length > MAX_RESP_LEN;
         if (truncated) toLog = toLog.slice(0, MAX_RESP_LEN) + '…(truncated)';
         const parsed = safeParse(toLog);
         const tag = `${name} API Response==`;
-        if (parsed != null && !truncated) {
-          console.log(tag, parsed);
-        } else if (parsed != null) {
-          console.log(tag, parsed, '(truncated)');
+        if (parsed != null) {
+          logLine(tag, truncated ? { ...(typeof parsed === 'object' ? parsed : { body: parsed }), _truncated: true } : parsed);
         } else {
-          console.log(tag, toLog);
+          logLine(tag, toLog || '(empty)');
         }
-      }).catch(() => {});
+      }).catch((readErr) => {
+        logLine(`${name} API Error==`, readErr?.message || String(readErr));
+      });
     } catch (cloneErr) {
       // Some response bodies (streams) may not be cloneable — ignore.
     }
 
     return response;
   } catch (err) {
-    const msg = err && (err.message || String(err));
-    console.log(`${name} API Error==`, msg);
+    logLine(`${name} API Error==`, err?.message || String(err));
     throw err;
   }
 };

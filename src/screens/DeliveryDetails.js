@@ -18,6 +18,7 @@ import {
   LayoutAnimation,
   UIManager,
   Share,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -31,17 +32,22 @@ import CachedImage from '../components/CachedImage';
 import ScreenHeader from '../components/ScreenHeader';
 import OrderCard from '../components/OrderCard';
 import { initiateExotelCall } from '../utils/exotelCall';
-import { soilIcons as I } from '../utils/soilTheme';
+
+const QR_SAFE_TOP = initialWindowMetrics?.insets?.top ?? (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
+const QR_SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+
+const SUM_ICON_BG = '#ECFDF5';
 
 const SUM_ICO = {
-  cal: require('./assets/sch.png'),
-  truck: require('./assets/trk.png'),
-  box: require('./assets/order.png'),
-  wallet: I.wallet,
-  check: I.check,
-  rupee: I.rupee,
+  cal: require('./assets/cal.png'),
+  truck: require('./assets/truck.png'),
+  box: require('./assets/cart2.png'),
+  wallet: require('./assets/credit.png'),
+  check: require('./assets/checked.png'),
+  rupee: require('./assets/money.png'),
   cash: require('./assets/cashb.png'),
-  clock: I.clock,
+  clock: require('./assets/clock.png'),
+  history: require('./assets/history.png'),
 };
 
 class DeliveryDetails extends Component {
@@ -105,6 +111,26 @@ class DeliveryDetails extends Component {
 
   getOrder = () => this.props?.navigation?.getParam('order', null);
 
+  orderDataUnchanged = (prev, next) => {
+    if (!prev || !next) return false;
+    return (
+      String(prev.order_status || '') === String(next.order_status || '')
+      && String(prev.payment_status || '') === String(next.payment_status || '')
+      && String(prev.payment_mode || '') === String(next.payment_mode || '')
+      && String(prev.grand_total ?? '') === String(next.grand_total ?? '')
+      && (prev.order_items?.length || 0) === (next.order_items?.length || 0)
+    );
+  };
+
+  orderPaymentChanged = (prev, next) => {
+    if (!prev || !next) return true;
+    return (
+      String(prev.order_status || '') !== String(next.order_status || '')
+      || String(prev.payment_status || '') !== String(next.payment_status || '')
+      || String(prev.payment_mode || '') !== String(next.payment_mode || '')
+    );
+  };
+
   componentDidMount() {
     const order = this.getOrder();
     const id = order?.id;
@@ -123,17 +149,19 @@ class DeliveryDetails extends Component {
 
   onRefresh = () => {
     const order = this.getOrder();
-    const id = order?.id;
+    const id = order?.id || this.state.details?.id;
     if (id) {
       this.setState({ refreshing: true });
-      this.deliverDetailsAPI(id);
+      this.deliverDetailsAPI(id, { silent: true });
     }
   };
 
-  deliverDetailsAPI = (id) => {
+  deliverDetailsAPI = (id, { silent = false } = {}) => {
     const body = { order_id: String(id) };
 
-    this.setState({ isLoading: true, hasError: false });
+    if (!silent) {
+      this.setState({ isLoading: true, hasError: false });
+    }
     console.log('Order Details API payload== ', body);
 
     fetch(constants.orderDetails, {
@@ -148,33 +176,55 @@ class DeliveryDetails extends Component {
       .then((r) => r.json())
       .then((json) => {
         console.log('Order Details API response== ', JSON.stringify(json));
-        this.setState({ isLoading: false, refreshing: false });
 
         if (json?.status && json?.order) {
-          this.fadeAnim.setValue(0);
-          this.slideAnim.setValue(24);
-          // `dispute_reasons` ships alongside the order; hold on to it so the
-          // MarkDispute screen doesn't have to hit a separate (sometimes 404)
-          // endpoint — we'll pass it through navigation params.
-          this.setState({
-            details: json.order,
-            disputeReasons: Array.isArray(json?.dispute_reasons) ? json.dispute_reasons : [],
-          }, () => {
-            const oid = json?.order?.id;
-            if (oid) this.getQR(oid);
+          const next = json.order;
+          const prev = this.state.details;
+
+          if (silent && prev && this.orderDataUnchanged(prev, next)) {
+            if (this.state.refreshing) this.setState({ refreshing: false });
+            return;
+          }
+
+          const applyDetails = () => {
+            this.setState({
+              isLoading: false,
+              refreshing: false,
+              details: next,
+              disputeReasons: Array.isArray(json?.dispute_reasons) ? json.dispute_reasons : [],
+            }, () => {
+              const oid = next?.id;
+              const needsQr = !silent || this.orderPaymentChanged(prev, next);
+              if (oid && needsQr) this.getQR(oid, { silent });
+            });
+          };
+
+          if (silent) {
+            applyDetails();
+          } else {
+            this.fadeAnim.setValue(0);
+            this.slideAnim.setValue(24);
+            applyDetails();
             Animated.parallel([
               Animated.timing(this.fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
               Animated.timing(this.slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
             ]).start(() => this.startPickupPulse());
-          });
+          }
         } else {
-          this.setState({ details: null, hasError: true });
-          console.log('Order Details API error== ', json?.message || 'Invalid response');
+          this.setState({ isLoading: false, refreshing: false });
+          if (!silent) {
+            this.setState({ details: null, hasError: true });
+            console.log('Order Details API error== ', json?.message || 'Invalid response');
+          }
         }
       })
       .catch((e) => {
         console.log('Order Details API error== ', e);
-        this.setState({ isLoading: false, refreshing: false, details: null, hasError: true });
+        if (silent) {
+          if (this.state.refreshing) this.setState({ refreshing: false });
+        } else {
+          this.setState({ isLoading: false, refreshing: false, details: null, hasError: true });
+        }
       });
   };
 
@@ -569,7 +619,7 @@ class DeliveryDetails extends Component {
           if (responseJson.status) {
             // Order state changed → mark dashboard + orders caches stale so they refresh on next visit
             invalidateOrderRelated();
-            this.deliverDetailsAPI(this.state.details?.id);
+            this.deliverDetailsAPI(this.state.details?.id, { silent: true });
             this.setState({ show_pickup_confirm: false, selectedCancelReason: '', selectedRejectReason: '' });
           }
         })
@@ -618,8 +668,10 @@ class DeliveryDetails extends Component {
     if (this.state.qr) this.setState({ qrModalVisible: true });
   };
 
-  getQR = (id) => {
-    this.setState({ qrLoading: true, qrFailed: false, qrErrorText: '' });
+  getQR = (id, { silent = false } = {}) => {
+    if (!silent) {
+      this.setState({ qrLoading: true, qrFailed: false, qrErrorText: '' });
+    }
 
     const url = `${constants.getQR}${id}`;
     console.log('Get QR API payload== ', url);
@@ -640,6 +692,8 @@ class DeliveryDetails extends Component {
         if (Platform.OS === 'ios' && qrUrl?.startsWith('http://')) {
           console.log('⚠️ iOS ATS: QR URL is HTTP. It may not load unless ATS allows it.');
         }
+
+        if (silent && qrUrl === this.state.qr) return;
 
         this.setState({
           qrLoading: false,
@@ -698,6 +752,10 @@ class DeliveryDetails extends Component {
     );
   };
 
+  componentWillUnmount() {
+    if (this._focusRefreshTimer) clearTimeout(this._focusRefreshTimer);
+  }
+
   render() {
     const { isLoading, details, hasError } = this.state;
 
@@ -717,6 +775,8 @@ class DeliveryDetails extends Component {
     const paymentMode = details?.payment_mode || '';
     const paymentStatus = details?.payment_status || '';
     const codAmount = this.toNum(details?.cod_amount);
+    const qrSize = Math.min(Dimensions.get('window').width - 56, 308);
+    const qrBg = '#5D3FD3';
 
     // Header tinted to match the current order's status (falls back to brand purple before data loads)
     const headerColor = details?.order_status ? this.getStatusColors(details.order_status).bg : '#5D3FD3';
@@ -726,17 +786,23 @@ class DeliveryDetails extends Component {
         <StatusBar barStyle="light-content" backgroundColor={headerColor} />
 
         <NavigationEvents
-          onWillFocus={() => {}}
           onDidFocus={() => {
-            const id = this.state.details?.id || this.getOrder()?.id;
-            if (id) this.deliverDetailsAPI(id);
+            if (!this.state.details?.id) return;
+            if (this._focusRefreshTimer) clearTimeout(this._focusRefreshTimer);
+            this._focusRefreshTimer = setTimeout(() => {
+              this._focusRefreshTimer = null;
+              InteractionManager.runAfterInteractions(() => {
+                const id = this.state.details?.id || this.getOrder()?.id;
+                if (id) this.deliverDetailsAPI(id, { silent: true });
+              });
+            }, 480);
           }}
         />
 
         <ScreenHeader bg={headerColor} title="Delivery Jaankari" onBack={this.goBack} />
 
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />}>
-          {isLoading ? (
+          {isLoading && !details ? (
             <ShimmerLoader />
           ) : null}
 
@@ -818,12 +884,17 @@ class DeliveryDetails extends Component {
                   return { bg: '#FFEDD5', fg: '#C2410C' };
                 })();
 
-                // Tinted outline icons — one consistent style across the grid.
-                const Box = ({ icon, tint = '#64748B', lbl, valueText, valueColor, chipFg, chipText, full, valSmall }) => {
+                const Box = ({ icon, glyph, lbl, valueText, valueColor, chipFg, chipText, full, valSmall }) => {
                   return (
                     <View style={[styles.sumBox, full && styles.sumBoxFull]}>
-                      {icon ? (
-                        <Image source={icon} style={[styles.sumBoxIconImg, { tintColor: tint }]} resizeMode="contain" />
+                      {glyph || icon ? (
+                        <View style={styles.sumBoxIconWrap}>
+                          {glyph ? (
+                            <Text style={styles.sumBoxGlyph}>{glyph}</Text>
+                          ) : (
+                            <Image source={icon} style={styles.sumBoxIconImg} resizeMode="contain" />
+                          )}
+                        </View>
                       ) : null}
                       <View style={styles.sumBoxContent}>
                         <Text style={styles.sumBoxLbl} numberOfLines={1}>{lbl}</Text>
@@ -876,29 +947,27 @@ class DeliveryDetails extends Component {
 
                     <View style={[styles.summarySubSection, (details?.penalty_text || details?.dispute_date) && styles.summarySubSectionSep]}>
                       <View style={styles.summarySubHeader}>
-                        <Image source={SUM_ICO.wallet} style={[styles.summaryHdrIcon, { tintColor: '#2563EB' }]} resizeMode="contain" />
+                        <Image source={SUM_ICO.wallet} style={styles.summaryHdrIcon} resizeMode="contain" />
                         <Text style={styles.summarySubTitle}>Payment</Text>
                       </View>
                       <View style={styles.sumGrid}>
                         {details?.order_date ? (
-                          <Box icon={SUM_ICO.cal} tint="#0891B2" lbl="Order Date" valueText={details.order_date} valSmall />
+                          <Box icon={SUM_ICO.cal} lbl="Order Date" valueText={details.order_date} valSmall />
                         ) : null}
                         {details?.delivery_date ? (
-                          <Box icon={SUM_ICO.truck} tint="#16A34A" lbl="Delivery Date" valueText={details.delivery_date} valSmall />
+                          <Box icon={SUM_ICO.truck} lbl="Delivery Date" valueText={details.delivery_date} valSmall />
                         ) : null}
-                        <Box icon={SUM_ICO.box} tint="#6366F1" lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
-                        <Box icon={SUM_ICO.wallet} tint="#2563EB" lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
+                        <Box icon={SUM_ICO.box} lbl="Total Items" valueText={String(this.toNum(details?.total_items) || items.length || 0)} />
+                        <Box icon={SUM_ICO.wallet} lbl="Payment Mode" valueText={String(details?.payment_mode || '-')} />
                         <Box
                           icon={SUM_ICO.check}
-                          tint={paymentPaid ? '#15803D' : '#B45309'}
                           lbl="Payment Status"
                           chipFg={paymentPaid ? '#15803D' : '#B45309'}
                           chipText={String(details?.payment_status || '-').toUpperCase()}
                         />
-                        <Box icon={SUM_ICO.rupee} tint="#EA580C" lbl="COD Amount" valueText={`₹ ${cod}`} />
+                        <Box icon={SUM_ICO.rupee} lbl="COD Amount" valueText={`₹ ${cod}`} />
                         <Box
                           icon={SUM_ICO.cash}
-                          tint="#059669"
                           lbl="Collected"
                           valueText={`₹ ${collected}`}
                           valueColor={collected > 0 ? '#15803D' : '#0F172A'}
@@ -908,20 +977,18 @@ class DeliveryDetails extends Component {
 
                     <View style={[styles.summarySubSection, styles.summarySubSectionSep]}>
                       <View style={styles.summarySubHeader}>
-                        <Image source={SUM_ICO.clock} style={[styles.summaryHdrIcon, { tintColor: '#7C3AED' }]} resizeMode="contain" />
+                        <Image source={SUM_ICO.clock} style={styles.summaryHdrIcon} resizeMode="contain" />
                         <Text style={styles.summarySubTitle}>Settlement</Text>
                       </View>
                       <View style={styles.sumGrid}>
                         <Box
                           icon={SUM_ICO.clock}
-                          tint={settleChip.fg}
                           lbl="Settlement Status"
                           chipFg={settleChip.fg}
                           chipText={(details?.settlement_status || 'pending').toUpperCase()}
                         />
                         <Box
-                          icon={SUM_ICO.check}
-                          tint="#7C3AED"
+                          icon={SUM_ICO.rupee}
                           lbl="Settled Amount"
                           valueText={`₹ ${settleAmt}`}
                           valueColor={settleAmt > 0 ? '#15803D' : '#0F172A'}
@@ -929,7 +996,6 @@ class DeliveryDetails extends Component {
                         {details?.settlement_submitted ? (
                           <Box
                             icon={SUM_ICO.cal}
-                            tint="#64748B"
                             lbl="Settled On"
                             valueText={String(details.settlement_submitted)}
                             valSmall
@@ -937,8 +1003,7 @@ class DeliveryDetails extends Component {
                         ) : null}
                         {details?.settlement_approve_reject ? (
                           <Box
-                            icon={SUM_ICO.cal}
-                            tint="#64748B"
+                            icon={SUM_ICO.history}
                             lbl="Updated On"
                             valueText={String(details.settlement_approve_reject)}
                             valSmall
@@ -1285,50 +1350,84 @@ class DeliveryDetails extends Component {
           );
         })()}
 
-        {/* ✅ QR Fullscreen Modal (same behavior as DeliverToFarmer) */}
+        {/* QR Fullscreen Modal */}
         <Modal
           visible={this.state.qrModalVisible}
-          transparent={true}
+          transparent
           animationType="fade"
           onRequestClose={() => this.setState({ qrModalVisible: false })}
         >
-          <View style={styles.qrModalWrap}>
-            <View style={styles.qrModalHeader}>
-              <TouchableOpacity
-                onPress={() => this.setState({ qrModalVisible: false })}
-                activeOpacity={0.85}
-                style={styles.qrCloseBtn}
-              >
-                <Text style={styles.qrCloseText}>✕</Text>
-              </TouchableOpacity>
+          <View style={[styles.qrModalWrap, { backgroundColor: qrBg, paddingBottom: QR_SAFE_BOTTOM }]}>
+            <View style={{ paddingTop: QR_SAFE_TOP }}>
+              <View style={[styles.qrTopBar]}>
+                <TouchableOpacity
+                  onPress={() => this.setState({ qrModalVisible: false })}
+                  activeOpacity={0.85}
+                  style={styles.qrCloseBtn}
+                >
+                  <Text style={styles.qrCloseText}>✕</Text>
+                </TouchableOpacity>
+                <Text style={styles.qrTitle} numberOfLines={1}>Scan & Pay</Text>
+                <View style={styles.qrTopSpacer} />
+              </View>
             </View>
+            <Text style={styles.qrSubtitle}>Ask farmer to scan this QR code</Text>
 
-            <View style={styles.qrModalBody}>
-              <Image
-                source={this.getQrImageSource()}
-                resizeMode="contain"
-                style={styles.qrModalImage}
-                onError={(e) => {
-                  const msg = JSON.stringify(e?.nativeEvent || {});
-                  console.log('QR MODAL onError =>', msg);
-                  this.setState({ qrFailed: true, qrErrorText: msg });
-                }}
-              />
+            <ScrollView
+              contentContainerStyle={styles.qrScroll}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={[styles.qrCard, { width: qrSize + 32 }]}>
+                {this.state.qr ? (
+                  <Image
+                    source={this.getQrImageSource()}
+                    resizeMode="contain"
+                    style={{ width: qrSize, height: qrSize, borderRadius: 8 }}
+                    onError={(e) => {
+                      const msg = JSON.stringify(e?.nativeEvent || {});
+                      console.log('QR MODAL onError =>', msg);
+                      this.setState({ qrFailed: true, qrErrorText: msg });
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.qrModalPlaceholder, { width: qrSize, height: qrSize }]}>
+                    {this.state.qrLoading ? (
+                      <ActivityIndicator size="large" color={qrBg} />
+                    ) : (
+                      <Text style={styles.qrPlaceholderT}>QR not available</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              <Text style={styles.qrCardAmt}>{'₹'} {total}</Text>
+
+              <View style={styles.qrOrderCard}>
+                <View style={styles.qrOrderTop}>
+                  <Text style={styles.qrOrderOid} numberOfLines={1}>#{orderIdText}</Text>
+                  <View style={styles.qrPayPill}>
+                    <Text style={styles.qrPayPillT}>{(paymentMode || 'COD').toUpperCase()}</Text>
+                  </View>
+                </View>
+                <View style={styles.qrOrderDivider} />
+                <View style={styles.qrOrderRow}>
+                  <View style={styles.qrFarmerAv}>
+                    <Text style={styles.qrFarmerAvT}>{(farmerName || 'F').trim().charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.qrFarmerInfo}>
+                    <Text style={styles.qrOrderName} numberOfLines={1}>{farmerName || '-'}</Text>
+                  </View>
+                  <View style={styles.qrItemsChip}>
+                    <Text style={styles.qrItemsChipT}>{totalItems || items.length || 0} item(s)</Text>
+                  </View>
+                </View>
+              </View>
 
               {!!this.state.qrErrorText ? (
-                <View style={{ marginTop: 14, paddingHorizontal: 18 }}>
-                  <Text style={{ color: '#fff', fontWeight: '800', textAlign: 'center' }}>QR failed to load</Text>
-                  <Text style={{ color: '#cbd5e1', fontWeight: '700', textAlign: 'center', marginTop: 6, fontSize: 11 }}>
-                    {this.state.qrErrorText}
-                  </Text>
-                  {Platform.OS === 'ios' && this.state.qr?.startsWith('http://') ? (
-                    <Text style={{ color: '#fca5a5', fontWeight: '800', textAlign: 'center', marginTop: 8, fontSize: 11 }}>
-                      iOS ATS may block HTTP. Use HTTPS or allow ATS for this domain.
-                    </Text>
-                  ) : null}
-                </View>
+                <Text style={styles.qrErrorHint} numberOfLines={2}>{this.state.qrErrorText}</Text>
               ) : null}
-            </View>
+            </ScrollView>
           </View>
         </Modal>
 
@@ -1841,7 +1940,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   summarySubTitle: { fontSize: 12.5, fontWeight: '700', color: '#334155' },
-  summaryHdrIcon: { width: 18, height: 18, marginRight: 8, resizeMode: 'contain' },
+  summaryHdrIcon: { width: 20, height: 20, marginRight: 8, resizeMode: 'contain' },
   summaryTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
 
   // 2-column grid of stat boxes — icons shown inline without background discs.
@@ -1863,7 +1962,24 @@ const styles = StyleSheet.create({
   },
   sumBoxFull: { width: '100%' },
   sumBoxAlignTop: { alignItems: 'flex-start' },
-  sumBoxIconImg: { width: 22, height: 22, marginRight: 9, resizeMode: 'contain' },
+  sumBoxIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: SUM_ICON_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 9,
+    flexShrink: 0,
+  },
+  sumBoxIconImg: { width: 24, height: 24, resizeMode: 'contain' },
+  sumBoxGlyph: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#059669',
+    includeFontPadding: false,
+    lineHeight: 19,
+  },
   sumBoxContent: {
     flex: 1,
     alignItems: 'flex-start',
@@ -2166,12 +2282,86 @@ const styles = StyleSheet.create({
   payTileText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   qrThumb: { height: '100%', width: '100%' },
 
-  // ✅ QR Modal
-  qrModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)' },
-  qrModalHeader: { height: 80, paddingTop: 36, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'flex-end' },
-  qrCloseBtn: { height: 40, width: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginTop: 40 },
-  qrCloseText: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  qrModalBody: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 40 },
-  qrModalImage: { width: '92%', height: '65%' },
+  // QR Modal
+  qrModalWrap: { flex: 1 },
+  qrTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    paddingHorizontal: 12,
+  },
+  qrCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrCloseText: { color: '#FFF', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  qrTopSpacer: { width: 40, height: 40 },
+  qrTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: '#FFF', marginHorizontal: 8 },
+  qrSubtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 12,
+  },
+  qrScroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, justifyContent: 'center' },
+  qrCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  qrModalPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  qrPlaceholderT: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
+  qrCardAmt: { fontSize: 26, fontWeight: '800', color: '#FCD34D', textAlign: 'center', marginTop: 14, marginBottom: 12 },
+  qrOrderCard: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  qrOrderTop: { flexDirection: 'row', alignItems: 'center' },
+  qrOrderOid: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B', marginRight: 8 },
+  qrPayPill: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  qrPayPillT: { fontSize: 10, fontWeight: '700', color: '#5D3FD3', letterSpacing: 0.3 },
+  qrOrderDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  qrOrderRow: { flexDirection: 'row', alignItems: 'center' },
+  qrFarmerAv: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  qrFarmerAvT: { fontSize: 15, fontWeight: '700', color: '#5D3FD3' },
+  qrFarmerInfo: { flex: 1, minWidth: 0 },
+  qrOrderName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  qrItemsChip: { backgroundColor: '#FFFBEB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 8 },
+  qrItemsChipT: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  qrErrorHint: { marginTop: 10, fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.6)', textAlign: 'center', paddingHorizontal: 16 },
 });
 export default withV4Navigation(DeliveryDetails);

@@ -17,8 +17,9 @@ import {
   LayoutAnimation,
   UIManager,
   PanResponder,
+  InteractionManager,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -29,6 +30,8 @@ import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 
 const BG = '#5D3FD3';
+const QR_SAFE_TOP = initialWindowMetrics?.insets?.top ?? (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
+const QR_SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
 
 
 class DeliverToFarmer extends Component {
@@ -50,6 +53,9 @@ class DeliverToFarmer extends Component {
       // QR modal
       qrModalVisible: false,
 
+      // more options
+      show_more_options: false,
+
       // bottomsheet
       show_sheet: false,
       popup_type: 'complete', // complete | cancel
@@ -59,7 +65,6 @@ class DeliverToFarmer extends Component {
       selectedCancelReason: '', // key
       refreshing: false,
       showSuccessModal: false,
-      completingDelivery: false,
     };
     this.fadeAnim = new Animated.Value(0);
     this.slideAnim = new Animated.Value(24);
@@ -70,6 +75,7 @@ class DeliverToFarmer extends Component {
     this.successRing = new Animated.Value(0.5);
     this.successRingOp = new Animated.Value(0);
     this.successModalY = new Animated.Value(0);
+    this._qrClosing = false;
 
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -106,14 +112,7 @@ class DeliverToFarmer extends Component {
       },
       onPanResponderRelease: (_, g) => {
         if (g.dy > 100 || g.vy > 0.4) {
-          Animated.parallel([
-            Animated.timing(this.qrModalY, { toValue: SH, duration: 300, useNativeDriver: true }),
-            Animated.timing(this.qrBackdropOp, { toValue: 0, duration: 300, useNativeDriver: true }),
-          ]).start(() => {
-            this.setState({ qrModalVisible: false });
-            this.qrModalY.setValue(0);
-            this.qrBackdropOp.setValue(1);
-          });
+          this.closeQrModal();
         } else {
           Animated.parallel([
             Animated.spring(this.qrModalY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
@@ -251,13 +250,14 @@ class DeliverToFarmer extends Component {
   };
 
   onScanQR = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.create(200, 'easeInEaseOut', 'opacity'));
     this.setState({ payment_type: 'qr' });
     this.openQrModal();
   };
 
   openQrModal = () => {
-    this.qrModalY.setValue(Dimensions.get('window').height);
+    if (this.state.qrModalVisible || this._qrClosing) return;
+    const SH = Dimensions.get('window').height;
+    this.qrModalY.setValue(SH);
     this.qrBackdropOp.setValue(0);
     this.setState({ qrModalVisible: true }, () => {
       Animated.parallel([
@@ -268,25 +268,32 @@ class DeliverToFarmer extends Component {
   };
 
   closeQrModal = () => {
+    if (this._qrClosing || !this.state.qrModalVisible) return;
+    this._qrClosing = true;
     const SH = Dimensions.get('window').height;
     Animated.parallel([
-      Animated.timing(this.qrModalY, { toValue: SH, duration: 300, useNativeDriver: true }),
-      Animated.timing(this.qrBackdropOp, { toValue: 0, duration: 300, useNativeDriver: true }),
-    ]).start(() => {
-      this.setState({ qrModalVisible: false });
-      this.qrModalY.setValue(0);
-      this.qrBackdropOp.setValue(1);
+      Animated.timing(this.qrModalY, { toValue: SH, duration: 280, useNativeDriver: true }),
+      Animated.timing(this.qrBackdropOp, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start(({ finished }) => {
+      if (!finished) {
+        this._qrClosing = false;
+        return;
+      }
+      InteractionManager.runAfterInteractions(() => {
+        this.setState({ qrModalVisible: false }, () => {
+          this._qrClosing = false;
+        });
+      });
     });
   };
 
-  onComplete = () => {
-    if (this.state.completingDelivery) return;
-    this.setState({ completingDelivery: true });
-    this.orderStatusApi('deliver', '');
+  onCancel = () => {
+    this.setState({ popup_type: 'cancel', show_sheet: true, show_more_options: false, selectedCancelReason: '' });
   };
 
-  onCancel = () => {
-    this.setState({ popup_type: 'cancel', show_sheet: true, selectedCancelReason: '' });
+  closeMoreAnd = (fn) => {
+    this.moreSheetRef?.close();
+    setTimeout(() => fn?.(), 220);
   };
 
   toNum = (v) => {
@@ -360,23 +367,15 @@ class DeliverToFarmer extends Component {
           Toast.show(responseJson.message, Toast.SHORT);
 
           if (responseJson.status || responseJson.success) {
-            // Order state changed → mark dashboard & orders caches stale so they refetch on next visit
             invalidateOrderRelated();
-            const st = String(body?.status || '').toLowerCase();
-            if (st === 'delivered' || st === 'deliver') {
-              this.setState({ completingDelivery: false, show_sheet: false }, () => this.showDeliverySuccess());
-            } else {
-              this.setState({ show_sheet: false, completingDelivery: false }, () => {
-                if (this.props?.navigation?.goBack) this.props.navigation.goBack();
-              });
-            }
-          } else {
-            this.setState({ completingDelivery: false });
+            this.setState({ show_sheet: false }, () => {
+              if (this.props?.navigation?.goBack) this.props.navigation.goBack();
+            });
           }
         })
         .catch((error) => {
           console.log('Update Status API error== ', error);
-          this.setState({ statusLoading: false, completingDelivery: false });
+          this.setState({ statusLoading: false });
           Toast.show('Something went wrong', Toast.SHORT);
         });
     });
@@ -566,6 +565,11 @@ class DeliverToFarmer extends Component {
     const isPaid = this.isAlreadyPaid(o);
     const paymentMode = o?.payment_mode || '';
     const paymentStatus = o?.payment_status || '';
+    const qrSize = Math.min(Dimensions.get('window').width - 56, 308);
+    const st = String(statusText || '').toLowerCase();
+    const isDelivered = st === 'delivered' || st === 'deliver';
+    const isCancelled = st === 'cancelled' || st === 'canceled';
+    const isDisputed = st === 'disputed';
 
     return (
       <View style={styles.root}>
@@ -726,37 +730,34 @@ class DeliverToFarmer extends Component {
         </ScrollView>
 
         {/* Bottom Panel */}
-        <View style={styles.bottomPanel}>
+        <SafeAreaView edges={['bottom']} style={styles.bottomPanel}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Grand Total</Text>
             <Text style={styles.codValue}>{'₹'} {total}</Text>
           </View>
 
-          {statusText === 'delivered' ? (
-            <View style={{ height: 48, borderRadius: 10, backgroundColor: '#F0FDF4', borderWidth: 1.5, borderColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>{'✓'}</Text>
+          {isDelivered ? (
+            <View style={styles.deliveredBadge}>
+              <View style={styles.deliveredBadgeIco}>
+                <Text style={styles.deliveredBadgeCheck}>{'✓'}</Text>
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>Delivered</Text>
+              <Text style={styles.deliveredBadgeT}>Delivered</Text>
             </View>
-          ) : statusText !== 'cancelled' ? (
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: '#CA8A04', marginRight: 6 }]}
-                onPress={() => this.props.navigation.navigate('MarkDispute', { order: o })}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.actionBtnChar}>⚑</Text>
-                <Text style={styles.actionBtnText}>Mark Dispute</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16A34A', marginLeft: 6, opacity: this.state.completingDelivery ? 0.6 : 1 }]} onPress={this.onComplete} activeOpacity={0.85} disabled={this.state.completingDelivery}>
-                {this.state.completingDelivery ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.actionBtnText}>Complete Delivery</Text>}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Text style={{ fontSize: 13, color: '#DC2626', alignSelf: 'center', fontWeight: '600' }}>This order has been cancelled</Text>
-          )}
-        </View>
+          ) : isCancelled ? (
+            <Text style={styles.cancelledNote}>This order has been cancelled</Text>
+          ) : null}
+
+          {!isCancelled && !isDisputed ? (
+            <TouchableOpacity
+              style={styles.moreOptsBtn}
+              onPress={() => this.setState({ show_more_options: true })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.moreOptsDots}>⋯</Text>
+              <Text style={styles.moreOptsT}>Aur Options</Text>
+            </TouchableOpacity>
+          ) : null}
+        </SafeAreaView>
 
         {/* Success Modal */}
         <Modal visible={this.state.showSuccessModal} transparent animationType="none" onRequestClose={this.closeSuccessModal}>
@@ -785,68 +786,130 @@ class DeliverToFarmer extends Component {
         </Modal>
 
         {/* QR Modal */}
-        <Modal visible={this.state.qrModalVisible} transparent animationType="none" onRequestClose={this.closeQrModal}>
+        <Modal
+          visible={this.state.qrModalVisible}
+          transparent
+          animationType="none"
+          presentationStyle="overFullScreen"
+          statusBarTranslucent
+          onRequestClose={this.closeQrModal}
+        >
           <View style={{ flex: 1 }}>
-            {/* Backdrop */}
-            <Animated.View style={[styles.qrBackdrop, { opacity: this.qrBackdropOp }]} />
+            <Animated.View style={[styles.qrBackdrop, { opacity: this.qrBackdropOp }]} pointerEvents="none" />
 
-            {/* Sheet */}
             <Animated.View style={[styles.qrSheet, { transform: [{ translateY: this.qrModalY }] }]} {...this.qrPan.panHandlers}>
-              <SafeAreaView edges={['bottom']} style={{ backgroundColor: 'transparent' }}/>
-
-              {/* Drag handle */}
-              <View style={styles.qrSheetHandle}><View style={styles.qrDragHandle} /></View>
-
-              {/* Header */}
-              <View style={styles.qrModalHeader}>
-                <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={this.closeQrModal} activeOpacity={0.7} style={styles.qrCloseBtn}>
-                  <Text style={styles.qrCloseText}>{'✕'}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Content */}
-              <View style={{ flex: 1, paddingHorizontal: 16 }}>
-                <Text style={styles.qrTitle}>Scan & Pay</Text>
+              <View style={[styles.qrSafe, { paddingBottom: QR_SAFE_BOTTOM }]}>
+                <View style={{ paddingTop: QR_SAFE_TOP }}>
+                  <View style={styles.qrSheetHandle}><View style={styles.qrDragHandle} /></View>
+                  <View style={styles.qrTopBar}>
+                    <TouchableOpacity onPress={this.closeQrModal} activeOpacity={0.7} style={styles.qrCloseBtn}>
+                      <Text style={styles.qrCloseText}>✕</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.qrTitle} numberOfLines={1}>Scan & Pay</Text>
+                    <View style={styles.qrTopSpacer} />
+                  </View>
+                </View>
                 <Text style={styles.qrSubtitle}>Ask farmer to scan this QR code</Text>
 
-                {/* QR Image — no card background */}
-                <View style={styles.qrImgWrap}>
-                  {this.state.qr ? (
-                    <Image source={this.getQrImageSource()} resizeMode="contain" style={styles.qrModalImage} onError={() => this.setState({ qrFailed: true })} />
-                  ) : (
-                    <View style={styles.qrModalPlaceholder}>
-                      {this.state.qrLoading ? <ActivityIndicator size="large" color="#FFF" /> : (
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.5)' }}>QR not available</Text>
-                      )}
+                <ScrollView
+                  contentContainerStyle={styles.qrScroll}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={[styles.qrCard, { width: qrSize + 32 }]}>
+                    {this.state.qr ? (
+                      <Image
+                        source={this.getQrImageSource()}
+                        resizeMode="contain"
+                        style={{ width: qrSize, height: qrSize, borderRadius: 8 }}
+                        onError={() => this.setState({ qrFailed: true })}
+                      />
+                    ) : (
+                      <View style={[styles.qrModalPlaceholder, { width: qrSize, height: qrSize }]}>
+                        {this.state.qrLoading ? (
+                          <ActivityIndicator size="large" color={BG} />
+                        ) : (
+                          <Text style={styles.qrPlaceholderT}>QR not available</Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={styles.qrCardAmt}>{'₹'} {total}</Text>
+
+                  <View style={styles.qrOrderCard}>
+                    <View style={styles.qrOrderTop}>
+                      <Text style={styles.qrOrderOid} numberOfLines={1}>#{orderIdText}</Text>
+                      <View style={styles.qrPayPill}>
+                        <Text style={styles.qrPayPillT}>{(paymentMode || 'COD').toUpperCase()}</Text>
+                      </View>
                     </View>
-                  )}
-                </View>
-
-                <Text style={styles.qrCardAmt}>{'₹'} {total}</Text>
-
-                {/* Compact Order Info */}
-                <View style={styles.qrOrderCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.qrOrderOid}>#{orderIdText}</Text>
-                    <View style={{ flex: 1 }} />
-                    <View style={[styles.qrInfoPill, { backgroundColor: 'rgba(255,255,255,0.15)' }]}><Text style={styles.qrInfoPillT}>{paymentMode.toUpperCase() || 'COD'}</Text></View>
+                    <View style={styles.qrOrderDivider} />
+                    <View style={styles.qrOrderRow}>
+                      <View style={styles.qrFarmerAv}>
+                        <Text style={styles.qrFarmerAvT}>{(farmerName || 'F').trim().charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.qrFarmerInfo}>
+                        <Text style={styles.qrOrderName} numberOfLines={1}>{farmerName || '-'}</Text>
+                        {farmerPhone ? (
+                          <Text style={styles.qrOrderPhone}>{this.mask(farmerPhone)}</Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.qrItemsChip}>
+                        <Text style={styles.qrItemsChipT}>{totalItems || items.length || 0} item(s)</Text>
+                      </View>
+                    </View>
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                    <Image source={require('./assets/farmer.png')} style={{ width: 20, height: 20, borderRadius: 10, marginRight: 8 }} />
-                    <Text style={styles.qrOrderName}>{farmerName || '-'}</Text>
-                    <View style={{ flex: 1 }} />
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#FCD34D' }}>{totalItems || items.length || 0} item(s)</Text>
-                  </View>
-                </View>
+                </ScrollView>
 
                 <Text style={styles.qrInfoHint}>Swipe down to close</Text>
               </View>
-
-              <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }}/>
             </Animated.View>
           </View>
         </Modal>
+
+        {/* More Options — Mark Dispute */}
+        {this.state.show_more_options ? (
+          <BottomSheet
+            ref={r => { this.moreSheetRef = r; }}
+            visible
+            dynamicSize
+            maxDynamicContentSize={280 + (initialWindowMetrics?.insets?.bottom ?? 0)}
+            onSheetClose={() => this.setState({ show_more_options: false })}
+            enablePanDownToClose
+            onChange={(status) => (status === -1 ? this.setState({ show_more_options: false }) : null)}
+          >
+            <View style={[styles.moreSheetWrap, { paddingBottom: 12 + (initialWindowMetrics?.insets?.bottom ?? 0) }]}>
+              <View style={styles.moreSheetHeadRow}>
+                <View style={styles.moreSheetHeadIco}>
+                  <Text style={styles.moreSheetHeadIcoT}>⋯</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.moreSheetTitle}>Aur Options</Text>
+                  <Text style={styles.moreSheetSub}>Is order ke liye action chunein</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[styles.moreSheetTile, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}
+                onPress={() => this.closeMoreAnd(() =>
+                  this.props.navigation.navigate('MarkDispute', { order: o })
+                )}
+              >
+                <View style={[styles.moreSheetIcoWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={[styles.moreSheetIco, { color: '#B45309' }]}>⚑</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.moreSheetRowT, { color: '#B45309' }]}>Dispute Lagayein</Text>
+                  <Text style={styles.moreSheetRowS}>Is order par shikayat darj karein</Text>
+                </View>
+                <Text style={[styles.moreSheetChev, { color: '#B45309' }]}>›</Text>
+              </TouchableOpacity>
+            </View>
+          </BottomSheet>
+        ) : null}
 
         {/* Bottom Sheet */}
         {this.state.show_sheet ? (
@@ -979,16 +1042,41 @@ const styles = StyleSheet.create({
   paidAmt: { fontSize: 16, fontWeight: '700', color: '#16A34A' },
 
   // Bottom Panel
-  bottomPanel: { paddingHorizontal: 14, paddingBottom: 30, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  bottomPanel: { paddingHorizontal: 14, paddingTop: 10, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8 },
   totalLabel: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   codValue: { fontSize: 16, fontWeight: '700', color: '#F37A20' },
+  deliveredBadge: {
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#16A34A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  deliveredBadgeIco: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  deliveredBadgeCheck: { color: '#FFF', fontSize: 13, fontWeight: '900' },
+  deliveredBadgeT: { fontSize: 14, fontWeight: '700', color: '#16A34A' },
+  cancelledNote: { fontSize: 13, color: '#DC2626', alignSelf: 'center', fontWeight: '600', marginBottom: 4 },
+  moreOptsBtn: { height: 44, marginTop: 8, borderRadius: 12, borderWidth: 1.2, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#475569', marginRight: 8, lineHeight: 22 },
+  moreOptsT: { color: '#334155', fontSize: 13.5, fontWeight: '600', letterSpacing: 0.2, lineHeight: 22 },
 
-  actionRow: { flexDirection: 'row' },
-  actionBtn: { flex: 1, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  primaryBtn: { height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#16A34A' },
-  primaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  moreSheetWrap: { paddingHorizontal: 18, paddingTop: 4 },
+  moreSheetHeadRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  moreSheetHeadIco: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  moreSheetHeadIcoT: { fontSize: 22, fontWeight: '700', color: '#475569', lineHeight: 38, textAlign: 'center' },
+  moreSheetTitle: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  moreSheetSub: { fontSize: 12, fontWeight: '400', color: '#64748B', marginTop: 2 },
+  moreSheetTile: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  moreSheetIcoWrap: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  moreSheetIco: { fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  moreSheetRowT: { fontSize: 13.5, fontWeight: '600' },
+  moreSheetRowS: { fontSize: 11.5, fontWeight: '500', color: '#64748B', marginTop: 2 },
+  moreSheetChev: { fontSize: 22, fontWeight: '500', marginLeft: 6, opacity: 0.6 },
 
   qrThumb: { height: '100%', width: '100%' },
   // Success modal
@@ -1009,23 +1097,89 @@ const styles = StyleSheet.create({
 
   qrBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   qrSheet: { flex: 1, backgroundColor: BG, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden', marginTop: 6 },
-  qrSheetHandle: { alignItems: 'center', paddingTop: 6, paddingBottom: 0 },
-  qrModalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 0, paddingBottom: 0 },
-  qrCloseBtn: { height: 34, width: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  qrCloseText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  qrTitle: { fontSize: 18, fontWeight: '800', color: '#FFF', textAlign: 'center', marginTop: 0 },
-  qrSubtitle: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 2, marginBottom: 6 },
-  qrImgWrap: { alignItems: 'center', flex: 1, justifyContent: 'center', marginHorizontal: -6 },
-  qrModalImage: { width: '100%', height: undefined, aspectRatio: 0.72, borderRadius: 10 },
-  qrModalPlaceholder: { width: '70%', height: 200, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  qrCardAmt: { fontSize: 22, fontWeight: '800', color: '#FCD34D', textAlign: 'center', marginTop: 6, marginBottom: 6 },
-  qrOrderCard: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  qrOrderOid: { fontSize: 12, fontWeight: '700', color: '#FFF' },
-  qrInfoPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
-  qrInfoPillT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
-  qrOrderName: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  qrSafe: { flex: 1, backgroundColor: BG },
+  qrSheetHandle: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
   qrDragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
-  qrInfoHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 16, marginBottom: 20 },
+  qrTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    paddingHorizontal: 12,
+  },
+  qrCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrCloseText: { color: '#FFF', fontSize: 16, fontWeight: '700', lineHeight: 18 },
+  qrTopSpacer: { width: 40, height: 40 },
+  qrTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: '#FFF', marginHorizontal: 8 },
+  qrSubtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 12,
+  },
+  qrScroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 12, justifyContent: 'center' },
+  qrCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  qrModalPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  qrPlaceholderT: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
+  qrCardAmt: { fontSize: 26, fontWeight: '800', color: '#FCD34D', textAlign: 'center', marginTop: 14, marginBottom: 12 },
+  qrOrderCard: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  qrOrderTop: { flexDirection: 'row', alignItems: 'center' },
+  qrOrderOid: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B', marginRight: 8 },
+  qrPayPill: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  qrPayPillT: { fontSize: 10, fontWeight: '700', color: BG, letterSpacing: 0.3 },
+  qrOrderDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  qrOrderRow: { flexDirection: 'row', alignItems: 'center' },
+  qrFarmerAv: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  qrFarmerAvT: { fontSize: 15, fontWeight: '700', color: BG },
+  qrFarmerInfo: { flex: 1, minWidth: 0 },
+  qrOrderName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  qrOrderPhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
+  qrItemsChip: { backgroundColor: '#FFFBEB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 8 },
+  qrItemsChipT: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  qrInfoHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.35)', textAlign: 'center', paddingBottom: 8, paddingTop: 4 },
 
   // Bottom sheet
   bsContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },

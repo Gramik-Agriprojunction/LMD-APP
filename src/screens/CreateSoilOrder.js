@@ -373,14 +373,8 @@ class CreateSoilOrder extends Component {
     this.setState({ locating: true });
     try {
       const { lat, lng, pincode, error } = await getLocationPincode();
-      if (error === 'not_linked') {
-        this.setState({ locating: false });
-        if (!silent) Toast.show('App rebuild karein (npm run ios)', Toast.LONG);
-        return;
-      }
       if (error === 'permission_denied') {
         this.setState({ locating: false });
-        if (!silent) Toast.show('Location permission allow karein', Toast.SHORT);
         return;
       }
       this.setState({ lat, lng, pincode: pincode || this.state.pincode, locating: false }, () => {
