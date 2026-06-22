@@ -453,7 +453,7 @@ class PenaltyOrders extends Component {
         {/* Skip the bottom safe-area inset on iOS so the list runs flush to the
             home-indicator (matches the dashboard look). Keep it on Android so
             the navigation gesture bar doesn't clip the last row. */}
-        <SafeAreaView edges={Platform.OS === 'ios' ? [] : ['bottom']} style={{ flex: 1 }}>
+        <SafeAreaView edges={[]} style={{ flex: 1 }}>
           {isLoading && !refreshing ? (
             <View style={styles.loaderWrap}>
               <ActivityIndicator size="small" color={P} />

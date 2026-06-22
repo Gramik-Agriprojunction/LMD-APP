@@ -32,6 +32,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
+import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
 
@@ -101,35 +102,58 @@ class SettlementList extends Component {
   // Response mapping helpers
   // ------------------------
   getFarmerObj = (it) => (it?.farmer && typeof it.farmer === 'object' ? it.farmer : {});
-  getFarmerName = (it) => String(this.getFarmerObj(it)?.name || '').trim();
-  getVillage = (it) => String(this.getFarmerObj(it)?.address || '').trim();
 
-  getOrderId = (it) =>
-    it?.order_id !== undefined && it?.order_id !== null ? String(it.order_id).trim() : '';
+  getFarmerName = (it) =>
+    String(it?.farmer_name || this.getFarmerObj(it)?.name || '').trim();
 
-  getOrderCode = (it) =>
-    it?.order_code !== undefined && it?.order_code !== null ? String(it.order_code).trim() : '';
+  getFarmerMobile = (it) =>
+    String(it?.farmer_mobile || this.getFarmerObj(it)?.phone || this.getFarmerObj(it)?.mobile || '').trim();
 
-  getCodAmount = (it) =>
-    it?.order_amount !== undefined && it?.order_amount !== null ? String(it.order_amount) : '';
+  // Numeric order_id for selection + checkSettle/submitSettlement POST
+  getOrderId = (it) => {
+    if (it?.order_id !== undefined && it?.order_id !== null) return String(it.order_id).trim();
+    return '';
+  };
 
-  getCollectedAmount = (it) =>
-    it?.collected_amount !== undefined && it?.collected_amount !== null ? String(it.collected_amount) : '';
+  getSettlementId = (it) =>
+    it?.id !== undefined && it?.id !== null ? String(it.id).trim() : '';
+
+  // AGRI code shown in list UI
+  getOrderCode = (it) => {
+    if (it?.order_code) return String(it.order_code).split(/\s+/)[0].trim();
+    if (it?.order_id !== undefined && it?.order_id !== null) return String(it.order_id).trim();
+    return '';
+  };
+
+  getAmount = (it) => {
+    if (it?.amount != null) return this.toNum(it.amount);
+    if (it?.order_amount != null) return this.toNum(it.order_amount);
+    if (it?.order_grand_total != null) return this.toNum(it.order_grand_total);
+    return 0;
+  };
 
   getTimeSlot = (it) => String(it?.slot || '').trim();
 
-  mapTabFromStatus = (statusRaw) => {
-    const st = this.normalize(statusRaw);
-    if (st.includes('settled') || st.includes('success')) return 'settled';
-    if (st.includes('disputed')) return 'disputed';
-    return 'pending';
+  isPendingItem = (item) => {
+    const ss = String(item?.settlement_status || '').toLowerCase();
+    if (ss === 'settled' || ss === 'completed' || ss === 'success') return false;
+    if (ss === 'disputed' || ss === 'rejected') return false;
+    const ps = String(item?.payment_status || '').toLowerCase();
+    if (ps === 'unpaid' || ps === 'pending') return true;
+    return ss === 'pending' || String(item?.status || '').toLowerCase().includes('pending');
   };
 
-  isCollectedOk = (it) => {
-    const cod = this.money(this.getCodAmount(it));
-    const col = this.money(this.getCollectedAmount(it));
-    if (!cod || !col) return false;
-    return String(cod) === String(col);
+  settlementBadge = (item) => {
+    const ps = String(item?.payment_status || '').toLowerCase();
+    const ss = String(item?.settlement_status || '').toLowerCase();
+    if (ss === 'settled' || ss === 'completed' || ss === 'success' || ps === 'paid') {
+      return { bg: '#16A34A', c: '#FFFFFF', label: 'Settled' };
+    }
+    if (ss === 'disputed') return { bg: '#DC2626', c: '#FFFFFF', label: 'Disputed' };
+    if (ps === 'unpaid' || ps === 'pending' || this.isPendingItem(item)) {
+      return { bg: '#EA580C', c: '#FFFFFF', label: 'Pending' };
+    }
+    return { bg: '#64748B', c: '#FFFFFF', label: 'Pending' };
   };
 
   // ------------------------
@@ -145,7 +169,7 @@ class SettlementList extends Component {
     if (params.length) url += `?${params.join('&')}`;
 
     console.log('Settlement List API url== ', url);
-    this.setState({ loading: true, search: '' }, () => {
+    this.setState({ loading: true }, () => {
       console.log('Settlement List API calling== ', url);
       fetch(url, {
         method: 'GET',
@@ -158,13 +182,22 @@ class SettlementList extends Component {
         .then((json) => {
           console.log('Settlement List API response== ', JSON.stringify(json));
 
-          const rows = Array.isArray(json?.data) ? json.data : [];
+          const payload =
+            json?.data && typeof json.data === 'object' && !Array.isArray(json.data)
+              ? json.data
+              : json;
 
-          const lc = json?.list_count || {};
-          const pending = Number(lc?.pending_count ?? 0) || 0;
-          const settled = Number(lc?.settled_count ?? 0) || 0;
-          const disputed = Number(lc?.disputed_count ?? 0) || 0;
-          const all = Number(lc?.total ?? rows.length) || rows.length;
+          const rows = Array.isArray(payload?.list)
+            ? payload.list
+            : Array.isArray(json?.data)
+              ? json.data
+              : [];
+
+          const summary = payload?.summary || json?.list_count || {};
+          const pending = Number(summary?.pending_count ?? 0) || 0;
+          const settled = Number(summary?.settled_count ?? 0) || 0;
+          const disputed = Number(summary?.disputed_count ?? 0) || 0;
+          const all = Number(summary?.total ?? rows.length) || rows.length;
 
           const keep = {};
           const old = this.state.selectedMap || {};
@@ -173,7 +206,7 @@ class SettlementList extends Component {
             if (id && old[id]) keep[id] = true;
           });
 
-          const td = json?.todays_order || {};
+          const td = payload?.todays_order || json?.todays_order || {};
           const todaysOrders = this.toNum(td?.total_order);
           const codCollected = this.toNum(td?.cod_collected);
           const cashDeposited = this.toNum(td?.cash_deposited || td?.cash_collected);
@@ -211,7 +244,19 @@ class SettlementList extends Component {
   // Next screen
   // ------------------------
   submitSettlement = () => {
-    this.props.navigation.navigate('CashSettlement', { selectedOrders: this.getSelectedOrderIds() });
+    this.props.navigation.navigate('CashSettlement', {
+      selectedOrders: this.getSelectedOrderIds(),
+      selectedOrderItems: this.getSelectedOrderItems(),
+    });
+  };
+
+  openDetail = (item) => {
+    const settlementId = this.getSettlementId(item);
+    if (!settlementId) {
+      Toast.show('Settlement ID nahi mila', Toast.SHORT);
+      return;
+    }
+    this.props.navigation.navigate('SettlementDetail', { settlementId, preview: item });
   };
 
   // Search is server-side now — pass the query in the API and reload.
@@ -241,7 +286,17 @@ class SettlementList extends Component {
     });
   };
 
-  getSelectedOrderIds = () => Object.keys(this.state.selectedMap || {});
+  getSelectedOrderIds = () =>
+    Object.keys(this.state.selectedMap || {}).map((id) => String(id));
+
+  getSelectedOrderItems = () => {
+    const { selectedMap } = this.state;
+    const rows = Array.isArray(this.state.list) ? this.state.list : [];
+    return rows.filter((it) => {
+      const id = this.getOrderId(it);
+      return id && selectedMap?.[id];
+    });
+  };
 
   getSelectedTotals = () => {
     const { selectedMap } = this.state;
@@ -253,8 +308,8 @@ class SettlementList extends Component {
     rows.forEach((it) => {
       const id = this.getOrderId(it);
       if (id && selectedMap?.[id]) {
-        const n = Number(it?.order_amount);
-        if (!isNaN(n)) total += n;
+        const n = this.getAmount(it);
+        if (n) total += n;
         count += 1;
       }
     });
@@ -283,112 +338,33 @@ class SettlementList extends Component {
 
   renderRow = ({ item }) => {
     const orderId = this.getOrderId(item);
-    const orderCode = this.getOrderCode(item);
-    const codeDisplay = orderCode.includes(' ') ? orderCode.split(' ')[0] : orderCode;
-    const farmer = this.getFarmerObj(item);
-    const farmerName = this.getFarmerName(item);
-    const farmerPhone = farmer?.phone || '';
-    const farmerAddr = item?.farmer_address || {};
-    const ds = item?.dark_store || {};
-    const slot = this.getTimeSlot(item);
-    const statusRaw = String(item?.status || '').toLowerCase();
-    const isPending = statusRaw.includes('pending');
-
-    const orderAmt = this.money(this.getCodAmount(item));
-    const collected = this.money(this.getCollectedAmount(item));
-    const deposited = this.money(item?.deposite_amount);
-    const payType = String(item?.type || '').toUpperCase();
-
+    const canSelect = this.isPendingItem(item);
     const selected = !!this.state.selectedMap?.[orderId];
+    const badge = this.settlementBadge(item);
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => { if (isPending) this.toggleSelect(orderId); }}
-        style={[styles.rowCard, selected && styles.rowCardSelected]}
-      >
-        <View style={[styles.rowTop, selected && styles.rowTopSelected]}>
-          <View style={styles.rowHead}>
-            <Text style={styles.rowOid}>#{codeDisplay || orderId || 'N/A'}</Text>
-            <View style={{ flex: 1 }} />
-            <View style={[styles.rowStatusPill, { backgroundColor: isPending ? '#EA580C' : '#16A34A' }]}>
-              <Text style={styles.rowStatusT}>{isPending ? 'Pending' : 'Settled'}</Text>
+      <View style={selected ? styles.rowSelectedWrap : styles.rowWrap}>
+        <OrderCard
+          order={item}
+          compactChips
+          useFarmerNew
+          selected={selected}
+          showCheckbox={canSelect}
+          checkboxInHeader
+          isChecked={selected}
+          onToggleSelect={() => this.toggleSelect(orderId)}
+          onHeaderPress={canSelect ? () => this.toggleSelect(orderId) : undefined}
+          onBodyPress={() => this.openDetail(item)}
+          onCall={(p) => this.onCall(p)}
+          onWhatsApp={(p) => this.onWhatsApp(p)}
+          onCallStore={(p) => this.onCall(p)}
+          extraHeaderRight={
+            <View style={[styles.settlePill, { backgroundColor: badge.bg, marginLeft: 6 }]}>
+              <Text style={[styles.settlePillT, { color: badge.c }]}>{badge.label}</Text>
             </View>
-            {isPending ? (
-              <View style={[styles.checkBox, selected && styles.checkBoxOn]}>
-                {selected ? <Text style={styles.checkTick}>✓</Text> : null}
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.rowFarmer}>
-          <Image source={require('./assets/farmer.png')} style={styles.rowAvt} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowFarmerName}>{farmerName || '-'}</Text>
-            {!!farmerPhone ? <Text style={styles.rowAddr}>{farmerPhone}</Text> : null}
-          </View>
-          {this.state.showCall ? (
-            <>
-              <TouchableOpacity onPress={() => this.onCall(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
-                <Image source={require('./assets/call.png')} style={styles.rowIco} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => this.onWhatsApp(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 10 }}>
-                <Image source={require('./assets/whatsapp.png')} style={styles.rowIco} />
-              </TouchableOpacity>
-            </>
-          ) : null}
-          </View>
-        </View>
-
-        {/* Route: Pickup -> Drop */}
-        <View style={styles.rowRoute}>
-          <View style={styles.rowRouteR}>
-            <View style={styles.rowTl}><View style={[styles.rowDot, { backgroundColor: '#0DA60D' }]} /><View style={styles.rowLine} /></View>
-            <View style={styles.rowRouteBody}>
-              <Text style={[styles.rowRouteLbl, { color: '#0DA60D' }]}>Pickup</Text>
-              <Text style={styles.rowRouteTitle}>{ds?.name || '-'}</Text>
-              {ds?.mobile ? <Text style={styles.rowRouteVal}>{ds.mobile}</Text> : null}
-              <Text style={styles.rowRouteVal}>{ds?.location || `${ds?.city || ''}${ds?.pincode ? `, ${ds.pincode}` : ''}`}</Text>
-            </View>
-          </View>
-          <View style={styles.rowRouteR}>
-            <View style={styles.rowTl}><View style={[styles.rowDot, { backgroundColor: '#EF4444' }]} /></View>
-            <View style={[styles.rowRouteBody, { paddingBottom: 0 }]}>
-              <Text style={[styles.rowRouteLbl, { color: '#EF4444' }]}>Drop</Text>
-              <Text style={styles.rowRouteVal}>
-                {farmerAddr?.address || farmer?.address || '-'}
-                {farmerAddr?.block ? `, ${farmerAddr.block}` : ''}
-                {farmerAddr?.city ? `, ${farmerAddr.city}` : ''}
-                {farmerAddr?.state ? `, ${farmerAddr.state}` : ''}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Amounts */}
-        <View style={styles.rowAmounts}>
-          <View style={styles.rowAmtItem}>
-            <Text style={styles.rowAmtLabel}>Order</Text>
-            <Text style={styles.rowAmtVal}>{'₹'}{orderAmt || '0'}</Text>
-          </View>
-          <View style={styles.rowAmtItem}>
-            <Text style={styles.rowAmtLabel}>Collected</Text>
-            <Text style={[styles.rowAmtVal, { color: '#16A34A' }]}>{'₹'}{collected || '0'}</Text>
-          </View>
-          <View style={styles.rowAmtItem}>
-            <Text style={styles.rowAmtLabel}>Deposited</Text>
-            <Text style={[styles.rowAmtVal, { color: '#5D3FD3' }]}>{'₹'}{deposited || '0'}</Text>
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.rowFooter}>
-          {!!payType ? <View style={styles.rowTypePill}><Text style={styles.rowTypeT}>{payType}</Text></View> : null}
-          {!!slot ? <Text style={styles.rowSlot}>{slot}</Text> : null}
-          <View style={{ flex: 1 }} />
-          <Text style={styles.rowAmtTotal}>{'₹'}{orderAmt}</Text>
-        </View>
-      </TouchableOpacity>
+          }
+        />
+      </View>
     );
   };
 
@@ -595,56 +571,15 @@ const styles = StyleSheet.create({
 
   subHint: { fontSize: 11, color: THEME.muted, marginBottom: 8, marginLeft: 4 },
 
+  rowWrap: { marginBottom: 0 },
+  rowSelectedWrap: { marginBottom: 0 },
+  settlePill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
+  settlePillT: { fontSize: 9, fontWeight: '700' },
+
   emptyWrap: { alignItems: 'center', paddingVertical: 50 },
   emptyImg: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 12 },
   emptyTitle: { fontSize: 15, fontWeight: '700', color: '#475569', marginBottom: 4 },
   emptySub: { fontSize: 12, color: THEME.muted, textAlign: 'center', paddingHorizontal: 32 },
-
-  rowCard: {
-    backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: THEME.border,
-    marginTop: 8, overflow: 'hidden',
-  },
-  rowCardSelected: { borderColor: P, borderWidth: 2 },
-  rowTop: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
-  rowTopSelected: { backgroundColor: '#EDE9FE' },
-  rowHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  rowOid: { fontSize: 11, fontWeight: '800', color: P },
-  rowStatusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginRight: 8 },
-  rowStatusT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
-
-  rowFarmer: { flexDirection: 'row', alignItems: 'center' },
-  rowAvt: { width: 28, height: 28, borderRadius: 14, resizeMode: 'cover', marginRight: 8 },
-  rowFarmerName: { fontSize: 13, fontWeight: '700', color: THEME.text },
-  rowAddr: { fontSize: 11, color: THEME.muted, marginTop: 1 },
-  rowIco: { width: 26, height: 26, resizeMode: 'contain' },
-
-  rowRoute: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  rowRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
-  rowTl: { width: 12, alignItems: 'center', marginRight: 8, paddingTop: 3 },
-  rowDot: { width: 7, height: 7, borderRadius: 4 },
-  rowLine: { width: 1.5, flex: 1, minHeight: 6, backgroundColor: '#D1D5DB', marginVertical: 2 },
-  rowRouteBody: { flex: 1, paddingBottom: 6 },
-  rowRouteLbl: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3, marginBottom: 2 },
-  rowRouteTitle: { fontSize: 12.5, fontWeight: '700', color: THEME.text },
-  rowRouteVal: { fontSize: 11.5, color: THEME.subText, lineHeight: 16, marginTop: 1 },
-
-  rowAmounts: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8 },
-  rowAmtItem: { flex: 1, alignItems: 'center' },
-  rowAmtLabel: { fontSize: 10, fontWeight: '500', color: THEME.muted, marginBottom: 2 },
-  rowAmtVal: { fontSize: 13, fontWeight: '800', color: THEME.text },
-
-  rowFooter: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  rowTypePill: { backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
-  rowTypeT: { fontSize: 9, fontWeight: '700', color: '#475569' },
-  rowSlot: { fontSize: 11, color: THEME.muted },
-  rowAmtTotal: { fontSize: 15, fontWeight: '800', color: '#16A34A' },
-
-  checkBox: {
-    marginLeft: 8, width: 22, height: 22, borderRadius: 6, borderWidth: 2,
-    borderColor: '#CBD5E1', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center',
-  },
-  checkBoxOn: { backgroundColor: P, borderColor: P },
-  checkTick: { color: '#FCD34D', fontSize: 13, fontWeight: '900', marginTop: -1 },
 
   footerWrap: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

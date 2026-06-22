@@ -128,3 +128,5 @@ dependencies {
     implementation "com.google.android.gms:play-services-base:18.5.0"
     implementation "androidx.core:core:1.13.1"
 }
+
+apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")

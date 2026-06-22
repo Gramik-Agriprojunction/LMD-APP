@@ -19,7 +19,8 @@ import {
   PanResponder,
   InteractionManager,
 } from 'react-native';
-import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -30,8 +31,8 @@ import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 
 const BG = '#5D3FD3';
-const QR_SAFE_TOP = initialWindowMetrics?.insets?.top ?? (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
-const QR_SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+const QR_SAFE_TOP = (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
+const QR_SAFE_BOTTOM = overlayBottomPadding();
 
 
 class DeliverToFarmer extends Component {
@@ -730,7 +731,7 @@ class DeliverToFarmer extends Component {
         </ScrollView>
 
         {/* Bottom Panel */}
-        <SafeAreaView edges={['bottom']} style={styles.bottomPanel}>
+        <SafeAreaView edges={safeBottomEdges()} style={styles.bottomPanel}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Grand Total</Text>
             <Text style={styles.codValue}>{'₹'} {total}</Text>
@@ -875,12 +876,12 @@ class DeliverToFarmer extends Component {
             ref={r => { this.moreSheetRef = r; }}
             visible
             dynamicSize
-            maxDynamicContentSize={280 + (initialWindowMetrics?.insets?.bottom ?? 0)}
+            maxDynamicContentSize={280 + overlayBottomPadding()}
             onSheetClose={() => this.setState({ show_more_options: false })}
             enablePanDownToClose
             onChange={(status) => (status === -1 ? this.setState({ show_more_options: false }) : null)}
           >
-            <View style={[styles.moreSheetWrap, { paddingBottom: 12 + (initialWindowMetrics?.insets?.bottom ?? 0) }]}>
+            <View style={[styles.moreSheetWrap, { paddingBottom: 12 + overlayBottomPadding() }]}>
               <View style={styles.moreSheetHeadRow}>
                 <View style={styles.moreSheetHeadIco}>
                   <Text style={styles.moreSheetHeadIcoT}>⋯</Text>

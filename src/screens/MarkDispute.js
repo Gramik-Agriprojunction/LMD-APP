@@ -15,7 +15,8 @@ import {
   TextInput,
   Keyboard,
 } from 'react-native';
-import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
@@ -24,7 +25,7 @@ import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
 import ScreenHeader from '../components/ScreenHeader';
 
-const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+const OVERLAY_BOTTOM = overlayBottomPadding();
 import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
@@ -460,7 +461,7 @@ class MarkDispute extends Component {
         </ScrollView>
 
         {/* Bottom CTA */}
-        <SafeAreaView edges={Platform.OS === 'ios' ? [] : ['bottom']} style={s.bottomWrap}>
+        <SafeAreaView edges={Platform.OS === 'ios' ? [] : safeBottomEdges()} style={s.bottomWrap}>
           <Animated.View style={{ opacity: this.ctaFade, transform: [{ translateY: this.ctaY }] }}>
             <TouchableOpacity
               disabled={!canConfirm}
@@ -663,7 +664,7 @@ const s = StyleSheet.create({
   // Confirm bottom sheet — iOS already gets the home-indicator inset from the
   // BottomSheet's inner SafeAreaView, so we drop the explicit bottom padding on
   // iOS to keep the action buttons close to the bottom edge.
-  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 + SAFE_BOTTOM },
+  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 + OVERLAY_BOTTOM },
 
   // Hero block: theme-filled circle with white icon + title + sub. No shadow.
   sheetHero: { alignItems: 'center', marginBottom: 16 },

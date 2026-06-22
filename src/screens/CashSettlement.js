@@ -3,8 +3,7 @@
 // ✅ No dummy/static data
 // ✅ Banks vertical list; upload + preview ONLY for selected bank
 // ✅ UPI: Pay Now + Upload Screenshot + preview
-// ✅ Submit: constants.confirmSettle (order_ids[], type, bank_list_id) + sends ONLY relevant proof
-// ⚠️ Pay Now requires API key: checkSettle.data.upi_vpa (not in your sample response)
+// ✅ Submit: constants.submitSettlement (order_ids[], type, bank_list_id) + sends ONLY relevant proof
 
 import React, { Component } from 'react';
 import { withV4Navigation } from "../utils/v4Compat";
@@ -59,8 +58,9 @@ class CashSettlement extends Component {
       submitting: false,
 
       // ✅ checkSettle response
-      checkData: null, // data object from API
-      banks: [], // data["bank-list"]
+      checkData: null,
+      apiOrders: null,
+      banks: [],
       selectedBankId: null,
 
       // ✅ type selection
@@ -85,6 +85,7 @@ pickLock = false;
   // navigation
   getSettlement = () => this.props?.navigation?.getParam?.('settlement', null);
   getSelectedOrders = () => this.props?.navigation?.getParam?.('selectedOrders', []);
+  getSelectedOrderItems = () => this.props?.navigation?.getParam?.('selectedOrderItems', []);
 
   goBack = () => {
     const nav = this.props?.navigation;
@@ -143,15 +144,21 @@ pickLock = false;
         .then((json) => {
             console.log("Check Settle API response== ", JSON.stringify(json))
           const dataObj = json?.data && typeof json.data === 'object' ? json.data : null;
-
-          // bank-list key has hyphen -> must access with bracket
           const bankList = Array.isArray(dataObj?.['bank-list']) ? dataObj['bank-list'] : [];
+          const apiOrders = Array.isArray(dataObj?.orders)
+            ? dataObj.orders
+            : Array.isArray(dataObj?.order_list)
+              ? dataObj.order_list
+              : Array.isArray(dataObj?.list)
+                ? dataObj.list
+                : null;
 
           this.setState({
             loading: false,
             checkData: dataObj,
             banks: bankList,
-            selectedBankId: bankList?.[0]?.id ?? null, // ✅ first bank from API (not dummy)
+            apiOrders,
+            selectedBankId: bankList?.[0]?.id ?? null,
           });
         })
         .catch((e) => {
@@ -255,7 +262,7 @@ pickLock = false;
     }
   };
 
-  // ✅ Submit using confirmSettle API
+  // ✅ Submit using submitSettlement API
   onSubmit = () => {
     const orderIds = Array.isArray(this.getSelectedOrders()) ? this.getSelectedOrders() : [];
     const { selectedType, selectedBankId, upiImage, bankImage } = this.state;
@@ -297,10 +304,10 @@ pickLock = false;
       fd.append('reciept', { uri: bankImage.uri, type: bankImage.type, name: bankImage.name });
     }
 
-    console.log("Confirm Settle API payload== ",JSON.stringify(fd))
+    console.log('Submit Settlement API payload== ', JSON.stringify(fd));
 
     this.setState({ submitting: true }, () => {
-      fetch(constants.confirmSettle, {
+      fetch(constants.submitSettlement, {
         method: 'POST',
         headers: {
           Authorization: 'Bearer ' + global.token,
@@ -310,14 +317,14 @@ pickLock = false;
       })
         .then((r) => r.json())
         .then((json) => {
-             Toast.show(json?.message, Toast.SHORT);
-            if(json.status)
-            {
-                    // Settlement made → invalidate dashboard, settlements, settlement history, earnings caches
-                    invalidateSettlementRelated();
-                    this.setState({ submitting: false, confirmVisible: false, pickingFor: null });
-                    this.props.navigation.navigate('SettlementHistory')
-            }
+          Toast.show(json?.message, Toast.SHORT);
+          if (json.status) {
+            invalidateSettlementRelated();
+            this.setState({ submitting: false, confirmVisible: false, pickingFor: null });
+            this.props.navigation.navigate('SettlementHistory');
+          } else {
+            this.setState({ submitting: false });
+          }
         })
         .catch((e) => {
           this.setState({ submitting: false });
@@ -353,6 +360,7 @@ pickLock = false;
     const bankName = String(b?.bank_name || '').trim();
     const acc = String(b?.account_no || '').trim();
     const ifsc = String(b?.ifsc_code || '').trim();
+    const address = String(b?.address || '').trim();
 
     if (!bankName && !acc && !ifsc) return null;
 
@@ -369,8 +377,77 @@ pickLock = false;
           {!!bankName ? <Text style={styles.bankPickTitle}>{bankName}</Text> : null}
           {!!acc ? <Text style={styles.bankPickSub}>{`A/C: ${acc}`}</Text> : null}
           {!!ifsc ? <Text style={styles.bankPickSub}>{`IFSC: ${ifsc}`}</Text> : null}
+          {!!address ? <Text style={styles.bankPickSub}>{address}</Text> : null}
         </View>
       </TouchableOpacity>
+    );
+  };
+
+  getDisplayOrders = () => {
+    const { apiOrders } = this.state;
+    if (Array.isArray(apiOrders) && apiOrders.length) return apiOrders;
+    const passed = this.getSelectedOrderItems();
+    return Array.isArray(passed) ? passed : [];
+  };
+
+  orderCode = (o) => {
+    if (o?.order_code) return String(o.order_code).split(/\s+/)[0];
+    if (o?.order_id != null) return String(o.order_id);
+    return '-';
+  };
+
+  maskPhone = (p) => {
+    if (!p) return '';
+    const s = String(p);
+    if (s.length < 6) return s;
+    return s.slice(0, 2) + '****' + s.slice(-2);
+  };
+
+  renderOrderRow = (o, idx) => {
+    const code = this.orderCode(o);
+    const farmer = String(o?.farmer_name || o?.farmer?.name || '').trim();
+    const phone = String(o?.farmer_mobile || o?.farmer?.phone || o?.farmer?.mobile || '').trim();
+    const amount = this.money(o?.amount ?? o?.order_amount);
+    const mode = String(o?.payment_mode || 'COD').toUpperCase();
+    const isPaid = String(o?.payment_status || '').toLowerCase() === 'paid';
+    const status = isPaid ? 'Paid' : 'Unpaid';
+    const address = String(o?.shipping_address || '').trim();
+
+    return (
+      <View key={`${code}-${idx}`} style={styles.orderCard}>
+        <View style={styles.orderCardTop}>
+          <View style={styles.orderAvtRing}>
+            <Image
+              source={require('./assets/farmernew.png')}
+              style={styles.orderAvt}
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={styles.orderMain}>
+            <View style={styles.orderTitleRow}>
+              <Text style={styles.orderFarmer} numberOfLines={1}>{farmer || '-'}</Text>
+              <Text style={styles.orderAmt}>₹{amount || '0'}</Text>
+            </View>
+            <Text style={styles.orderCode} numberOfLines={1}>#{code}</Text>
+            {!!phone ? <Text style={styles.orderPhone}>{this.maskPhone(phone)}</Text> : null}
+          </View>
+        </View>
+
+        {!!address ? (
+          <View style={styles.orderAddrBox}>
+            <Text style={styles.orderAddrLbl}>DROP</Text>
+            <Text style={styles.orderAddr} numberOfLines={2}>{address}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.orderFoot}>
+          <View style={styles.orderPill}><Text style={styles.orderPillT}>{mode}</Text></View>
+          <View style={[styles.orderPill, isPaid ? styles.orderPillPaid : styles.orderPillUnpaid]}>
+            <Text style={[styles.orderPillT, isPaid ? styles.orderPillTPaid : styles.orderPillTUnpaid]}>{status}</Text>
+          </View>
+        </View>
+      </View>
     );
   };
 
@@ -381,7 +458,6 @@ pickLock = false;
     const { loading, submitting, checkData, banks, pickerVisible, confirmVisible, pickingFor, upiImage, bankImage } =
       this.state;
 
-    // ✅ Amount & count: prefer checkSettle API, else settlement param, else selectedOrders count
     const amountStr = this.money(checkData?.total_amount) || this.money(s?.amount) || '';
 
     const orderCount =
@@ -389,20 +465,10 @@ pickLock = false;
       this.toNum(s?.total_order_count) ||
       (orderIds.length ? orderIds.length : 0);
 
-    // ✅ LMD / Farmer: from API farmer; else from settlement if available
-    const farmer = checkData?.farmer || s?.farmer || null;
-    const farmerName = String(farmer?.name || '').trim();
-    const farmerPhone = String(farmer?.phone || '').trim();
-    const farmerImg = String(farmer?.image || '').trim();
-
-    // Collection date/time only if settlement has it (checkSettle sample doesn't)
-    const createdAt = s?.created_at || null;
-    const dateStr = this.formatDate(createdAt);
-    const timeStr = this.formatTime(createdAt);
-
+    const displayOrders = this.getDisplayOrders();
     const previewUri = pickingFor === 'upi' ? upiImage?.uri : pickingFor === 'bank' ? bankImage?.uri : null;
-
-    const supportPhone = String(checkData?.support_phone || '').trim();
+    const supportPhone = String(checkData?.support_phone || s?.support_phone || '').trim();
+    const upiVpa = String(checkData?.upi_vpa || '').trim();
 
     return (
       <View style={styles.root}>
@@ -441,19 +507,49 @@ pickLock = false;
                   <Text style={styles.heroLabel}>Settlement Amount</Text>
                   <Text style={styles.heroAmt}>{'₹'}{amountStr || '0'}</Text>
                   <Text style={styles.heroSub}>{orderCount || 0} order(s) selected</Text>
-
-                  {!!farmerName ? (
-                    <View style={styles.lmdPill}>
-                      <View style={styles.lmdAvatar}>
-                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 11 }}>{(farmerName || 'L').charAt(0).toUpperCase()}</Text>
-                      </View>
-                      <Text style={styles.lmdText} numberOfLines={1}>{farmerName}</Text>
-                      {!!farmerPhone ? <Text style={styles.lmdPhone}>{farmerPhone}</Text> : null}
-                    </View>
-                  ) : null}
-
                   <Text style={styles.heroHint}>Upload proof via UPI or bank deposit slip</Text>
                 </View>
+
+                {/* Selected orders */}
+                {displayOrders.length > 0 ? (
+                  <View style={styles.ordersSection}>
+                    <View style={styles.ordersSectionHead}>
+                      <Text style={styles.ordersSectionTitle}>Selected Orders</Text>
+                      <View style={styles.orderCountBadge}>
+                        <Text style={styles.orderCountBadgeT}>{displayOrders.length}</Text>
+                      </View>
+                    </View>
+                    {displayOrders.map((o, idx) => this.renderOrderRow(o, idx))}
+                  </View>
+                ) : null}
+
+                {/* Support */}
+                {!!supportPhone ? (
+                  <View style={styles.infoCard}>
+                    <Text style={styles.infoLbl}>Support</Text>
+                    <Text style={styles.infoVal}>{supportPhone}</Text>
+                  </View>
+                ) : null}
+
+                {/* UPI details from API */}
+                {!!upiVpa ? (
+                  <View style={styles.sectionCard}>
+                    <Text style={styles.sectionTitle}>UPI Payment</Text>
+                    <View style={styles.infoCardInner}>
+                      <Text style={styles.infoLbl}>VPA</Text>
+                      <Text style={styles.infoVal}>{upiVpa}</Text>
+                    </View>
+                    {!!checkData?.upi_name ? (
+                      <View style={styles.infoCardInner}>
+                        <Text style={styles.infoLbl}>Name</Text>
+                        <Text style={styles.infoVal}>{checkData.upi_name}</Text>
+                      </View>
+                    ) : null}
+                    <TouchableOpacity style={styles.uploadBtn} onPress={this.onPayNow} activeOpacity={0.85}>
+                      <Text style={styles.uploadBtnText}>Pay Now · ₹{amountStr || '0'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
 
                 {/* UPI Upload */}
                 <View style={styles.sectionCard}>
@@ -578,6 +674,130 @@ const styles = StyleSheet.create({
   heroAmt: { fontSize: 38, fontWeight: '800', color: '#FFF' },
   heroSub: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginTop: 2 },
   heroHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.4)', marginTop: 14 },
+
+  ordersSection: { marginTop: 10 },
+  ordersSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    paddingHorizontal: 2,
+  },
+  ordersSectionTitle: { fontSize: 14, fontWeight: '700', color: THEME.text, flex: 1 },
+
+  orderCard: {
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFF',
+    overflow: 'hidden',
+    borderLeftWidth: 4,
+    borderLeftColor: THEME.green,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  orderCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  orderMain: { flex: 1, minWidth: 0, marginLeft: 10 },
+  orderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  orderAvtRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#EDE9FE',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  orderAvt: { width: 32, height: 32 },
+  orderFarmer: { fontSize: 14, fontWeight: '700', color: THEME.text, flex: 1 },
+  orderCode: { fontSize: 11, fontWeight: '700', color: THEME.green, marginTop: 3, letterSpacing: 0.2 },
+  orderPhone: { fontSize: 11, fontWeight: '500', color: THEME.subText, marginTop: 2 },
+  orderAmt: { fontSize: 16, fontWeight: '800', color: '#16A34A', flexShrink: 0 },
+  orderAddrBox: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  orderAddrLbl: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  orderAddr: { fontSize: 11, color: '#64748B', lineHeight: 15 },
+  orderFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 11,
+    paddingTop: 2,
+  },
+  orderPill: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  orderPillUnpaid: { backgroundColor: '#FFEDD5', borderColor: '#FDBA74' },
+  orderPillPaid: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
+  orderPillT: { fontSize: 9, fontWeight: '700', color: '#475569' },
+  orderPillTUnpaid: { color: '#C2410C' },
+  orderPillTPaid: { color: '#15803D' },
+  orderCountBadge: {
+    backgroundColor: '#EDE9FE',
+    borderRadius: 10,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderCountBadgeT: { fontSize: 11, fontWeight: '800', color: THEME.green },
+
+  infoCard: {
+    marginTop: 10,
+    backgroundColor: THEME.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  infoLbl: { fontSize: 12, fontWeight: '500', color: THEME.subText },
+  infoVal: { fontSize: 13, fontWeight: '700', color: THEME.text },
 
   collectionPill: {
     marginTop: 10,

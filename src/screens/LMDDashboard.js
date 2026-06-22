@@ -12,6 +12,7 @@ import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSu
 import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
 import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
+import { flushPendingNotificationNavigation } from '../utils/notificationNavigation';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
 
@@ -67,6 +68,7 @@ class LMDDashboard extends Component {
     });
     // Always refresh in background; UI shows cached data meanwhile.
     this.load(cacheHas(KEYS.DASHBOARD));
+    flushPendingNotificationNavigation();
   }
 
   componentWillUnmount() {

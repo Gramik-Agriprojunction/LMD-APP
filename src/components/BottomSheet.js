@@ -36,7 +36,10 @@ const BottomSheet = forwardRef(function BottomSheet(props, ref) {
       const frame = requestAnimationFrame(() => {
         modalRef.current?.present();
       });
-      return () => cancelAnimationFrame(frame);
+      return () => {
+        cancelAnimationFrame(frame);
+        modalRef.current?.dismiss();
+      };
     }
     modalRef.current?.dismiss();
   }, [visible]);

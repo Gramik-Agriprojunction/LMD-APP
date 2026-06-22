@@ -2,18 +2,22 @@ import React, { Component } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar, Image, Animated,
   ActivityIndicator, Alert, Pressable, TouchableOpacity, Linking,
-  Dimensions, Platform, Easing,
+  Platform, Easing, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import moment from 'moment';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
+import BottomSheet from '../components/BottomSheet';
 import { S, soilIcons as I } from '../utils/soilTheme';
 
-const SW = Dimensions.get('window').width;
-const PAD = 10;
+const PAD = 8;
+const FOOTER_PAD = 16;
+const CARD_PAD = 10;
+const PROD_IMG = 84;
 const SCREEN_BG = '#edf1f7';
 const FOOTER_H = 70;
 
@@ -59,6 +63,11 @@ const payLbl = (m) => {
   return m || '-';
 };
 
+const payIconUri = (order) => {
+  const uri = order?.paymentMethod?.icon;
+  return uri && String(uri).trim() ? String(uri).trim() : '';
+};
+
 const maskMobile = (p) => {
   if (!p) return '';
   const s = String(p).replace(/\s+/g, '');
@@ -71,7 +80,7 @@ const getStage = (order) => {
   const rs = String(order?.report_status || '').toLowerCase();
   const hasReport = Array.isArray(order?.report) && order.report.length > 0;
   if (hasReport || st === 'ready' || st === 'completed' || st === 'report_ready' || rs.includes('ready') || rs.includes('generated')) return 2;
-  if (['in_lab', 'lab', 'processing', 'sample_collected', 'picked_up', 'in_progress'].includes(st) || rs.includes('test') || rs.includes('pending')) return 1;
+  if (['in_lab', 'lab', 'processing', 'sample_collected', 'picked_up', 'picked', 'in_progress'].includes(st) || rs.includes('test') || rs.includes('pending')) return 1;
   return 0;
 };
 
@@ -91,6 +100,11 @@ const canCancelOrder = (order) => {
   if (!order?.id || isCancelled(order)) return false;
   const st = String(order?.status || '').toLowerCase();
   return !['completed', 'report_ready', 'ready'].includes(st);
+};
+
+const isPendingOrder = (order) => {
+  if (!order?.id || isCancelled(order)) return false;
+  return String(order?.status || '').toLowerCase() === 'pending';
 };
 
 const getReportUrl = (item) => {
@@ -124,10 +138,14 @@ const reportMeta = (item) => {
   };
 };
 
-function DetailRow({ icon, label, value, valueColor, last }) {
+function DetailRow({ icon, iconUri, label, value, valueColor, last }) {
   return (
     <View style={[st.dRow, !last && st.dRowBorder]}>
-      {!!icon && <Image source={icon} style={st.dIco} resizeMode="contain" />}
+      {iconUri ? (
+        <Image source={{ uri: iconUri }} style={st.dIco} resizeMode="contain" />
+      ) : !!icon ? (
+        <Image source={icon} style={st.dIco} resizeMode="contain" />
+      ) : null}
       <Text style={st.dLbl}>{label}</Text>
       <Text style={[st.dVal, valueColor && { color: valueColor }]} numberOfLines={2}>{value}</Text>
     </View>
@@ -154,10 +172,20 @@ class SoilOrderDetail extends Component {
   constructor(props) {
     super(props);
     const preview = props?.navigation?.getParam('order') || {};
-    this.state = { loading: true, cancelling: false, order: preview, dlIndex: -1 };
+    this.state = {
+      loading: true,
+      refreshing: false,
+      cancelling: false,
+      markingPickup: false,
+      pickupSheetVisible: false,
+      order: preview,
+      dlIndex: -1,
+    };
+    this.pickupSheetRef = null;
     this.fade = new Animated.Value(0);
     this._seq = 0;
     this._BlobUtil = null;
+    this._pendingOrderUpdate = null;
   }
 
   componentDidMount() {
@@ -171,16 +199,16 @@ class SoilOrderDetail extends Component {
     return order?.id ? String(order.id) : '';
   };
 
-  fetchDetail = () => {
+  fetchDetail = (fromRefresh = false) => {
     const id = this.orderId();
     if (!id) {
       Toast.show('Order ID nahi mila', Toast.SHORT);
-      this.setState({ loading: false });
+      this.setState({ loading: false, refreshing: false });
       return;
     }
 
     const seq = ++this._seq;
-    this.setState({ loading: true });
+    if (!fromRefresh) this.setState({ loading: true });
 
     fetch(`${constants.soilOrderDetail}${id}`, {
       method: 'GET',
@@ -195,18 +223,23 @@ class SoilOrderDetail extends Component {
         if (seq !== this._seq) return;
         const order = parseOrderResponse(json);
         if (order) {
-          this.setState({ loading: false, order }, () => this.runIntro());
+          this.setState({ loading: false, refreshing: false, order }, () => {
+            if (!fromRefresh) this.runIntro();
+            else this.fade.setValue(1);
+          });
         } else {
           Toast.show(json?.message || 'Order detail nahi mila', Toast.SHORT);
-          this.setState({ loading: false });
+          this.setState({ loading: false, refreshing: false });
         }
       })
       .catch(() => {
         if (seq !== this._seq) return;
         Toast.show('Order detail load nahi ho paya', Toast.SHORT);
-        this.setState({ loading: false });
+        this.setState({ loading: false, refreshing: false });
       });
   };
+
+  onRefresh = () => this.setState({ refreshing: true }, () => this.fetchDetail(true));
 
   runIntro = () => {
     this.fade.setValue(0);
@@ -302,6 +335,72 @@ class SoilOrderDetail extends Component {
         { text: 'Haan, cancel', style: 'destructive', onPress: this.cancelOrder },
       ],
     );
+  };
+
+  confirmMarkPickup = () => {
+    if (this.state.markingPickup || this.state.cancelling) return;
+    this.setState({ pickupSheetVisible: true });
+  };
+
+  closePickupSheet = () => {
+    if (this.state.markingPickup) return;
+    if (this.pickupSheetRef?.close) {
+      this.pickupSheetRef.close();
+      return;
+    }
+    this.onPickupSheetClosed();
+  };
+
+  onPickupSheetClosed = () => {
+    this.setState({ pickupSheetVisible: false }, () => this.applyPendingPickupUpdate());
+  };
+
+  applyPendingPickupUpdate = () => {
+    const updated = this._pendingOrderUpdate;
+    if (!updated) return;
+    this._pendingOrderUpdate = null;
+    this.setState({ order: updated }, () => this.fade.setValue(1));
+  };
+
+  markSamplePickup = () => {
+    const id = this.orderId();
+    if (!id || this.state.markingPickup) return;
+    this.setState({ markingPickup: true });
+
+    fetch(constants.soilOrderPickup, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-localization': 'en',
+      },
+      body: JSON.stringify({ order_id: Number(id) }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json?.success || json?.status) {
+          Toast.show(json?.message || 'Sample pickup mark ho gaya', Toast.SHORT);
+          const updated = parseOrderResponse(json);
+          if (updated) this._pendingOrderUpdate = updated;
+          this.setState({ markingPickup: false }, () => {
+            requestAnimationFrame(() => {
+              if (this.pickupSheetRef?.close) {
+                this.pickupSheetRef.close();
+              } else {
+                this.onPickupSheetClosed();
+              }
+            });
+          });
+        } else {
+          Toast.show(json?.message || 'Pickup mark nahi ho paya', Toast.SHORT);
+          this.setState({ markingPickup: false });
+        }
+      })
+      .catch(() => {
+        Toast.show('Kuch galat ho gaya', Toast.SHORT);
+        this.setState({ markingPickup: false });
+      });
   };
 
   cancelOrder = () => {
@@ -535,33 +634,109 @@ class SoilOrderDetail extends Component {
         <SectionCard>
           <Text style={st.prodHead}>Recommended products</Text>
           <Text style={st.prodSub}>Aapke soil test ke hisaab se</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.prodScroll}>
-            {products.map((p) => (
-              <View key={String(p.id)} style={st.prodCard}>
+          <View style={st.prodList}>
+            {products.map((p, i) => (
+              <View
+                key={String(p.id)}
+                style={[st.prodCard, i < products.length - 1 && st.prodCardGap]}
+              >
                 <View style={st.prodImgWrap}>
-                  {!!p.image && <Image source={{ uri: p.image }} style={st.prodImg} />}
-                  {!!p.stageTag && (
-                    <View style={st.prodTagPill}><Text style={st.prodTagPillTxt} numberOfLines={1}>{p.stageTag}</Text></View>
+                  {!!p.image ? (
+                    <Image source={{ uri: p.image }} style={st.prodImg} resizeMode="contain" />
+                  ) : (
+                    <View style={st.prodImgPlaceholder}>
+                      <Image source={ICO.fertilizer} style={st.prodImgPlaceholderIco} resizeMode="contain" />
+                    </View>
                   )}
                 </View>
-                <Text style={st.prodName} numberOfLines={2}>{p.name}</Text>
-                {!!p.price && <Text style={st.prodPrice}>{p.price}</Text>}
-                {!!p.note && (
-                  <View style={st.prodNoteRow}>
-                    <Image source={ICO.clock} style={st.prodNoteIco} resizeMode="contain" />
-                    <Text style={st.prodNote} numberOfLines={1}>{p.note}</Text>
+                <View style={st.prodBody}>
+                  <View style={st.prodMetaRow}>
+                    {!!p.subtitle && (
+                      <Text style={st.prodSubtitle} numberOfLines={1}>{p.subtitle}</Text>
+                    )}
+                    {!!p.stageTag && (
+                      <View style={st.prodStageChip}>
+                        <Text style={st.prodStageChipTxt} numberOfLines={1}>{p.stageTag}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                  <Text style={st.prodName} numberOfLines={2}>{p.name}</Text>
+                  {!!p.price && <Text style={st.prodPrice}>{p.price}</Text>}
+                  {!!p.note && (
+                    <View style={st.prodNoteRow}>
+                      <Image source={ICO.clock} style={st.prodNoteIco} resizeMode="contain" />
+                      <Text style={st.prodNote} numberOfLines={1}>{p.note}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             ))}
-          </ScrollView>
+          </View>
         </SectionCard>
       </View>
     );
   };
 
+  renderPickupSheet = () => {
+    const { pickupSheetVisible, markingPickup, order } = this.state;
+    if (!pickupSheetVisible) return null;
+
+    const id = this.orderId();
+    const farmer = order?.farmer?.name || order?.address?.fullName || 'Farmer';
+    const pickupDate = order?.sample_pickup_date
+      ? moment(order.sample_pickup_date).format('DD MMM YYYY')
+      : null;
+
+    return (
+      <BottomSheet
+        ref={(r) => { this.pickupSheetRef = r; }}
+        visible
+        dynamicSize
+        maxDynamicContentSize={380}
+        onSheetClose={this.onPickupSheetClosed}
+        enablePanDownToClose
+      >
+        <View style={st.bsWrap}>
+          <View style={st.bsIconRing}>
+            <Image source={ICO.soil} style={st.bsIcon} resizeMode="contain" />
+          </View>
+          <Text style={st.bsTitle}>Sample Pickup</Text>
+          <Text style={st.bsSub}>Order #{id} · {farmer}</Text>
+          {!!pickupDate && (
+            <Text style={st.bsMeta}>Scheduled pickup · {pickupDate}</Text>
+          )}
+          <Text style={st.bsHint}>
+            Confirm karein jab aap farmer se soil sample collect kar chuke hon.
+          </Text>
+
+          <TouchableOpacity
+            activeOpacity={0.88}
+            disabled={markingPickup}
+            onPress={this.markSamplePickup}
+            style={[st.bsConfirmBtn, markingPickup && { opacity: 0.6 }]}
+          >
+            {markingPickup ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={st.bsConfirmTxt}>Confirm Sample Pickup</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            disabled={markingPickup}
+            onPress={() => this.pickupSheetRef?.close?.() || this.closePickupSheet()}
+            style={st.bsCancelBtn}
+          >
+            <Text style={st.bsCancelTxt}>Abhi nahi</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
+    );
+  };
+
   render() {
-    const { loading, order, cancelling } = this.state;
+    const { loading, refreshing, order, cancelling, markingPickup } = this.state;
     const pkgLine = order?.packages?.[0];
     const pkg = pkgLine?.package || {};
     const farmer = order?.farmer || {};
@@ -571,6 +746,8 @@ class SoilOrderDetail extends Component {
     const stage = getStage(order);
     const sm = STAGE[stage] || STAGE[0];
     const showCancel = canCancelOrder(order);
+    const pending = isPendingOrder(order);
+    const showFooter = showCancel || pending;
     const payStatus = String(order?.payment_status || 'unpaid');
     const unpaid = payStatus.toLowerCase() !== 'paid';
     const addrText = addr?.fullAddressLine || addr?.address || farmer?.address;
@@ -591,16 +768,24 @@ class SoilOrderDetail extends Component {
           onBack={this.goBack}
         />
 
-        <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
-          {loading ? (
+        <SafeAreaView edges={safeBottomEdges()} style={{ flex: 1 }}>
+          {loading && !refreshing ? (
             <View style={st.loader}>
               <ActivityIndicator color={S.P} size="small" />
             </View>
           ) : (
             <Animated.View style={{ flex: 1, opacity: this.fade }}>
               <ScrollView
-                contentContainerStyle={[st.scroll, showCancel && { paddingBottom: FOOTER_H + 12 }]}
+                contentContainerStyle={[st.scroll, showFooter && { paddingBottom: FOOTER_H + 8 }]}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={this.onRefresh}
+                    colors={[S.P]}
+                    tintColor={S.P}
+                  />
+                }
               >
                 {/* summary */}
                 <View style={[st.summary, { borderLeftColor: sm.color }]}>
@@ -647,6 +832,7 @@ class SoilOrderDetail extends Component {
                   {!!picked && <DetailRow icon={ICO.trk} label="Sample picked" value={picked} />}
                   <DetailRow
                     icon={ICO.pay}
+                    iconUri={payIconUri(order) || undefined}
                     label="Payment"
                     value={`${payLbl(order?.payment_mode)} · ${titleCase(payStatus)}`}
                     valueColor={unpaid ? S.ORANGE : S.GREEN_DARK}
@@ -666,24 +852,61 @@ class SoilOrderDetail extends Component {
             </Animated.View>
           )}
 
-          {showCancel && (
-            <SafeAreaView edges={['bottom']} style={st.footer}>
-              <Pressable
-                onPress={this.confirmCancel}
-                disabled={cancelling}
-                style={({ pressed }) => [st.cancelBtn, pressed && { opacity: 0.85 }, cancelling && { opacity: 0.5 }]}
-              >
-                {cancelling ? (
-                  <ActivityIndicator color={S.RED} size="small" />
-                ) : (
-                  <>
-                    <Image source={I.close} style={st.cancelBtnIco} />
-                    <Text style={st.cancelTxt}>Cancel order</Text>
-                  </>
-                )}
-              </Pressable>
+          {showFooter && (
+            <SafeAreaView edges={safeBottomEdges()} style={st.footer}>
+              {pending ? (
+                <View style={st.footerRow}>
+                  <Pressable
+                    onPress={this.confirmCancel}
+                    disabled={cancelling || markingPickup}
+                    style={({ pressed }) => [
+                      st.cancelBtn,
+                      st.cancelBtnCompact,
+                      pressed && { opacity: 0.85 },
+                      (cancelling || markingPickup) && { opacity: 0.5 },
+                    ]}
+                  >
+                    {cancelling ? (
+                      <ActivityIndicator color={S.RED} size="small" />
+                    ) : (
+                      <>
+                        <Image source={I.close} style={st.cancelBtnIco} />
+                        <Text style={st.cancelTxtCompact}>Cancel</Text>
+                      </>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={this.confirmMarkPickup}
+                    disabled={markingPickup || cancelling}
+                    style={({ pressed }) => [
+                      st.pickupBtn,
+                      pressed && { opacity: 0.88 },
+                      (markingPickup || cancelling) && { opacity: 0.55 },
+                    ]}
+                  >
+                    <Image source={ICO.soil} style={st.pickupBtnIco} resizeMode="contain" />
+                    <Text style={st.pickupBtnTxt} numberOfLines={1}>Sample Pickup</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={this.confirmCancel}
+                  disabled={cancelling}
+                  style={({ pressed }) => [st.cancelBtn, pressed && { opacity: 0.85 }, cancelling && { opacity: 0.5 }]}
+                >
+                  {cancelling ? (
+                    <ActivityIndicator color={S.RED} size="small" />
+                  ) : (
+                    <>
+                      <Image source={I.close} style={st.cancelBtnIco} />
+                      <Text style={st.cancelTxt}>Cancel order</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
             </SafeAreaView>
           )}
+          {this.renderPickupSheet()}
         </SafeAreaView>
       </View>
     );
@@ -698,31 +921,31 @@ const titleCase = (s) => {
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: SCREEN_BG },
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { padding: PAD, paddingBottom: 28 },
+  scroll: { padding: PAD, paddingBottom: 20 },
 
   summary: {
-    backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10,
+    backgroundColor: '#FFF', borderRadius: 12, padding: CARD_PAD, marginBottom: 8,
     borderWidth: 1, borderColor: '#E8ECF1', borderLeftWidth: 4,
     shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
   summaryTop: { flexDirection: 'row', alignItems: 'flex-start' },
   soilIco: {
-    width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 11,
+    width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 9,
   },
-  soilImg: { width: 28, height: 28 },
-  summaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 4, flexWrap: 'wrap' },
-  farmerName: { fontSize: 16, fontWeight: '700', color: S.TXT, flexShrink: 1 },
-  pkgChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  pkgChipTxt: { fontSize: 10.5, fontWeight: '700' },
-  summaryPrice: { fontSize: 16, fontWeight: '700', color: S.TXT, marginLeft: 6 },
-  summaryMeta: { fontSize: 12, fontWeight: '400', color: S.SUB },
+  soilImg: { width: 26, height: 26 },
+  summaryTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' },
+  farmerName: { fontSize: 15, fontWeight: '700', color: S.TXT, flexShrink: 1 },
+  pkgChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  pkgChipTxt: { fontSize: 10, fontWeight: '700' },
+  summaryPrice: { fontSize: 15, fontWeight: '700', color: S.TXT, marginLeft: 4 },
+  summaryMeta: { fontSize: 11.5, fontWeight: '400', color: S.SUB },
   summaryDivider: {
-    height: StyleSheet.hairlineWidth, backgroundColor: '#EEF2F6', marginTop: 14, marginBottom: 2,
+    height: StyleSheet.hairlineWidth, backgroundColor: '#EEF2F6', marginTop: 10, marginBottom: 0,
   },
 
-  steps: { marginTop: 10 },
+  steps: { marginTop: 8 },
   stepsHead: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8,
   },
   stepsTitle: { fontSize: 11, fontWeight: '700', color: S.MUTED, textTransform: 'uppercase', letterSpacing: 0.6 },
   stepsPill: {
@@ -746,17 +969,17 @@ const st = StyleSheet.create({
 
   cancelBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginTop: 14, paddingVertical: 9, borderRadius: 8, backgroundColor: S.RED_BG,
+    marginTop: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: S.RED_BG,
   },
   cancelBannerIco: { width: 12, height: 12, resizeMode: 'contain', tintColor: S.RED, marginRight: 6 },
   cancelBannerTxt: { fontSize: 11.5, fontWeight: '600', color: S.RED },
 
   card: {
-    backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 10,
+    backgroundColor: '#FFF', borderRadius: 12, padding: CARD_PAD, marginBottom: 8,
     borderWidth: 1, borderColor: '#E8ECF1',
     shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  secHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   secTitle: { fontSize: 11, fontWeight: '700', color: S.MUTED, textTransform: 'uppercase', letterSpacing: 0.6 },
   secTitleInCard: { marginBottom: 0 },
   secBadge: {
@@ -765,19 +988,19 @@ const st = StyleSheet.create({
   },
   secBadgeTxt: { fontSize: 10.5, fontWeight: '700', color: S.P_DARK },
 
-  secHint: { fontSize: 11.5, fontWeight: '400', color: S.SUB, marginBottom: 10, marginTop: -2 },
+  secHint: { fontSize: 11, fontWeight: '400', color: S.SUB, marginBottom: 8, marginTop: -2 },
 
-  dRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 10 },
+  dRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 8 },
   dRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#F1F5F9' },
-  dIco: { width: 22, height: 22 },
-  dLbl: { flex: 1, fontSize: 13, fontWeight: '500', color: S.SUB },
-  dVal: { fontSize: 13, fontWeight: '600', color: S.TXT, textAlign: 'right', maxWidth: '44%' },
+  dIco: { width: 20, height: 20 },
+  dLbl: { flex: 1, fontSize: 12.5, fontWeight: '500', color: S.SUB },
+  dVal: { fontSize: 12.5, fontWeight: '600', color: S.TXT, textAlign: 'right', maxWidth: '44%' },
 
   reportRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingRight: 10, paddingLeft: 10,
-    borderRadius: 10, backgroundColor: '#FAFBFC', borderWidth: 1, borderColor: '#EEF2F6', overflow: 'hidden', gap: 10,
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingRight: 8, paddingLeft: 8,
+    borderRadius: 9, backgroundColor: '#FAFBFC', borderWidth: 1, borderColor: '#EEF2F6', overflow: 'hidden', gap: 8,
   },
-  reportRowGap: { marginBottom: 8 },
+  reportRowGap: { marginBottom: 6 },
   reportAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
   reportIcoImg: { width: 28, height: 28 },
   reportInfo: { flex: 1, minWidth: 0 },
@@ -792,14 +1015,14 @@ const st = StyleSheet.create({
   openBtnArrow: { width: 10, height: 10, tintColor: '#FFF', resizeMode: 'contain' },
 
   farmerWrap: { marginTop: -2 },
-  farmerMain: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  farmerMain: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   farmerAvtRing: {
-    width: 48, height: 48, borderRadius: 14, backgroundColor: S.P_SOFT,
+    width: 44, height: 44, borderRadius: 12, backgroundColor: S.P_SOFT,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: S.P_GLOW,
   },
-  farmerAvt: { width: 32, height: 32 },
+  farmerAvt: { width: 28, height: 28 },
   farmerMeta: { flex: 1, minWidth: 0 },
-  farmerCardName: { fontSize: 15, fontWeight: '700', color: S.TXT, marginBottom: 4 },
+  farmerCardName: { fontSize: 14, fontWeight: '700', color: S.TXT, marginBottom: 3 },
   farmerLocChip: {
     flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
     backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4,
@@ -808,16 +1031,16 @@ const st = StyleSheet.create({
   farmerLocIco: { width: 13, height: 13 },
   farmerLocTxt: { fontSize: 11.5, fontWeight: '500', color: S.SUB, flexShrink: 1 },
   farmerPhoneInline: { fontSize: 12, fontWeight: '600', color: S.TXT, letterSpacing: 0.2 },
-  farmerActs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  farmerActs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   farmerActBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: S.P_SOFT,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: S.P_SOFT,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: S.P_GLOW,
   },
   farmerActBtnWa: { backgroundColor: S.GREEN_TINT, borderColor: '#BBF7D0' },
-  farmerActIco: { width: 22, height: 22 },
+  farmerActIco: { width: 20, height: 20 },
   farmerPhoneBand: {
-    flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 11,
+    flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F1F5F9', gap: 6,
   },
   farmerPhoneBandIco: { width: 16, height: 16 },
@@ -825,10 +1048,10 @@ const st = StyleSheet.create({
   farmerPhoneBandVal: { fontSize: 12.5, fontWeight: '700', color: S.TXT, letterSpacing: 0.4 },
   addrEmpty: { fontSize: 12.5, fontWeight: '400', color: S.MUTED, fontStyle: 'italic' },
 
-  helpRow: { flexDirection: 'row', gap: 8 },
+  helpRow: { flexDirection: 'row', gap: 6 },
   helpBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F8FAFC', borderRadius: 10, padding: 11, gap: 10,
+    backgroundColor: '#F8FAFC', borderRadius: 9, padding: 9, gap: 8,
     borderWidth: StyleSheet.hairlineWidth, borderColor: '#E8ECF1',
   },
   helpWa: { backgroundColor: S.GREEN_TINT, borderColor: '#BBF7D0' },
@@ -836,39 +1059,125 @@ const st = StyleSheet.create({
   helpTxt: { fontSize: 12.5, fontWeight: '600', color: S.TXT },
   helpSub: { fontSize: 11, fontWeight: '400', color: S.SUB, marginTop: 1 },
 
-  prodSection: { marginBottom: 4 },
-  prodHead: { fontSize: 14, fontWeight: '700', color: S.TXT, marginBottom: 2 },
-  prodSub: { fontSize: 11.5, fontWeight: '400', color: S.SUB, marginBottom: 12 },
-  prodScroll: { paddingBottom: 2, gap: 10, paddingRight: 2, marginHorizontal: -2 },
+  prodSection: { marginBottom: 2 },
+  prodHead: { fontSize: 13.5, fontWeight: '700', color: S.TXT, marginBottom: 1 },
+  prodSub: { fontSize: 11, fontWeight: '400', color: S.SUB, marginBottom: 8 },
+  prodList: { gap: 0 },
   prodCard: {
-    width: SW * 0.42, backgroundColor: '#FAFBFC', borderRadius: 11, padding: 10,
-    borderWidth: 1, borderColor: '#E8ECF1',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#FAFBFC',
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E8ECF1',
+    minHeight: PROD_IMG,
   },
-  prodImgWrap: { position: 'relative', marginBottom: 8 },
-  prodImg: { width: '100%', height: 88, borderRadius: 9, backgroundColor: S.BG },
-  prodTagPill: {
-    position: 'absolute', left: 6, bottom: 6, backgroundColor: 'rgba(15,23,42,0.75)',
-    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, maxWidth: '92%',
+  prodCardGap: { marginBottom: 8 },
+  prodImgWrap: {
+    width: PROD_IMG,
+    height: PROD_IMG,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#E8ECF1',
   },
-  prodTagPillTxt: { fontSize: 9, fontWeight: '600', color: '#FFF' },
-  prodName: { fontSize: 12, fontWeight: '600', color: S.TXT, lineHeight: 16, minHeight: 32 },
-  prodPrice: { fontSize: 13, fontWeight: '700', color: S.GREEN_DARK, marginTop: 4 },
-  prodNoteRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
-  prodNoteIco: { width: 13, height: 13, marginRight: 4 },
-  prodNote: { fontSize: 10, fontWeight: '400', color: S.SUB, flex: 1 },
+  prodImg: { width: '100%', height: '100%' },
+  prodImgPlaceholder: {
+    width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center',
+  },
+  prodImgPlaceholderIco: { width: 32, height: 32, opacity: 0.35 },
+  prodBody: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+  },
+  prodMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginBottom: 3,
+  },
+  prodSubtitle: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: S.P_DARK,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  prodStageChip: {
+    backgroundColor: S.P_SOFT,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    maxWidth: '100%',
+  },
+  prodStageChipTxt: { fontSize: 9, fontWeight: '600', color: S.P_DARK },
+  prodName: { fontSize: 12, fontWeight: '600', color: S.TXT, lineHeight: 16 },
+  prodPrice: { fontSize: 12.5, fontWeight: '700', color: S.GREEN_DARK, marginTop: 4 },
+  prodNoteRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  prodNoteIco: { width: 11, height: 11, marginRight: 3, tintColor: S.MUTED },
+  prodNote: { fontSize: 9.5, fontWeight: '400', color: S.SUB, flex: 1 },
 
   footer: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
-    backgroundColor: '#FFF', paddingHorizontal: PAD, paddingTop: 8, paddingBottom: 6,
+    backgroundColor: '#FFF', paddingHorizontal: FOOTER_PAD, paddingTop: 8, paddingBottom: 6,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E8ECF1',
     shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 6,
   },
+  footerRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  cancelBtnCompact: {
+    flexShrink: 0,
+    paddingHorizontal: 14,
+    minWidth: 88,
+  },
+  cancelTxtCompact: { fontSize: 13, fontWeight: '600', color: S.RED },
+  pickupBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: S.GREEN_DARK,
+    gap: 8,
+  },
+  pickupBtnIco: { width: 20, height: 20 },
+  pickupBtnTxt: { fontSize: 14, fontWeight: '600', color: '#FFF' },
   cancelBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FECACA', backgroundColor: S.RED_BG,
   },
-  cancelBtnIco: { width: 13, height: 13, resizeMode: 'contain', tintColor: S.RED, marginRight: 7 },
+  cancelBtnIco: { width: 13, height: 13, resizeMode: 'contain', tintColor: S.RED, marginRight: 5 },
   cancelTxt: { fontSize: 14, fontWeight: '600', color: S.RED },
+
+  bsWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 20, alignItems: 'center' },
+  bsIconRing: {
+    width: 56, height: 56, borderRadius: 28, backgroundColor: S.GREEN_BG,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+    borderWidth: 1, borderColor: '#BBF7D0',
+  },
+  bsIcon: { width: 30, height: 30 },
+  bsTitle: { fontSize: 18, fontWeight: '700', color: S.TXT, marginBottom: 4 },
+  bsSub: { fontSize: 13, fontWeight: '500', color: S.SUB, marginBottom: 4 },
+  bsMeta: { fontSize: 12, fontWeight: '500', color: S.MUTED, marginBottom: 8 },
+  bsHint: {
+    fontSize: 13, fontWeight: '400', color: S.SUB, textAlign: 'center',
+    lineHeight: 19, marginBottom: 18, paddingHorizontal: 8,
+  },
+  bsConfirmBtn: {
+    width: '100%', height: 48, borderRadius: 12, backgroundColor: S.GREEN_DARK,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+  },
+  bsConfirmTxt: { fontSize: 15, fontWeight: '600', color: '#FFF' },
+  bsCancelBtn: { paddingVertical: 10, paddingHorizontal: 16 },
+  bsCancelTxt: { fontSize: 14, fontWeight: '500', color: S.MUTED },
 });
 
 export default withV4Navigation(SoilOrderDetail);

@@ -4,6 +4,7 @@ import {
   TouchableOpacity, ActivityIndicator, StatusBar, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import * as Animatable from 'react-native-animatable';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
@@ -193,7 +194,7 @@ class SelectFarmer extends Component {
           </View>
         </SafeAreaView>
 
-        <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
+        <SafeAreaView edges={safeBottomEdges()} style={{ flex: 1 }}>
           <View style={st.searchWrap}>
             <Image source={require('./assets/search.png')} style={st.searchIco} />
             <TextInput

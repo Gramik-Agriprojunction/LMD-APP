@@ -4,16 +4,18 @@ import {
   Image, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, ScrollView, Linking,
   InteractionManager,
 } from 'react-native';
-import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
-import { withV4Navigation } from '../utils/v4Compat';
+import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
-import { getCurrentCoordsWithPermission, warmUpLocation } from '../utils/locationHelper';
+import { prefetchVerifyLocation, getCachedCoordsForApi, coordsForStatusApi, appendCoordsToFormData } from '../utils/locationHelper';
 import OrderCard from '../components/OrderCard';
 import CollectPaymentCard from '../components/CollectPaymentCard';
 import BottomSheet from '../components/BottomSheet';
+import VerifySuccessCheck from '../components/VerifySuccessCheck';
 import ProofImageViewer from '../components/ProofImageViewer';
 
 import { STATUS } from '../utils/statusColors';
@@ -30,7 +32,10 @@ const BG = STATUS.ALL.bg;
 const MAX_PROOF = 6;
 const PROOF_GAP = 6;
 const PROOF_THUMB = 68;
-const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+const OVERLAY_BOTTOM = overlayBottomPadding();
+const SECTION_GAP = 10;
+
+const apiPaymentType = (type) => (type === 'upi' || type === 'qr' ? 'upi' : 'cash');
 
 // Each verification screen uses the colour of the status it transitions the
 // order to — Pickup → cyan, Deliver → green, RTO → red. Pulled from the
@@ -63,13 +68,6 @@ class OrderOtpVerify extends Component {
     this.formY = new Animated.Value(30);
     this.pulse = new Animated.Value(1);
     this.arrowX = new Animated.Value(0);
-    this.checkScale = new Animated.Value(0);
-    this.checkOpacity = new Animated.Value(0);
-    this.ringScale = new Animated.Value(0.5);
-    this.ringOpacity = new Animated.Value(0);
-    this.ring2Scale = new Animated.Value(0.5);
-    this.ring2Opacity = new Animated.Value(0);
-    this.tickRotate = new Animated.Value(0);
   }
 
   getOrderId = () => this.props?.navigation?.getParam('orderId', null);
@@ -134,11 +132,28 @@ class OrderOtpVerify extends Component {
     }, 400);
 
     this.startPulse();
-
-    if (this.getActionType() === 'deliver') {
-      warmUpLocation('delivery');
-    }
+    this.startLocationPrefetch();
   }
+
+  startLocationPrefetch = () => {
+    console.log('[Verify] prefetching location on screen open');
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+      console.log('[Verify] location ready', coords);
+    });
+  };
+
+  getReadyCoords = () => {
+    if (this._verifyCoords?.lat != null && this._verifyCoords?.lng != null) {
+      return this._verifyCoords;
+    }
+    const cached = getCachedCoordsForApi();
+    if (cached.lat != null && cached.lng != null) {
+      this._verifyCoords = cached;
+      return cached;
+    }
+    return { lat: null, lng: null };
+  };
 
   startPulse = () => {
     const run = () => {
@@ -243,18 +258,12 @@ class OrderOtpVerify extends Component {
 
   resolveStatus = (actionType) => (actionType === 'deliver' ? 'delivered' : actionType);
 
-  resolveCoords = async () => {
-    const result = await getCurrentCoordsWithPermission('delivery');
-    return { lat: result.lat || '', lng: result.lng || '' };
-  };
-
   submitStatusUpdate = (orderId, actionType, otp, coords = {}) => {
     const status = this.resolveStatus(actionType);
     const url = constants.updateStatus;
     const isDeliver = actionType === 'deliver';
-    const lat = String(coords.lat ?? '');
-    const lng = String(coords.lng ?? '');
-    const paymentType = isDeliver ? (this.state.payment_type || 'cash') : '';
+    const { lat, long } = coordsForStatusApi(coords);
+    const paymentType = isDeliver ? apiPaymentType(this.state.payment_type || 'cash') : '';
 
     if (isDeliver) {
       const { deliveryProofs } = this.state;
@@ -264,8 +273,7 @@ class OrderOtpVerify extends Component {
       fd.append('otp', String(otp));
       fd.append('type', paymentType);
       fd.append('reason', '');
-      fd.append('lat', lat);
-      fd.append('long', lng);
+      appendCoordsToFormData(fd, coords);
       deliveryProofs.forEach((file) => {
         fd.append('delivery_proof[]', {
           uri: file.uri,
@@ -291,7 +299,7 @@ class OrderOtpVerify extends Component {
       type: paymentType,
       reason: '',
       lat,
-      long: lng,
+      long,
     };
 
     return fetch(url, {
@@ -329,10 +337,19 @@ class OrderOtpVerify extends Component {
     }
 
     const otpPayload = hasOtp ? otp : '';
+    const coords = this.getReadyCoords();
+    const apiCoords = coordsForStatusApi(coords);
     this.setState({ isLoading: true, otp: otpPayload });
 
-    this.resolveCoords()
-      .then((coords) => this.submitStatusUpdate(orderId, actionType, otpPayload, coords))
+    console.log('[Verify] calling Update Status API (no GPS wait)', {
+      orderId,
+      actionType,
+      lat: apiCoords.lat,
+      long: apiCoords.long,
+      type: apiPaymentType(this.state.payment_type),
+    });
+
+    this.submitStatusUpdate(orderId, actionType, otpPayload, coords)
       .then((r) => r.json())
       .then((json) => {
         if (json?.status || json?.success) {
@@ -357,31 +374,9 @@ class OrderOtpVerify extends Component {
 
   showVerifiedAnimation = () => {
     this.setState({ verified: true }, () => {
-      Animated.sequence([
-        Animated.parallel([
-          Animated.spring(this.checkScale, { toValue: 1.15, friction: 3, tension: 80, useNativeDriver: true }),
-          Animated.timing(this.checkOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-        ]),
-        Animated.spring(this.checkScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
-      ]).start();
-
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(this.ringScale, { toValue: 2, duration: 800, useNativeDriver: true }),
-          Animated.timing(this.ringOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
-        ]).start();
-      }, 200);
-
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(this.ring2Scale, { toValue: 2.2, duration: 900, useNativeDriver: true }),
-          Animated.timing(this.ring2Opacity, { toValue: 0, duration: 900, useNativeDriver: true }),
-        ]).start();
-      }, 500);
-
       this._navTimer = setTimeout(() => {
         if (!this._unmounted) this.onOtpSuccess();
-      }, 2000);
+      }, 2200);
     });
   };
 
@@ -462,12 +457,12 @@ class OrderOtpVerify extends Component {
       <BottomSheet
         visible
         dynamicSize
-        maxDynamicContentSize={420 + SAFE_BOTTOM}
+        maxDynamicContentSize={420 + OVERLAY_BOTTOM}
         onSheetClose={this.closeProofConfirm}
         enablePanDownToClose
         onChange={(idx) => { if (idx === -1) this.closeProofConfirm(); }}
       >
-        <View style={[s.confirmWrap, { paddingBottom: 12 + SAFE_BOTTOM }]}>
+        <View style={[s.confirmWrap, { paddingBottom: 12 + OVERLAY_BOTTOM }]}>
           <Text style={s.confirmTitle}>Delivery Proof</Text>
           <Text style={s.confirmSub}>Kya yeh photo sahi hai?</Text>
 
@@ -499,30 +494,31 @@ class OrderOtpVerify extends Component {
     return (
       <View style={[s.root, { backgroundColor: BG_T }]}>
         <StatusBar barStyle="light-content" backgroundColor={BG_T} />
+        <NavigationEvents onDidFocus={this.startLocationPrefetch} />
         <ScreenHeader bg={BG_T} title={theme.title} onBack={this.goBack} />
 
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: BG_T }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          {verified ? (
+            <View style={s.successLayer} pointerEvents="none">
+              <VerifySuccessCheck
+                visible
+                title={theme.doneTitle}
+                subtitle={theme.doneSub}
+                circleBg="#FFF"
+                tickColor={BG_T}
+                ringColor="rgba(255,255,255,0.85)"
+              />
+            </View>
+          ) : null}
+
           <ScrollView
-            contentContainerStyle={[s.scroll, !verified && { paddingBottom: 72 + SAFE_BOTTOM }]}
+            contentContainerStyle={[s.scroll, !verified && { paddingBottom: 72 + (Platform.OS === 'android' ? 0 : OVERLAY_BOTTOM) }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            clipToPadding={false}
           >
 
-            {verified ? (
-              <View style={s.verifiedWrap}>
-                <View style={s.checkArea}>
-                  <Animated.View style={[s.ring, { borderColor: '#FFF', opacity: this.ringOpacity.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.ringScale }] }]} />
-                  <Animated.View style={[s.ring, { borderColor: '#FFF', opacity: this.ring2Opacity.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }), transform: [{ scale: this.ring2Scale }] }]} />
-                  <Animated.View style={[s.checkCircle, { backgroundColor: '#FFF', shadowColor: '#000', opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
-                    <Text style={[s.checkMark, { color: BG_T }]}>✓</Text>
-                  </Animated.View>
-                </View>
-                <Animated.View style={{ opacity: this.checkOpacity, alignItems: 'center' }}>
-                  <Text style={s.verifiedTitle}>{theme.doneTitle}</Text>
-                  <Text style={s.verifiedSub}>{theme.doneSub}</Text>
-                </Animated.View>
-              </View>
-            ) : (
+            {!verified ? (
               <>
                 {/* Title + OTP */}
                 <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
@@ -550,8 +546,8 @@ class OrderOtpVerify extends Component {
                   {isDeliver ? (
                     <>
                       <Text style={s.orDivider}>YA</Text>
-                      <View style={s.proofWrap}>{this.renderProofSection()}</View>
-                      <View style={[s.proofWrap, { marginTop: 10 }]}>
+                      <View style={[s.proofWrap, s.sectionCard]}>{this.renderProofSection()}</View>
+                      <View style={[s.proofWrap, s.sectionCard]}>
                         <CollectPaymentCard
                           order={order}
                           variant="dark"
@@ -563,10 +559,10 @@ class OrderOtpVerify extends Component {
                   ) : null}
                 </Animated.View>
               </>
-            )}
+            ) : null}
 
             {/* Order details card — shared OrderCard (theme="dark" for colored bg) */}
-            <Animated.View style={{ opacity: this.formFade, marginTop: isDeliver ? 6 : 16 }}>
+            <Animated.View style={{ opacity: this.formFade, marginTop: isDeliver ? SECTION_GAP : 16 }}>
               <OrderCard
                 order={order}
                 theme="dark"
@@ -580,7 +576,7 @@ class OrderOtpVerify extends Component {
           </ScrollView>
 
           {!verified ? (
-            <View style={[s.bottomBar, { backgroundColor: BG_T, paddingBottom: SAFE_BOTTOM || 6 }]}>
+            <View style={[s.bottomBar, { backgroundColor: BG_T, paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
               <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
                 style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
                 {this.state.isLoading ? (
@@ -599,7 +595,7 @@ class OrderOtpVerify extends Component {
               </TouchableOpacity>
             </View>
           ) : (
-            <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG_T }} />
+            <SafeAreaView edges={safeBottomEdges()} style={{ backgroundColor: BG_T }} />
           )}
         </KeyboardAvoidingView>
 
@@ -618,6 +614,7 @@ class OrderOtpVerify extends Component {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   scroll: { flexGrow: 1, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 24 },
+  successLayer: { overflow: 'visible', zIndex: 2 },
 
   // Align with the canonical screen header: 56-h row, no extra horizontal padding
   // beyond the ScrollView's 12px so the chip sits at 12 + 4 = 16px from the
@@ -661,7 +658,8 @@ const s = StyleSheet.create({
   btnTDeliver: { fontSize: 14, fontWeight: '700', letterSpacing: 0.2 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
 
-  proofWrap: { alignSelf: 'stretch', width: '100%', marginBottom: 0 },
+  proofWrap: { alignSelf: 'stretch', width: '100%' },
+  sectionCard: { marginTop: SECTION_GAP },
   proofSection: {
     borderRadius: 14,
     overflow: 'hidden',
@@ -760,14 +758,6 @@ const s = StyleSheet.create({
     backgroundColor: '#16A34A',
   },
   confirmUseT: { fontSize: 14, fontWeight: '700', color: '#FFF' },
-
-  verifiedWrap: { alignItems: 'center', marginTop: 30, marginBottom: 20 },
-  checkArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  ring: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
-  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 3 },
-  checkMark: { fontSize: 38, fontWeight: '900', color: '#FFF' },
-  verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
-  verifiedSub: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)' },
 
   // Order card (white on purple)
   orderCard: { backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 12, marginTop: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },

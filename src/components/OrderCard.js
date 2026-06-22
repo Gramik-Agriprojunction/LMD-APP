@@ -47,7 +47,8 @@ const toNum = (v) => {
 const resolve = (o = {}) => {
   const farmerName = o.farmer_name || o.farmer_data?.name || '';
   const farmerPhone = o.farmer_mobile || o.farmer_data?.phone || '';
-  const orderId = o.order_id || (o.order_code ? String(o.order_code).split(/\s+/)[0] : '');
+  const orderCode = o.order_code ? String(o.order_code).split(/\s+/)[0] : '';
+  const orderId = orderCode || (o.order_id != null && o.order_id !== '' ? String(o.order_id) : '');
   const status = String(o.status || o.order_status || '').toLowerCase();
   const amount = toNum(o.amount ?? o.grand_total ?? o.cod_amount);
   const ds = o.dark_store || {};
@@ -81,14 +82,29 @@ export default function OrderCard({
   extraHeaderRight = null,
   compactChips = false,
   children = null,
+  onHeaderPress = null,
+  onBodyPress = null,
+  checkboxInHeader = false,
+  useFarmerNew = false,
 }) {
   const o = resolve(order);
   const stColor = getStatus(o.status);
   const dark = theme === 'dark';
   const chipBox = compactChips ? s.chipSm : s.chip;
   const chipText = compactChips ? s.chipTSm : s.chipT;
-  const Wrap = onPress ? TouchableOpacity : View;
-  const wrapProps = onPress ? { activeOpacity: 0.75, onPress, onLongPress, delayLongPress } : {};
+  const Wrap = onPress && !onBodyPress ? TouchableOpacity : View;
+  const wrapProps = onPress && !onBodyPress ? { activeOpacity: 0.75, onPress, onLongPress, delayLongPress } : {};
+  const farmerImg = useFarmerNew
+    ? require('../screens/assets/farmernew.png')
+    : require('../screens/assets/farmer.png');
+  const HeaderWrap = onHeaderPress ? TouchableOpacity : View;
+  const headerWrapProps = onHeaderPress
+    ? { activeOpacity: 0.85, onPress: onHeaderPress }
+    : {};
+  const BodyWrap = onBodyPress ? TouchableOpacity : View;
+  const bodyWrapProps = onBodyPress
+    ? { activeOpacity: 0.92, onPress: onBodyPress }
+    : {};
 
   const copyOrderId = () => {
     if (!o.orderId) return;
@@ -104,7 +120,7 @@ export default function OrderCard({
   return (
     <Wrap {...wrapProps} style={[s.card, dark && s.cardDark, selected && s.cardSelected]}>
       {/* Greyish header — order id (with copy) + status chip + farmer + call/wa */}
-      <View style={[s.top, dark && s.topDark, selected && s.topSelected]}>
+      <HeaderWrap {...headerWrapProps} style={[s.top, dark && s.topDark, selected && s.topSelected]}>
         <View style={s.head}>
           <TouchableOpacity
             activeOpacity={0.6}
@@ -134,7 +150,12 @@ export default function OrderCard({
         </View>
 
         <View style={s.person}>
-          <Image source={require('../screens/assets/farmer.png')} style={s.avt} />
+          {showCheckbox && checkboxInHeader && (
+            <View style={[s.checkBoxHead, isChecked && s.checkBoxOn, { marginRight: 8 }]}>
+              {isChecked ? <Text style={s.checkTick}>✓</Text> : null}
+            </View>
+          )}
+          <Image source={farmerImg} style={[s.avt, useFarmerNew && s.avtNew]} />
           <View style={{ flex: 1 }}>
             <Text style={[s.name, dark && { color: '#FFF' }]} numberOfLines={1}>{o.farmerName || '-'}</Text>
             {!!o.farmerPhone && (
@@ -152,8 +173,9 @@ export default function OrderCard({
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </HeaderWrap>
 
+      <BodyWrap {...bodyWrapProps}>
       {/* Route */}
       {!hideRoute && (
         <View style={[s.routeWrap, dark && s.routeWrapDark]}>
@@ -193,7 +215,7 @@ export default function OrderCard({
       {/* Footer */}
       {!hideFooter && (
         <View style={[s.foot, dark && s.footDark]}>
-          {showCheckbox && (
+          {showCheckbox && !checkboxInHeader && (
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={(e) => {
@@ -226,6 +248,7 @@ export default function OrderCard({
           <Text style={[s.amt, dark && { color: '#FCD34D' }]}>₹{o.amount}</Text>
         </View>
       )}
+      </BodyWrap>
 
       {/* Optional slot that lives inside the same card (penalty extras, etc.) */}
       {children}
@@ -287,11 +310,23 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
+  checkBoxHead: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   checkBoxOn: { backgroundColor: '#08081c', borderColor: '#08081c' },
   checkTick: { color: '#FCD34D', fontSize: 15, fontWeight: '900', marginTop: -1, lineHeight: 17 },
 
   person: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
   avt: { width: 30, height: 30, borderRadius: 15, resizeMode: 'cover', marginRight: 10 },
+  avtNew: { width: 32, height: 32, borderRadius: 10, resizeMode: 'contain' },
   name: { fontSize: 13.5, fontWeight: '700', color: '#1E293B' },
   phone: { fontSize: 11.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
   actBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },

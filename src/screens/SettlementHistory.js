@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Image,
-  ScrollView,
+  FlatList,
   TextInput,
   Dimensions,
   ActivityIndicator,
@@ -15,15 +15,36 @@ import {
   Modal,
   Pressable,
   InteractionManager,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import ImageCropPicker from 'react-native-image-crop-picker';
 import moment from 'moment';
+import { S } from '../utils/soilTheme';
+import ProofImageViewer from '../components/ProofImageViewer';
 
 const { width } = Dimensions.get('window');
-const CARD_RADIUS = 14;
+const P = S.P;
+const LIST_PAD = 12;
+const SCREEN_BG = '#edf1f7';
+
+const STATUS_STYLE = {
+  pending: { bg: S.ORANGE_BG, text: S.ORANGE, bar: S.ORANGE, label: 'Pending' },
+  success: { bg: S.GREEN_BG, text: S.GREEN_DARK, bar: S.GREEN_DARK, label: 'Settled' },
+  settled: { bg: S.GREEN_BG, text: S.GREEN_DARK, bar: S.GREEN_DARK, label: 'Settled' },
+  dispute: { bg: S.RED_BG, text: S.RED, bar: S.RED, label: 'Disputed' },
+  default: { bg: S.BG, text: S.SUB, bar: S.MUTED, label: 'Unknown' },
+};
+
+const TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'success', label: 'Settled' },
+  { key: 'dispute', label: 'Dispute' },
+];
 
 class SettlementHistory extends Component {
   constructor(props) {
@@ -41,19 +62,27 @@ class SettlementHistory extends Component {
       // upload flow
       pickerVisible: false,
       confirmVisible: false,
-      selectedImage: null, // { uri, type, name }
-      selectedSettlementId: null, // settlement_id string (GMT00001)
+      selectedImage: null,
+      selectedSettlementId: null,
+      refreshing: false,
+      receiptPreview: null,
 
-      // debug only
       missingFields: [],
     };
 
-    this._presentingPicker = false; // prevent double opens
+    this._presentingPicker = false;
   }
 
   componentDidMount() {
     this.fetchHistory();
   }
+
+  openReceiptPreview = (uri) => {
+    if (!uri) return;
+    this.setState({ receiptPreview: uri });
+  };
+
+  closeReceiptPreview = () => this.setState({ receiptPreview: null });
 
   goBack = () => {
     const nav = this.props?.navigation;
@@ -63,56 +92,54 @@ class SettlementHistory extends Component {
   // ======================
   // ✅ API: Settlement History
   // ======================
-  fetchHistory = () => {
-    this.setState({ loading: true, missingFields: [] }, () => {
-      const q = String(this.state.search || '').trim();
-      const sep = constants.settleHistory.endsWith('?') || constants.settleHistory.endsWith('&') ? '' : (constants.settleHistory.includes('?') ? '&' : '?');
-      const url = q ? `${constants.settleHistory}${sep}search=${encodeURIComponent(q)}` : constants.settleHistory;
-      fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: 'Bearer ' + global.token,
-          Accept: 'application/json',
-        },
-      })
-        .then((r) => r.json())
-        .then((json) => {
-          console.log('Settlement History API response== ', JSON.stringify(json));
+  onRefresh = () => {
+    this.setState({ refreshing: true }, () => this.fetchHistory(true));
+  };
 
-          const rows = Array.isArray(json?.data) ? json.data : [];
+  fetchHistory = (fromRefresh = false) => {
+    if (!fromRefresh) this.setState({ loading: true, missingFields: [] });
 
-          const lc = json?.list_count || {};
-          const pending = Number(lc?.pending_count ?? 0) || 0;
-          const success = Number(lc?.settled_count ?? 0) || 0;
-          const dispute = Number(lc?.disputed_count ?? 0) || 0; // API uses disputed_count
-          const all = Number(lc?.total ?? rows.length) || rows.length;
+    const q = String(this.state.search || '').trim();
+    const tab = this.state.activeTab;
+    const params = [];
+    if (tab && tab !== 'all') params.push(`status=${tab}`);
+    if (q) params.push(`search=${encodeURIComponent(q)}`);
+    const url = params.length
+      ? `${constants.settleHistory}?${params.join('&')}`
+      : constants.settleHistory;
 
-          // missing fields (debug only)
-          const missing = [];
-          rows.forEach((it) => {
-            if (!it?.settlement_id) missing.push('data[].settlement_id');
-            if (!it?.status) missing.push('data[].status');
-            if (it?.amount === undefined || it?.amount === null) missing.push('data[].amount');
-            if (!it?.type) missing.push('data[].type');
-            if (!it?.created_at) missing.push('data[].created_at');
-          });
+    fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        Accept: 'application/json',
+      },
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        console.log('Settlement History API response== ', JSON.stringify(json));
 
-          const uniqMissing = Array.from(new Set(missing));
-          if (uniqMissing.length) console.log('SETTLEMENT HISTORY MISSING FIELDS =>', uniqMissing);
+        const rows = Array.isArray(json?.data) ? json.data : [];
 
-          this.setState({
-            loading: false,
-            list: rows,
-            counts: { all, success, pending, dispute },
-            missingFields: uniqMissing,
-          });
-        })
-        .catch((e) => {
-          console.log('Settlement History API error== ', e);
-          Toast.show(e?.message || String(e), Toast.SHORT);
-          this.setState({ loading: false, list: [] });
+        const lc = json?.list_count || {};
+        const pending = Number(lc?.pending_count ?? 0) || 0;
+        const success = Number(lc?.settled_count ?? 0) || 0;
+        const dispute = Number(lc?.disputed_count ?? 0) || 0;
+        const all = Number(lc?.total ?? rows.length) || rows.length;
+
+        this.setState({
+          loading: false,
+          refreshing: false,
+          list: rows,
+          counts: { all, success, pending, dispute },
+          missingFields: [],
         });
-    });
+      })
+      .catch((e) => {
+        console.log('Settlement History API error== ', e);
+        Toast.show(e?.message || String(e), Toast.SHORT);
+        this.setState({ loading: false, refreshing: false, list: [] });
+      });
   };
 
   // ======================
@@ -267,38 +294,52 @@ class SettlementHistory extends Component {
   // ======================
   // Helpers
   // ======================
+  getSettlementStatus = (item) => String(item?.settlement_status || item?.status || '').trim();
+
+  getOrders = (item) => (Array.isArray(item?.order) ? item.order : []);
+
   normalizeStatus = (s) => String(s || '').toLowerCase();
 
   mapTabFromStatus = (status) => {
     const st = this.normalizeStatus(status);
-    if (st.includes('success')) return 'success';
+    if (st.includes('success') || st.includes('settled')) return 'success';
     if (st.includes('pending')) return 'pending';
-    if (st.includes('dispute')) return 'dispute';
-    // settled -> show in All
+    if (st.includes('disput')) return 'dispute';
     return 'all';
   };
 
-  statusPillStyle = (statusRaw) => {
+  statusMeta = (statusRaw) => {
     const st = this.normalizeStatus(statusRaw);
-    if (st.includes('success')) return { bg: '#1C8A62', text: '#FFFFFF' };
-    if (st.includes('pending')) return { bg: '#F4B740', text: '#111827' };
-    if (st.includes('dispute')) return { bg: '#D64545', text: '#FFFFFF' };
-    if (st.includes('settled')) return { bg: '#1C8A62', text: '#FFFFFF' };
-    return { bg: '#9CA3AF', text: '#FFFFFF' };
+    if (st.includes('pending')) return STATUS_STYLE.pending;
+    if (st.includes('success') || st.includes('settled')) return STATUS_STYLE.settled;
+    if (st.includes('disput')) return STATUS_STYLE.dispute;
+    return STATUS_STYLE.default;
   };
 
-  formatDate = (iso) => {
-    if (!iso) return '';
-    const m = moment(iso);
-    if (!m.isValid()) return '';
-    return m.format('DD MMM, YYYY');
+  typeLabel = (type, bank) => {
+    const t = String(type || '').toLowerCase();
+    if (t === 'upi') return 'UPI';
+    if (t === 'bank') return bank?.bank_name || bank?.name || 'Bank';
+    return t ? t.toUpperCase() : '-';
   };
 
-  formatTime = (iso) => {
-    if (!iso) return '';
-    const m = moment(iso);
-    if (!m.isValid()) return '';
-    return m.format('hh:mm A');
+  parseSubmittedDate = (raw) => {
+    if (!raw) return { date: '', time: '' };
+    const fixed = String(raw).trim().replace(/(\d{1,2})(\d{4})/, '$1 $2');
+    const m = moment(fixed, ['MMM DD YYYY hh:mm A', 'MMM D YYYY hh:mm A', moment.ISO_8601], true);
+    if (m.isValid()) {
+      return { date: m.format('DD MMM, YYYY'), time: m.format('hh:mm A') };
+    }
+    const loose = moment(fixed);
+    if (loose.isValid()) {
+      return { date: loose.format('DD MMM, YYYY'), time: loose.format('hh:mm A') };
+    }
+    return { date: fixed, time: '' };
+  };
+
+  formatApprovalDate = (raw) => {
+    if (!raw) return { date: '', time: '' };
+    return this.parseSubmittedDate(raw);
   };
 
   money = (v) => {
@@ -312,7 +353,7 @@ class SettlementHistory extends Component {
   filterList = () => {
     const { list, activeTab } = this.state;
     return (Array.isArray(list) ? list : []).filter((it) => {
-      const tab = this.mapTabFromStatus(it?.status);
+      const tab = this.mapTabFromStatus(this.getSettlementStatus(it));
       return activeTab === 'all' ? true : tab === activeTab;
     });
   };
@@ -328,224 +369,226 @@ class SettlementHistory extends Component {
     this.setState({ search: '' }, () => this.fetchHistory());
   };
 
-  // ======================
-  // Card UI (neat like screenshot)
-  // ======================
-  renderRow = (item, idx) => {
+  openDetail = (item) => {
+    const settlementId = item?.id != null ? String(item.id).trim() : '';
+    if (!settlementId) {
+      Toast.show('Settlement ID nahi mila', Toast.SHORT);
+      return;
+    }
+    this.props.navigation.navigate('SettlementDetail', { settlementId, preview: item });
+  };
+
+  switchTab = (key) => {
+    if (key === this.state.activeTab) return;
+    this.setState({ activeTab: key }, () => this.fetchHistory());
+  };
+
+  orderLineSummary = (orders) => {
+    if (!orders.length) return '';
+    const o = orders[0] || {};
+    const farmer = String(o?.farmer_name || '').trim();
+    const code = String(o?.order_code || '').trim();
+    const mode = String(o?.payment_mode || '').trim();
+    const lead = [farmer, code, mode].filter(Boolean).join(' · ');
+    if (orders.length <= 1) return lead;
+    return lead ? `${lead} +${orders.length - 1}` : `${orders.length} orders`;
+  };
+
+  renderRow = ({ item }) => {
     const settlementId = item?.settlement_id || '';
-    const statusRaw = item?.status || '';
-    const status = statusRaw ? String(statusRaw).toUpperCase() : '';
-    const pill = this.statusPillStyle(statusRaw);
-
+    const status = this.getSettlementStatus(item);
+    const meta = this.statusMeta(status);
     const amountStr = this.money(item?.amount);
-    const dateStr = this.formatDate(item?.created_at);
-
-    const type = item?.type ? String(item.type).toUpperCase() : '';
-
-    const verifiedDate = this.formatDate(item?.verify_date);
-    const verifiedTime = this.formatTime(item?.verify_date);
-    const hasVerify = !!item?.verify_date;
-
-    const comment = item?.comment ? String(item.comment).trim() : '';
+    const { date: dateStr, time: timeStr } = this.parseSubmittedDate(item?.submitted_date || item?.created_at);
+    const type = this.typeLabel(item?.type, item?.selected_bank);
+    const receipt = String(item?.reciept || item?.receipt || '').trim();
+    const { date: approvedDate, time: approvedTime } = this.formatApprovalDate(item?.approval_date || item?.verify_date);
+    const hasApproved = !!(item?.approval_date || item?.verify_date);
+    const comment = String(item?.dispute_comment || item?.comment || '').trim();
+    const orders = this.getOrders(item);
+    const orderLine = this.orderLineSummary(orders);
+    const when = [dateStr, timeStr].filter(Boolean).join(' · ');
+    const subMeta = [when, type, orders.length ? `${orders.length} order${orders.length > 1 ? 's' : ''}` : '']
+      .filter(Boolean)
+      .join(' · ');
 
     return (
-      <View key={`${settlementId || idx}-${idx}`} style={styles.card}>
-        <View style={styles.cardTop}>
-          {!!settlementId ? (
-            <Text style={styles.settlementLine} numberOfLines={1}>
-                 ID : <Text style={styles.settlementId}>{settlementId}</Text>
-            </Text>
-          ) : (
-            <View style={{ flex: 1 }} />
-          )}
-
-          {!!status ? (
-            <View style={[styles.pill, { backgroundColor: pill.bg }]}>
-              <Text style={[styles.pillText, { color: pill.text }]}>{status}</Text>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={() => this.openDetail(item)}
+        style={[styles.card, { borderLeftColor: meta.bar }]}
+      >
+        <View style={styles.cardBody}>
+          <View style={styles.cardTopRow}>
+            <View style={styles.cardMain}>
+              <View style={styles.cardHead}>
+                <Text style={styles.settlementId} numberOfLines={1}>{settlementId || '-'}</Text>
+                <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
+                  <Text style={[styles.statusText, { color: meta.text }]}>{meta.label}</Text>
+                </View>
+              </View>
+              {!!subMeta ? <Text style={styles.subMeta} numberOfLines={1}>{subMeta}</Text> : null}
+              {!!orderLine ? <Text style={styles.orderLine} numberOfLines={1}>{orderLine}</Text> : null}
             </View>
+            <View style={styles.cardRight}>
+              <Text style={styles.amount}>₹{amountStr || '0'}</Text>
+              {!!receipt ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => this.openReceiptPreview(receipt)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Image source={{ uri: receipt }} style={styles.proofMini} resizeMode="cover" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
+          {!!receipt ? (
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => this.openReceiptPreview(receipt)}
+              style={styles.proofRow}
+            >
+              <Text style={styles.proofText}>Payment proof</Text>
+              <Text style={styles.proofChev}>›</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {!!comment ? <Text style={styles.commentText} numberOfLines={2}>{comment}</Text> : null}
+
+          {hasApproved ? (
+            <Text style={styles.approvedText}>
+              Approved · {approvedDate}{approvedTime ? `, ${approvedTime}` : ''}
+            </Text>
           ) : null}
         </View>
+      </TouchableOpacity>
+    );
+  };
 
-        <View style={styles.secondLine}>
-          <View style={styles.leftMiniIconWrap}>
-            <Image style={styles.miniWalletImg} source={require('./assets/crn.png')} />
+  renderTabs = () => {
+    const { activeTab, counts } = this.state;
+    return (
+      <View style={styles.tabRow}>
+        {TABS.map((t) => {
+          const isActive = activeTab === t.key;
+          const count = counts[t.key] ?? 0;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              activeOpacity={0.85}
+              onPress={() => this.switchTab(t.key)}
+              style={[styles.tabChip, isActive && styles.tabChipOn]}
+            >
+              <Text style={[styles.tabChipLbl, isActive && styles.tabChipLblOn]}>{t.label}</Text>
+              <View style={[styles.tabChipBadge, isActive && styles.tabChipBadgeOn]}>
+                <Text style={[styles.tabChipBadgeT, isActive && styles.tabChipBadgeTOn]}>{count}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  renderHeaderBlock = () => {
+    const { search } = this.state;
+    return (
+      <View style={styles.headerBlock}>
+        <SafeAreaView edges={['top']} style={styles.headerSafe}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity onPress={this.goBack} style={styles.backBtn} activeOpacity={0.8}>
+              <Image source={require('./assets/back.png')} style={styles.backIco} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle} numberOfLines={1}>Settlement History</Text>
+            <View style={styles.headerSpacer} />
           </View>
 
-          <View style={{ flex: 1 }}>
-            {!!amountStr ? <Text style={styles.amountInline}>{`₹ ${amountStr}`}</Text> : null}
-            {!!dateStr ? <Text style={styles.datePart}>{dateStr}</Text> : null}
-
-            {!!type ? <Text style={styles.smallLineText}>{`${type} TRANSFER`}</Text> : null}
-
-            {!!comment ? (
-              <Text style={styles.commentText} numberOfLines={2}>
-                {comment}
-              </Text>
+          <View style={styles.headerSearch}>
+            <Image style={styles.searchImg} source={require('./assets/search.png')} />
+            <TextInput
+              value={search}
+              onChangeText={this.onSearchChange}
+              placeholder="Search ID or amount..."
+              placeholderTextColor="rgba(255,255,255,0.55)"
+              style={styles.searchInput}
+              returnKeyType="search"
+              onSubmitEditing={this.fetchHistory}
+            />
+            {!!search ? (
+              <TouchableOpacity onPress={this.clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.clearSearch}>✕</Text>
+              </TouchableOpacity>
             ) : null}
           </View>
+          {this.renderTabs()}
+        </SafeAreaView>
+      </View>
+    );
+  };
+
+  renderEmpty = () => {
+    const { loading, refreshing, activeTab } = this.state;
+    if (loading && !refreshing) return null;
+    return (
+      <View style={styles.emptyState}>
+        <View style={styles.emptyIconWrap}>
+          <Image source={require('./assets/purse.png')} style={styles.emptyIcon} />
         </View>
-
-        {hasVerify ? (
-            <View style={{flexDirection:'row',marginTop:10}}>
-                  <Image style={{width: 18, height: 18, resizeMode: 'contain',marginRight:5,alignSelf:'center'}} source={require('./assets/check.png')} />
-
-                <Text style={styles.verifiedText} numberOfLines={1}>
-                    {`Verified : ${verifiedDate}${verifiedTime ? `, ${verifiedTime}` : ''}`}
-                </Text>
-            </View>    
-        ) : null}
-
-        {/* <TouchableOpacity activeOpacity={0.9} onPress={() => this.openPicker(settlementId)} style={styles.uploadBtn}>
-          <View style={styles.uploadRow}>
-            <Image style={styles.camImg} source={require('./assets/cam.png')} />
-            <Text style={styles.uploadBtnText}>Upload Screenshot</Text>
-          </View>
-        </TouchableOpacity> */}
+        <Text style={styles.emptyTitle}>No settlements yet</Text>
+        <Text style={styles.emptySubtitle}>
+          {activeTab === 'all'
+            ? 'Your settlements will appear here once submitted.'
+            : `No ${activeTab === 'success' ? 'settled' : activeTab} settlements right now.`}
+        </Text>
       </View>
     );
   };
 
   render() {
-    const { loading, submitting, activeTab, search, pickerVisible, confirmVisible, selectedImage, counts } = this.state;
+    const { loading, submitting, pickerVisible, confirmVisible, selectedImage, refreshing, receiptPreview } = this.state;
     const rows = this.filterList();
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="#5D3FD3" />
+        <StatusBar barStyle="light-content" backgroundColor={P} />
 
-        {/* Header */}
-        <View style={styles.headerWrap}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
-
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                Settlement History
-              </Text>
-
-              <View style={{ width: 42, height: 42 }} />
-            </View>
-          </SafeAreaView>
-        </View>
+        {this.renderHeaderBlock()}
 
         <View style={styles.bodySafe}>
-          <View style={{ flex: 1 }}>
-            <ScrollView
-              contentContainerStyle={styles.scrollContent}
+          {loading && !refreshing ? (
+            <View style={styles.loaderWrap}>
+              <ActivityIndicator size="small" color={P} />
+            </View>
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(item, i) => String(item?.settlement_id || item?.id || i)}
+              renderItem={this.renderRow}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+              ListEmptyComponent={this.renderEmpty}
+              contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-            >
-              {/* Search */}
-              <View style={styles.searchBox}>
-                <Image style={styles.searchImg} source={require('./assets/search.png')} />
-                <TextInput
-                  value={search}
-                  onChangeText={this.onSearchChange}
-                  placeholder="Search Settlement ID / Amount..."
-                  placeholderTextColor="#9CA3AF"
-                  style={styles.searchInput}
-                  returnKeyType="search"
-                  onSubmitEditing={this.fetchHistory}
-                  returnKeyType="search"
-                />
-              </View>
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={this.onRefresh} colors={[P]} tintColor={P} />
+              }
+            />
+          )}
 
-              {/* Tabs */}
-              <View style={styles.tabsRow}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => this.setState({ activeTab: 'all' },()=> this.fetchHistory())}
-                  style={[styles.tab, activeTab === 'all' ? styles.tabAllActive : styles.tabSoftGreen]}
-                >
-                  <Text style={[styles.tabText, activeTab === 'all' ? styles.tabAllActiveText : styles.tabGreenText]}>
-                    {`All (${counts.all})`}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => this.setState({ activeTab: 'success' },()=> this.fetchHistory())}
-                  style={[styles.tab, activeTab === 'success' ? styles.tabGreenActive : styles.tabSoftGreen]}
-                >
-                  <Text style={[styles.tabText, activeTab === 'success' ? styles.tabActiveText : styles.tabGreenText]}>
-                    {`Settled (${counts.success})`}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => this.setState({ activeTab: 'pending' },()=> this.fetchHistory())}
-                  style={[styles.tab, activeTab === 'pending' ? styles.tabOrangeActive : styles.tabSoftGreen]}
-                >
-                  <Text style={[styles.tabText, activeTab === 'pending' ? styles.tabActiveText : styles.tabOrangeText]}>
-                    {`Pending (${counts.pending})`}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => this.setState({ activeTab: 'dispute' },()=> this.fetchHistory())}
-                  style={[styles.tab, activeTab === 'dispute' ? styles.tabRedActive : styles.tabSoftGreen]}
-                >
-                  <Text style={[styles.tabText, activeTab === 'dispute' ? styles.tabActiveText : styles.tabRedText]}>
-                    {`Dispute (${counts.dispute})`}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* List */}
-              {loading ? (
-                <View style={{ paddingVertical: 18, marginTop: 150 }}>
-                  <ActivityIndicator size="large" color="#1C8A62" />
-                </View>
-              ) : rows.length ? (
-                rows.map(this.renderRow)
-              ) : (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <Image source={require('./assets/purse.png')} style={styles.emptyIcon} />
-                  </View>
-                  <Text style={styles.emptyTitle}>No settlements yet</Text>
-                  <Text style={styles.emptySubtitle}>
-                    {activeTab === 'all'
-                      ? 'Your completed settlements will appear here once they are processed.'
-                      : `No ${activeTab === 'success' ? 'settled' : activeTab} settlements to show right now.`}
-                  </Text>
-                </View>
-              )}
-
-              <View style={{ height: 120 }} />
-            </ScrollView>
-
-            {/* Fixed bottom */}
-            <View style={styles.footerWrap}>
-              <Text style={styles.noteText}>Note: Verification by Gramik Finance team takes up to 24 hours.</Text>
-
-              {/* <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => {
-                  if (!selectedImage?.uri) {
-                    Toast.show('Upload screenshot from a settlement card', Toast.SHORT);
-                    return;
-                  }
-                  this.setState({ confirmVisible: true });
-                }}
-                style={[styles.submitBtn, submitting ? { opacity: 0.75 } : null]}
-                disabled={submitting}
-              >
-                {!submitting ? (
-                  <Text style={styles.submitText}>SUBMIT FOR VERIFICATION</Text>
-                ) : (
-                  <ActivityIndicator size="small" color="#FFF" />
-                )}
-              </TouchableOpacity> */}
-
-              <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#E8ECF4' }}/>
-            </View>
+          <View style={styles.footerWrap}>
+            <Text style={styles.noteText}>Verification by Gramik Finance team takes up to 24 hours</Text>
+            <SafeAreaView edges={safeBottomEdges()} style={{ backgroundColor: S.BG }} />
           </View>
         </View>
+
+        <ProofImageViewer
+          visible={!!receiptPreview}
+          uri={receiptPreview}
+          title="Payment receipt"
+          onClose={this.closeReceiptPreview}
+        />
 
         {/* Picker Modal (iOS-safe, no touch bubbling) */}
         <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={this.closePicker}>
@@ -603,158 +646,152 @@ class SettlementHistory extends Component {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#E8ECF4' },
+  root: { flex: 1, backgroundColor: SCREEN_BG },
 
-  headerWrap: { backgroundColor: '#5D3FD3' },
-  headerSafe: { backgroundColor: '#5D3FD3' },
-  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
-  headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
-
-  bodySafe: { flex: 1, backgroundColor: '#E8ECF4' },
-  scrollContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 16 },
-
-  // Empty state
-  emptyState: {
-    paddingVertical: 60,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  emptyIconWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#FFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  emptyIcon: { width: 44, height: 44, resizeMode: 'contain' },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
-  },
-
-  // Search
-  searchBox: {
-    height: 48,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
+  headerBlock: { backgroundColor: P },
+  headerSafe: { backgroundColor: P, paddingBottom: 10 },
+  headerRow: {
+    height: 56,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  searchImg: { width: 18, height: 18, resizeMode: 'contain', marginRight: 10, tintColor: '#9CA3AF' },
-  searchInput: { flex: 1, fontSize: 13, fontWeight: '500', color: '#111827' },
-
-  // Tabs
-  tabsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, marginBottom: 12 },
-  tab: {
-    flex: 1,
-    height: 32,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    borderWidth: 1,
-  },
-  tabSoftGreen: { backgroundColor: '#E7FAF3', borderColor: '#D6F3E8' },
-  tabAllActive: { backgroundColor: '#0F7451', borderColor: '#0F7451' },
-  tabGreenActive: { backgroundColor: '#1C8A62', borderColor: '#1C8A62' },
-  tabOrangeActive: { backgroundColor: '#F4B740', borderColor: '#F4B740' },
-  tabRedActive: { backgroundColor: '#D64545', borderColor: '#D64545' },
-
-  tabText: { fontSize: 11, fontWeight: '600' },
-  tabAllActiveText: { color: '#FFFFFF' },
-  tabActiveText: { color: '#FFFFFF' },
-  tabGreenText: { color: '#0F7451' },
-  tabOrangeText: { color: '#B7791F' },
-  tabRedText: { color: '#B10000' },
-
-  // Card
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: CARD_RADIUS,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E6EAF0',
-  },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  settlementLine: { fontSize: 11, fontWeight: '700', color: '#111827', flex: 1, paddingRight: 8 },
-  settlementId: { color: '#F37A20', fontWeight: '700', fontSize: 11,letterSpacing:.4 },
-
-  pill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
-  pillText: { fontSize: 8, fontWeight: '700', letterSpacing: 0.2 },
-
-  secondLine: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 10 },
-  leftMiniIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 5,
-    backgroundColor: '#E7FAF3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    marginTop: 2,
-  },
-  miniWalletImg: { width: 38, height: 38, resizeMode: 'contain' },
-
-  amountInline: { color: '#0F7451', fontWeight: '900', fontSize: 14 },
-  datePart: { color: '#000', fontSize: 12, marginTop: 5, fontWeight: '400' },
-  smallLineText: { fontSize: 11, fontWeight: '400', color: '#000', marginTop: 5 },
-
-  commentText: { marginTop: 5, fontSize: 12, fontWeight: '600', color: '#F37A20' },
-
-  verifiedText: { color: '#000', fontSize: 11, fontWeight: '700',alignSelf:'center' },
-
-  uploadBtn: {
-    marginTop: 12,
+  backBtn: {
+    width: 40,
     height: 40,
-    borderRadius: 10,
-    backgroundColor: '#2F7D67',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 4,
   },
-  uploadRow: { flexDirection: 'row', alignItems: 'center' },
-  camImg: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#fff', marginRight: 10 },
-  uploadBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  backIco: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
+  headerTitle: { flex: 1, textAlign: 'center', color: '#FFF', fontSize: 16, fontWeight: '600' },
+  headerSpacer: { width: 44, height: 40 },
+  headerSearch: {
+    marginHorizontal: 14,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchImg: { width: 15, height: 15, resizeMode: 'contain', marginRight: 8, tintColor: 'rgba(255,255,255,0.75)' },
+  searchInput: { flex: 1, fontSize: 13.5, fontWeight: '400', color: '#FFF', paddingVertical: 0 },
+  clearSearch: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: '500', paddingLeft: 6 },
 
-  // Fixed bottom
-  footerWrap: {
-    backgroundColor: '#E8ECF4',
+  tabRow: {
+    flexDirection: 'row',
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 6 : 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E6EAF0',
+    gap: 6,
   },
-  noteText: { fontSize: 12, color: 'grey', textAlign: 'center' },
-  submitBtn: {
-    height: 45,
-    width: '95%',
-    alignSelf: 'center',
+  tabChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     borderRadius: 10,
-    backgroundColor: '#F37A20',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    gap: 4,
+  },
+  tabChipOn: {
+    backgroundColor: '#FFF',
+    borderColor: '#FFF',
+  },
+  tabChipLbl: { fontSize: 10.5, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  tabChipLblOn: { color: P },
+  tabChipBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  tabChipBadgeOn: { backgroundColor: S.P_SOFT },
+  tabChipBadgeT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
+  tabChipBadgeTOn: { color: P },
+
+  bodySafe: { flex: 1 },
+  listContent: { paddingHorizontal: LIST_PAD, paddingTop: 10, paddingBottom: 16, flexGrow: 1 },
+
+  loaderWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+
+  emptyState: { paddingVertical: 52, paddingHorizontal: 24, alignItems: 'center' },
+  emptyIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: S.P_SOFT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: S.P_GLOW,
+  },
+  emptyIcon: { width: 30, height: 30, resizeMode: 'contain', tintColor: P },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: S.TXT, marginBottom: 5 },
+  emptySubtitle: { fontSize: 12.5, fontWeight: '400', color: S.MUTED, textAlign: 'center', lineHeight: 18, maxWidth: 280 },
+
+  card: {
+    backgroundColor: S.CARD,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8ECF1',
+    borderLeftWidth: 4,
+    overflow: 'hidden',
+  },
+  cardBody: { paddingHorizontal: 10, paddingVertical: 9 },
+  cardTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardMain: { flex: 1, minWidth: 0 },
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  settlementId: { flex: 1, fontSize: 13, fontWeight: '700', color: S.TXT },
+  statusPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  statusText: { fontSize: 9.5, fontWeight: '600' },
+  subMeta: { fontSize: 10.5, fontWeight: '400', color: S.MUTED, marginTop: 3 },
+  orderLine: { fontSize: 11, fontWeight: '500', color: S.SUB, marginTop: 2 },
+
+  cardRight: { alignItems: 'flex-end', gap: 6 },
+  amount: { fontSize: 16, fontWeight: '800', color: S.GREEN_DARK },
+  proofMini: { width: 28, height: 28, borderRadius: 6, backgroundColor: S.BG },
+
+  proofRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E8ECF1',
+  },
+  proofText: { flex: 1, fontSize: 11, fontWeight: '500', color: S.SUB },
+  proofChev: { fontSize: 14, color: S.MUTED },
+
+  commentText: { marginTop: 6, fontSize: 11, fontWeight: '400', color: S.ORANGE, lineHeight: 15 },
+  approvedText: { marginTop: 6, fontSize: 10, fontWeight: '600', color: S.GREEN_DARK },
+
+  footerWrap: {
+    backgroundColor: SCREEN_BG,
+    paddingHorizontal: LIST_PAD,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 2 : 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: S.BORDER,
+  },
+  noteText: { fontSize: 11.5, fontWeight: '400', color: S.MUTED, textAlign: 'center', lineHeight: 16 },
 
   // Modals
   modalBackdrop: {

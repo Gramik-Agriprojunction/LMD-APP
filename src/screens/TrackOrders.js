@@ -38,7 +38,8 @@ const SWAP_ANIM = {
   update: { type: 'easeInEaseOut' },
   delete: { type: 'easeInEaseOut', property: 'opacity' },
 };
-import { SafeAreaView, SafeAreaInsetsContext, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { overlayBottomPadding, screenFooterPadding } from '../utils/safeAreaInsets';
 import Clipboard from '@react-native-clipboard/clipboard';
 import constants from '../utils/constants';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -68,18 +69,73 @@ const HIT = { top: 10, bottom: 10, left: 10, right: 10 };
 
 const STATUSES = STATUS_SEQUENCE;
 
-// orderList returns pincode groups: [{ pincode, data: [orders...] }, ...]
-const flattenOrderList = (raw) => {
+const isApiGroupedData = (raw) =>
+  Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0]?.data);
+
+const flattenFromApiGroups = (raw) => {
   if (!Array.isArray(raw)) return [];
-  if (raw.length > 0 && Array.isArray(raw[0]?.data)) {
+  if (isApiGroupedData(raw)) {
     return raw.flatMap((group) =>
       (Array.isArray(group.data) ? group.data : []).map((order) => ({
         ...order,
+        group_title: group.title || group.pincode || '',
         group_pincode: group.pincode || order.pincode,
       })),
     );
   }
   return raw;
+};
+
+const mergeApiGroups = (prev, next) => {
+  if (!Array.isArray(prev) || !prev.length) return next || [];
+  if (!Array.isArray(next) || !next.length) return prev;
+  const map = new Map();
+  const addGroups = (groups) => {
+    groups.forEach((group) => {
+      const title = String(group?.title ?? group?.pincode ?? '').trim() || 'Other';
+      const items = Array.isArray(group?.data) ? group.data : [];
+      if (!map.has(title)) map.set(title, []);
+      map.get(title).push(...items);
+    });
+  };
+  addGroups(prev);
+  addGroups(next);
+  return [...map.entries()].map(([title, data]) => ({ title, data }));
+};
+
+const buildRowsFromApiGroups = (groups, groupBy) => {
+  if (!isApiGroupedData(groups)) return null;
+  const rows = [];
+  groups.forEach((group) => {
+    const title = String(group.title || group.pincode || '').trim() || 'Other';
+    const items = Array.isArray(group.data) ? group.data : [];
+    if (!items.length) return;
+    rows.push({ type: 'header', title, count: items.length, key: `h-${groupBy}-${title}` });
+    items.forEach((item) => rows.push({ type: 'order', item, key: `o-${item?.id || item?.order_id}` }));
+  });
+  return rows.length ? rows : null;
+};
+
+const parseOrderListPayload = (rawData, groupBy, { append, prevApiGroups, prevOrders }) => {
+  let apiGroups = null;
+  let freshOrders = [];
+  let listRows = null;
+
+  if (groupBy && isApiGroupedData(rawData)) {
+    apiGroups = append ? mergeApiGroups(prevApiGroups, rawData) : rawData;
+    freshOrders = flattenFromApiGroups(apiGroups);
+    listRows = buildRowsFromApiGroups(apiGroups, groupBy);
+  } else {
+    freshOrders = flattenFromApiGroups(rawData);
+    apiGroups = null;
+  }
+
+  const orders = append ? [...(prevOrders || []), ...freshOrders] : freshOrders;
+  if (groupBy && !listRows) {
+    listRows = buildGroupedRows(orders, groupBy);
+  }
+
+  return { orders, apiGroups, listRows };
 };
 
 const GROUP_FILTERS = [
@@ -91,6 +147,8 @@ const GROUP_FILTERS = [
   { id: 'priority', label: 'Priority wise', sub: 'Priority ke hisaab se group karein', icon: require('./assets/star.png'), iconTint: '#DC2626', tint: '#FEE2E2', accent: '#DC2626' },
 ];
 
+const DEFAULT_GROUP_BY = 'priority';
+
 const FILTER_ROW_H = 68;
 
 const extractPincode = (address) => {
@@ -100,52 +158,7 @@ const extractPincode = (address) => {
 
 const normalizeSearchText = (v) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-// Search haystack — every field visible on the order card + status label.
-const orderSearchHaystack = (order) => {
-  const ds = order?.dark_store || {};
-  const farmerMobile = String(order?.farmer_mobile || '');
-  const dsMobile = String(ds?.mobile || '');
-  const parts = [
-    order?.order_id,
-    order?.id,
-    order?.farmer_name,
-    farmerMobile,
-    farmerMobile.replace(/\D/g, ''),
-    order?.shipping_address,
-    order?.group_pincode,
-    order?.pincode,
-    extractPincode(order?.shipping_address),
-    ds?.name,
-    ds?.mobile,
-    dsMobile.replace(/\D/g, ''),
-    ds?.location,
-    ds?.city,
-    ds?.pincode,
-    order?.amount,
-    order?.payment_mode,
-    order?.payment_status,
-    order?.status,
-    order?.priority,
-    getStatus(order?.status).label,
-  ];
-  return normalizeSearchText(parts.filter(Boolean).join(' '));
-};
-
 const isPendingOrder = (item) => getStatus(item?.status).key === 'PENDING';
-
-const filterOrdersByQuery = (orders, query) => {
-  const q = normalizeSearchText(query);
-  if (!q) return orders || [];
-  const compactQ = q.replace(/\s/g, '');
-  return (orders || []).filter((order) => {
-    const hay = orderSearchHaystack(order);
-    if (hay.includes(q)) return true;
-    if (compactQ.length >= 3) {
-      return hay.replace(/\s/g, '').includes(compactQ);
-    }
-    return false;
-  });
-};
 
 const PRIORITY_GROUP_ORDER = { High: 0, Medium: 1, Low: 2 };
 
@@ -195,11 +208,12 @@ const buildGroupedRows = (orders, groupBy) => {
   return rows;
 };
 
-const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
+const SAFE_BOTTOM = overlayBottomPadding();
+const SHEET_ACTIONS_BOTTOM = SAFE_BOTTOM + screenFooterPadding() + 12;
 
 const filterSheetMaxHeight = (hasActive) => {
   const listH = GROUP_FILTERS.length * FILTER_ROW_H;
-  const total = 108 + listH + (hasActive ? 42 : 0) + 78 + SAFE_BOTTOM;
+  const total = 108 + listH + (hasActive ? 42 : 0) + 88 + SHEET_ACTIONS_BOTTOM;
   return Math.min(total, Math.round(Dimensions.get('window').height * 0.82));
 };
 
@@ -208,27 +222,33 @@ class TrackOrders extends Component {
     super(props);
     const init = this.props?.navigation?.getParam('selectedStatus', 'ALL');
     const selected = STATUSES.includes(init) ? init : 'ALL';
-    const cacheKey = `${KEYS.ORDERS}_${selected}`;
+    const cacheKey = `${KEYS.ORDERS}_${selected}_${DEFAULT_GROUP_BY}_`;
     const cached = cacheGet(cacheKey);
     this.state = {
       loading: !cached,
       refreshing: false,
       loadingMore: false,
       query: '',
+      searchLoading: false,
       selected,
       orders: cached?.orders || [],
       live: cached?.live || {},
+      listRows: cached?.listRows || null,
+      apiGroups: null,
+      totalCount: cached?.totalCount ?? cached?.orders?.length ?? 0,
       selectedIds: new Set(),
       batchSubmitting: false,
       generatingOtp: false,
       page: 1,
       totalPages: 1,
       hasMore: false,
-      groupBy: null,
-      filterDraft: null,
+      groupBy: DEFAULT_GROUP_BY,
+      filterDraft: DEFAULT_GROUP_BY,
       showFilterSheet: false,
     };
     this.fetchSeq = 0;
+    this._searchTimer = null;
+    this._skipNextFocusReload = true;
     this.filterSheetRef = null;
     this.anims = [0,1,2].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
     this.ctaArrowX = new Animated.Value(0);
@@ -249,9 +269,10 @@ class TrackOrders extends Component {
     }
   };
 
-  cacheKeyFor = (selected, groupBy) => `${KEYS.ORDERS}_${selected}_${groupBy || ''}`;
+  cacheKeyFor = (selected, groupBy, query) =>
+    `${KEYS.ORDERS}_${selected}_${groupBy || ''}_${normalizeSearchText(query || '')}`;
 
-  cacheKey = () => this.cacheKeyFor(this.state.selected, this.state.groupBy);
+  cacheKey = () => this.cacheKeyFor(this.state.selected, this.state.groupBy, this.state.query);
 
   resubscribeCache = () => {
     if (this.unsubscribe) this.unsubscribe();
@@ -259,12 +280,17 @@ class TrackOrders extends Component {
     this.unsubscribe = cacheSubscribe(key, (v) => {
       if (!v) return;
       LayoutAnimation.configureNext(SWAP_ANIM);
-      this.setState({ orders: v.orders || [], live: v.live || {} });
+      this.setState({
+        orders: v.orders || [],
+        live: v.live || {},
+        listRows: v.listRows ?? null,
+        totalCount: v.totalCount ?? v.orders?.length ?? 0,
+      });
     });
   };
 
   reloadOrders = () => {
-    this.setState({ page: 1, hasMore: false, selectedIds: new Set() }, () => {
+    this.setState({ page: 1, hasMore: false, selectedIds: new Set(), apiGroups: null }, () => {
       this.resubscribeCache();
       this.load(true, { page: 1, append: false });
     });
@@ -276,13 +302,19 @@ class TrackOrders extends Component {
 
   componentWillUnmount() {
     if (this.unsubscribe) this.unsubscribe();
+    if (this._searchTimer) clearTimeout(this._searchTimer);
   }
 
   animateIn = () => {};
 
   load = (silent = false, opts = {}) => {
     const { page = 1, append = false } = opts;
-    if (!silent && !this.state.refreshing && !append) this.setState({ loading: true });
+    const requestedQuery = normalizeSearchText(this.state.query);
+    const isSearchFetch = !!requestedQuery && !append;
+    const loadFlags = {};
+    if (!silent && !this.state.refreshing && !append) loadFlags.loading = true;
+    if (isSearchFetch) loadFlags.searchLoading = true;
+    if (Object.keys(loadFlags).length) this.setState(loadFlags);
     // Snapshot the tab the request was issued for, so a stale response can't
     // overwrite the rows of a tab the user has since switched away from.
     const requestedFor = this.state.selected;
@@ -293,6 +325,7 @@ class TrackOrders extends Component {
       page,
       limit: 20,
       group_by: requestedGroup,
+      search: requestedQuery,
     };
     fetch(constants.orderList, {
       method: 'POST',
@@ -302,7 +335,12 @@ class TrackOrders extends Component {
       .then(r => r.json())
       .then(j => {
         if (seq !== this.fetchSeq) return;
-        const fresh = j?.status ? flattenOrderList(j.data) : [];
+        const rawData = j?.status ? j.data : [];
+        const parsed = parseOrderListPayload(rawData, requestedGroup, {
+          append,
+          prevApiGroups: this.state.apiGroups,
+          prevOrders: this.state.orders,
+        });
         const live = j?.live || this.state.live;
         const pg = j?.pagination || j?.meta || {};
         const currentPage = Math.max(1, Number(pg?.currentPage || pg?.page || page) || page);
@@ -310,19 +348,30 @@ class TrackOrders extends Component {
         const hasMore = typeof pg?.hasNextPage === 'boolean'
           ? pg.hasNextPage
           : currentPage < totalPages;
+        const totalCount = Number(pg?.total ?? j?.meta?.total ?? parsed.orders.length) || parsed.orders.length;
 
-        const nextOrders = append ? [...this.state.orders, ...fresh] : fresh;
-        cacheSet(this.cacheKeyFor(requestedFor, requestedGroup), { orders: nextOrders, live });
-        // Warm the image cache for any product/farmer photos the rows will render.
-        preloadImages(extractImageUrls(fresh));
-        if (this.state.selected !== requestedFor) return; // user switched tab; cache only
-        if ((this.state.groupBy || '') !== requestedGroup) return; // filter changed; cache only
+        cacheSet(this.cacheKeyFor(requestedFor, requestedGroup, requestedQuery), {
+          orders: parsed.orders,
+          live,
+          listRows: parsed.listRows,
+          totalCount,
+        });
+        preloadImages(extractImageUrls(parsed.orders));
+        const doneFlags = { loading: false, refreshing: false, loadingMore: false, searchLoading: false };
+        const canApply = this.state.selected === requestedFor
+          && (this.state.groupBy || '') === requestedGroup
+          && normalizeSearchText(this.state.query) === requestedQuery;
+        if (!canApply) {
+          this.setState(doneFlags);
+          return;
+        }
         LayoutAnimation.configureNext(SWAP_ANIM);
         this.setState({
-          loading: false,
-          refreshing: false,
-          loadingMore: false,
-          orders: nextOrders,
+          ...doneFlags,
+          orders: parsed.orders,
+          apiGroups: parsed.apiGroups,
+          listRows: parsed.listRows,
+          totalCount,
           live,
           page: currentPage,
           totalPages,
@@ -331,9 +380,7 @@ class TrackOrders extends Component {
       })
       .catch(() => {
         if (seq !== this.fetchSeq) return;
-        if (this.state.selected !== requestedFor) return;
-        if ((this.state.groupBy || '') !== requestedGroup) return;
-        this.setState({ loading: false, refreshing: false, loadingMore: false });
+        this.setState({ loading: false, refreshing: false, loadingMore: false, searchLoading: false });
       });
   };
 
@@ -352,7 +399,7 @@ class TrackOrders extends Component {
   pick = (s) => {
     if (s === this.state.selected) return;
     if (this.unsubscribe) this.unsubscribe();
-    const newKey = this.cacheKeyFor(s, this.state.groupBy);
+    const newKey = this.cacheKeyFor(s, this.state.groupBy, this.state.query);
     const cached = cacheGet(newKey);
 
     // Keep the FlatList mounted (no shimmer swap) and animate the row replacement
@@ -365,13 +412,21 @@ class TrackOrders extends Component {
       // tab's rows visible until the silent fetch resolves.
       orders: cached?.orders || this.state.orders,
       live: cached?.live || this.state.live,
+      listRows: cached?.listRows ?? null,
+      totalCount: cached?.totalCount ?? cached?.orders?.length ?? 0,
+      apiGroups: null,
       page: 1,
       hasMore: false,
     }, () => {
       this.unsubscribe = cacheSubscribe(newKey, (v) => {
         if (!v) return;
         LayoutAnimation.configureNext(SWAP_ANIM);
-        this.setState({ orders: v.orders || [], live: v.live || {} });
+        this.setState({
+          orders: v.orders || [],
+          live: v.live || {},
+          listRows: v.listRows ?? null,
+          totalCount: v.totalCount ?? v.orders?.length ?? 0,
+        });
       });
       this.load(true, { page: 1, append: false }); // silent — never flips back to ShimmerLoader
     });
@@ -476,19 +531,23 @@ class TrackOrders extends Component {
     return { bg: st.bg };
   };
 
-  // Client-side search across all order fields — instant, works with grouping too.
   onQueryChange = (text) => {
-    LayoutAnimation.configureNext(SWAP_ANIM);
-    this.setState({ query: text });
+    const hasQuery = !!normalizeSearchText(text);
+    this.setState({ query: text, searchLoading: hasQuery });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.reloadOrders(), 400);
   };
 
   clearQuery = () => {
-    LayoutAnimation.configureNext(SWAP_ANIM);
-    this.setState({ query: '' });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this.setState({ query: '', searchLoading: false }, () => this.reloadOrders());
   };
 
   openFilterSheet = () => {
-    this.setState({ showFilterSheet: true, filterDraft: this.state.groupBy });
+    this.setState({
+      showFilterSheet: true,
+      filterDraft: this.state.groupBy || DEFAULT_GROUP_BY,
+    });
   };
 
   closeFilterSheet = () => {
@@ -520,11 +579,11 @@ class TrackOrders extends Component {
   };
 
   groupedRows = () => {
-    const filtered = filterOrdersByQuery(this.state.orders, this.state.query);
-    return buildGroupedRows(filtered, this.state.groupBy);
+    if (this.state.listRows) return this.state.listRows;
+    return buildGroupedRows(this.state.orders, this.state.groupBy);
   };
 
-  filteredOrderCount = () => filterOrdersByQuery(this.state.orders, this.state.query).length;
+  filteredOrderCount = () => this.state.totalCount || this.state.orders.length;
 
   renderPriorityBadge = (priority) => {
     const pri = getPriority(priority);
@@ -625,7 +684,7 @@ class TrackOrders extends Component {
             </View>
           ) : null}
 
-          <View style={[s.fsActions, { paddingBottom: 10 + SAFE_BOTTOM }]}>
+          <View style={[s.fsActions, { paddingBottom: SHEET_ACTIONS_BOTTOM }]}>
             <TouchableOpacity
               style={[s.fsResetBtn, (!filterDraft && !groupBy) && s.fsResetBtnOff]}
               activeOpacity={0.85}
@@ -797,11 +856,11 @@ class TrackOrders extends Component {
   a = (i) => ({ opacity: this.anims[Math.min(i,2)].o, transform: [{ translateY: this.anims[Math.min(i,2)].y }] });
 
   render() {
-    const { loading, refreshing, query, selected, live, selectedIds, groupBy } = this.state;
+    const { loading, refreshing, query, searchLoading, selected, live, selectedIds, groupBy } = this.state;
     const rows = this.groupedRows();
     const orderCount = this.filteredOrderCount();
     const selectedCount = selectedIds.size;
-    const pendingInView = filterOrdersByQuery(this.state.orders, query).filter(isPendingOrder).length;
+    const pendingInView = (this.state.orders || []).filter(isPendingOrder).length;
     const showCta = selectedCount > 0;
     const showSelectHint = pendingInView > 0;
     const activeFilter = GROUP_FILTERS.find((g) => g.id === groupBy);
@@ -809,7 +868,13 @@ class TrackOrders extends Component {
     return (
       <View style={s.root}>
         <StatusBar barStyle="light-content" backgroundColor={P} />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load(true)} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => {
+          if (this._skipNextFocusReload) {
+            this._skipNextFocusReload = false;
+            return;
+          }
+          this.reloadOrders();
+        }} />
 
         <View style={s.hdr}>
           <SafeAreaView edges={['top']}>
@@ -819,12 +884,25 @@ class TrackOrders extends Component {
               </TouchableOpacity>
               <View style={s.searchBar}>
                 <Image source={require('./assets/search.png')} style={s.searchBarIco} />
-                <TextInput value={query} onChangeText={this.onQueryChange} placeholder="Orders dhoondein..." placeholderTextColor="rgba(255,255,255,0.5)" style={s.searchBarInput} returnKeyType="search" />
-                {query.length > 0 && (
+                <TextInput
+                  value={query}
+                  onChangeText={this.onQueryChange}
+                  placeholder="Orders dhoondein..."
+                  placeholderTextColor="rgba(255,255,255,0.5)"
+                  style={s.searchBarInput}
+                  returnKeyType="search"
+                  onSubmitEditing={() => {
+                    if (this._searchTimer) clearTimeout(this._searchTimer);
+                    this.reloadOrders();
+                  }}
+                />
+                {searchLoading ? (
+                  <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" style={s.searchBarLoader} />
+                ) : query.length > 0 ? (
                   <TouchableOpacity onPress={this.clearQuery} activeOpacity={0.7} style={s.clearIco}>
                     <Image source={require('./assets/cross.png')} style={s.clearIcoImg} />
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
               <TouchableOpacity onPress={this.openFilterSheet} activeOpacity={0.85} style={[s.filterBtn, !!groupBy && s.filterBtnOn]}>
                 <Image source={require('./assets/filter.png')} style={s.filterBtnIco} />
@@ -939,6 +1017,7 @@ const s = StyleSheet.create({
   searchBarInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0, letterSpacing: 0 },
   clearIco: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
   clearIcoImg: { width: 8, height: 8, resizeMode: 'contain', tintColor: '#FFF' },
+  searchBarLoader: { marginLeft: 6, width: 20, height: 20 },
   filterBtn: {
     width: 38, height: 38, borderRadius: 10, marginLeft: 8,
     backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',

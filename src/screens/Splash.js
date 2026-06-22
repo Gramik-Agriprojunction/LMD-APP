@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StatusBar, Animated, Dimensions, StyleSheet, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withV4Navigation } from '../utils/v4Compat';
 
@@ -284,7 +285,7 @@ class Splash extends React.Component {
             </View>
           </SafeAreaView>
         </Animated.View>
-        <SafeAreaView edges={['bottom']} style={{ flex: 0, backgroundColor: P }}/>
+        <SafeAreaView edges={safeBottomEdges()} style={{ flex: 0, backgroundColor: P }}/>
       </Animated.View>
     );
   }

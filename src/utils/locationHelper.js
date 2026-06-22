@@ -182,28 +182,164 @@ export const getCurrentCoordsWithPermission = async (purpose = 'general', { useC
   }
 };
 
-export const reverseGeocodePincode = async (lat, lng) => {
+export const getCachedCoordsForApi = (maxAgeMs = 900000) => {
+  const cached = readCachedCoords(maxAgeMs);
+  if (cached?.lat && cached?.lng) return cached;
+  return { lat: null, lng: null };
+};
+
+const hasCoord = (v) => v != null && String(v).trim() !== '';
+
+/** Coords for update_order_status — never blocks; uses null when GPS unavailable. */
+export const coordsForStatusApi = (coords = {}) => {
+  const lat = coords?.lat ?? coords?.latitude;
+  const lng = coords?.lng ?? coords?.long ?? coords?.longitude;
+  if (hasCoord(lat) && hasCoord(lng)) {
+    return { lat: String(lat), long: String(lng) };
+  }
+  return { lat: null, long: null };
+};
+
+export const appendCoordsToFormData = (fd, coords = {}) => {
+  const { lat, long } = coordsForStatusApi(coords);
+  fd.append('lat', lat == null ? 'null' : lat);
+  fd.append('long', long == null ? 'null' : long);
+};
+
+/** Start fetching GPS when verify screen opens — never blocks the verify button. */
+export const prefetchVerifyLocation = (onReady) => {
+  if (!isNativeGeolocationLinked()) return;
+
+  const deliver = (coords) => {
+    if (coords?.lat && coords?.lng) {
+      onReady?.({ lat: String(coords.lat), lng: String(coords.lng) });
+    }
+  };
+
+  const cached = readCachedCoords(300000);
+  if (cached?.lat && cached?.lng) deliver(cached);
+
+  ensureLocationPermission('delivery').then((perm) => {
+    if (!perm.ok) return;
+    getCurrentCoordsWithPermission('delivery', { useCache: true })
+      .then((result) => {
+        if (result?.lat && result?.lng) {
+          deliver(result);
+          return null;
+        }
+        return getCurrentCoordsWithPermission('delivery', { useCache: false });
+      })
+      .then((result) => {
+        if (result?.lat && result?.lng) deliver(result);
+      })
+      .catch(() => {});
+  });
+};
+
+/** Fast coords for verify/update APIs — waits for GPS but caps wait so API is not blocked forever. */
+export const getCoordsForApiCall = async (purpose = 'delivery', { maxWaitMs = 12000 } = {}) => {
+  const cached = readCachedCoords(300000);
+  if (cached?.lat && cached?.lng) return cached;
+
+  if (!isNativeGeolocationLinked()) {
+    console.log('[location] native geolocation not linked — lat/long will be empty');
+    return { lat: '', lng: '' };
+  }
+
+  await ensureLocationPermission(purpose);
+
+  const result = await Promise.race([
+    getCurrentCoordsWithPermission(purpose, { useCache: false }),
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ lat: '', lng: '', error: 'timeout' }), maxWaitMs);
+    }),
+  ]);
+
+  if (result?.error === 'timeout') {
+    console.log(`[location] GPS timeout after ${maxWaitMs}ms`);
+    const stale = readCachedCoords(900000);
+    if (stale?.lat && stale?.lng) return stale;
+  }
+
+  return { lat: result?.lat || '', lng: result?.lng || '' };
+};
+
+const normalizePincode = (raw) => {
+  const pin = String(raw || '').replace(/\D/g, '').slice(0, 6);
+  return pin.length === 6 ? pin : '';
+};
+
+const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
   try {
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const pin = String(json?.postcode || '').replace(/\D/g, '').slice(0, 6);
-    return pin.length === 6 ? pin : '';
+    const res = await fetch(url, {
+      ...options,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (!res.ok) return null;
+    return await res.json();
   } catch (e) {
-    return '';
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 };
 
-export const getLocationPincode = async () => {
-  const result = await getCurrentCoordsWithPermission('general');
+const reverseGeocodeNominatim = async (lat, lng) => {
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json&addressdetails=1`;
+  const json = await fetchJsonWithTimeout(url, {
+    headers: { 'User-Agent': 'GramikLMD/1.0 (React Native)' },
+  });
+  return normalizePincode(json?.address?.postcode);
+};
+
+const reverseGeocodeBigDataCloud = async (lat, lng) => {
+  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
+  const json = await fetchJsonWithTimeout(url);
+  return normalizePincode(json?.postcode);
+};
+
+export const reverseGeocodePincode = async (lat, lng) => {
+  const latN = Number(lat);
+  const lngN = Number(lng);
+  if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return '';
+
+  // Nominatim returns Indian pincodes reliably; BigDataCloud often leaves postcode empty.
+  const fromNominatim = await reverseGeocodeNominatim(latN, lngN);
+  if (fromNominatim) return fromNominatim;
+
+  const fromBdc = await reverseGeocodeBigDataCloud(latN, lngN);
+  return fromBdc || '';
+};
+
+export const getLocationPincode = async ({ maxWaitMs = 15000, useCache = true } = {}) => {
+  const coordsPromise = getCurrentCoordsWithPermission('general', { useCache });
+  const result = await Promise.race([
+    coordsPromise,
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ lat: '', lng: '', error: 'timeout' }), maxWaitMs);
+    }),
+  ]);
+
   if (result.error === 'permission_denied') {
     return { lat: '', lng: '', pincode: '', error: 'permission_denied' };
+  }
+  if (result.error === 'timeout') {
+    const cached = readCachedCoords(600000);
+    if (cached?.lat && cached?.lng) {
+      const pincode = await reverseGeocodePincode(cached.lat, cached.lng);
+      return { lat: cached.lat, lng: cached.lng, pincode, error: pincode ? undefined : 'location_unavailable' };
+    }
+    return { lat: '', lng: '', pincode: '', error: 'timeout' };
   }
   if (!result.lat || !result.lng) {
     return { lat: '', lng: '', pincode: '', error: result.error || 'location_unavailable' };
   }
   const pincode = await reverseGeocodePincode(result.lat, result.lng);
-  return { lat: result.lat, lng: result.lng, pincode };
+  return { lat: result.lat, lng: result.lng, pincode, error: pincode ? undefined : 'location_unavailable' };
 };
 
 export const warmUpLocation = (purpose = 'delivery') => {

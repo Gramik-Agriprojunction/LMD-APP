@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -31,18 +32,13 @@
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
 
-      <!-- Default channel id used by react-native-push-notification -->
+      <!-- Default FCM notification channel (@react-native-firebase/messaging) -->
       <meta-data
-        android:name="com.dieam.reactnativepushnotification.notification_channel_name"
-        android:value="LMD Notifications"/>
-      <meta-data
-        android:name="com.dieam.reactnativepushnotification.notification_channel_description"
-        android:value="Order, settlement and delivery alerts"/>
-      <meta-data
-        android:name="com.dieam.reactnativepushnotification.notification_color"
-        android:resource="@android:color/white"/>
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="lmd-default"
+        tools:replace="android:value" />
 
-      <!-- react-native-push-notification receivers -->
+      <!-- react-native-push-notification — local notifications only (no FCM service) -->
       <receiver
         android:name="com.dieam.reactnativepushnotification.modules.RNPushNotificationActions"
         android:exported="false" />
@@ -58,15 +54,6 @@
           <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
         </intent-filter>
       </receiver>
-
-      <!-- FCM messaging service from react-native-push-notification -->
-      <service
-        android:name="com.dieam.reactnativepushnotification.modules.RNPushNotificationListenerService"
-        android:exported="false">
-        <intent-filter>
-          <action android:name="com.google.firebase.MESSAGING_EVENT" />
-        </intent-filter>
-      </service>
 
       <activity
         android:name=".MainActivity"

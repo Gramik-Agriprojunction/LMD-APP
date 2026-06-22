@@ -4,7 +4,7 @@ import {
   ActivityIndicator, RefreshControl, LayoutAnimation, Platform, UIManager, Pressable,
   Animated, Dimensions,
 } from 'react-native';
-import { initialWindowMetrics } from 'react-native-safe-area-context';
+import { screenFooterPadding } from '../utils/safeAreaInsets';
 import moment from 'moment';
 import constants from '../utils/constants';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
@@ -19,7 +19,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const PAD = 10;
 const FOOTER_PAD = 24;
 const FOOTER_H = 58;
-const FOOTER_BOTTOM = Math.max(Math.round((initialWindowMetrics?.insets?.bottom || 0) * 0.35), 6);
 const SCREEN_BG = '#edf1f7';
 const BOOK_GREEN = '#28AD54';
 const SCREEN_W = Dimensions.get('window').width;
@@ -33,17 +32,18 @@ const titleCase = (s) => {
 
 const TABS = [
   { key: 'all', label: 'All', apiTab: '' },
-  { key: 'pickup', label: 'Pickup', apiTab: 'pending' },
-  { key: 'lab', label: 'Lab', apiTab: 'lab' },
-  { key: 'ready', label: 'Ready', apiTab: 'ready' },
+  { key: 'pending', label: 'Pending', apiTab: 'pending' },
+  { key: 'picked', label: 'Picked', apiTab: 'picked' },
+  { key: 'completed', label: 'Completed', apiTab: 'completed' },
+  { key: 'cancelled', label: 'Cancelled', apiTab: 'cancelled' },
 ];
 
 const TAB_W = TAB_INNER / TABS.length;
 
 const STAGE = {
-  pickup: { color: S.ORANGE, fill: S.ORANGE, bg: S.ORANGE_BG, label: 'Pickup pending', icon: I.clock },
-  lab: { color: S.BLUE, fill: S.BLUE, bg: S.BLUE_BG, label: 'In lab', icon: I.fertilizer },
-  ready: { color: S.GREEN_DARK, fill: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Report ready', icon: I.doc },
+  pending: { color: S.ORANGE, fill: S.ORANGE, bg: S.ORANGE_BG, label: 'Pending', icon: I.clock },
+  picked: { color: S.BLUE, fill: S.BLUE, bg: S.BLUE_BG, label: 'Picked', icon: I.fertilizer },
+  completed: { color: S.GREEN_DARK, fill: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Completed', icon: I.doc },
   cancelled: { color: S.RED, fill: S.RED, bg: S.RED_BG, label: 'Cancelled', icon: I.close },
 };
 
@@ -55,9 +55,10 @@ const PKG = {
 
 const EMPTY_COPY = {
   all: { title: 'Koi order nahi', sub: 'Neeche se soil test book karein' },
-  pickup: { title: 'Pickup pending nahi', sub: 'Pickup ke baad yahan dikhega' },
-  lab: { title: 'Lab sample nahi', sub: 'Testing ke dauran dikhega' },
-  ready: { title: 'Report ready nahi', sub: 'Report banne par dikhega' },
+  pending: { title: 'Pending order nahi', sub: 'Naye order yahan dikhenge' },
+  picked: { title: 'Picked order nahi', sub: 'Pickup ke baad yahan dikhega' },
+  completed: { title: 'Completed order nahi', sub: 'Report ready hone par dikhega' },
+  cancelled: { title: 'Cancelled order nahi', sub: 'Cancel order yahan dikhega' },
 };
 
 const getStage = (o) => {
@@ -65,9 +66,16 @@ const getStage = (o) => {
   const rs = String(o?.report_status || '').toLowerCase();
   const hasReport = Array.isArray(o?.report) && o.report.length > 0;
   if (stt === 'cancelled' || o?.cancelled_date) return 'cancelled';
-  if (hasReport || stt === 'ready' || stt === 'completed' || rs.includes('generated') || rs.includes('ready')) return 'ready';
-  if (['in_lab', 'lab', 'processing', 'sample_collected', 'picked_up', 'in_progress'].includes(stt) || (o?.picked_date && !hasReport)) return 'lab';
-  return 'pickup';
+  if (hasReport || stt === 'ready' || stt === 'completed' || rs.includes('generated') || rs.includes('ready')) {
+    return 'completed';
+  }
+  if (
+    ['picked_up', 'picked', 'sample_collected', 'in_lab', 'lab', 'processing', 'in_progress'].includes(stt)
+    || (o?.picked_date && !hasReport)
+  ) {
+    return 'picked';
+  }
+  return 'pending';
 };
 
 const getPkg = (o) => {
@@ -90,6 +98,11 @@ const payLbl = (m) => {
   return titleCase(s.replace(/_/g, ' ')) || '-';
 };
 
+const payIconUri = (item) => {
+  const uri = item?.paymentMethod?.icon;
+  return uri && String(uri).trim() ? String(uri).trim() : '';
+};
+
 const CARD_ICO = {
   cal: require('./assets/cal.png'),
   money: require('./assets/money.png'),
@@ -101,9 +114,13 @@ const CARD_ICO = {
 
 const SWAP = { duration: 180, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'easeInEaseOut' } };
 
-const FootItem = ({ icon, text, textColor }) => (
+const FootItem = ({ icon, iconUri, text, textColor }) => (
   <View style={st.footItem}>
-    <Image source={icon} style={st.footIco} resizeMode="contain" />
+    {iconUri ? (
+      <Image source={{ uri: iconUri }} style={st.footIco} resizeMode="contain" />
+    ) : (
+      <Image source={icon} style={st.footIco} resizeMode="contain" />
+    )}
     <Text style={[st.footTxt, textColor && { color: textColor }]} numberOfLines={1}>{text}</Text>
   </View>
 );
@@ -191,10 +208,11 @@ class SoilOrders extends Component {
   renderCard = ({ item }) => {
     const pkg = getPkg(item);
     const stage = getStage(item);
-    const sm = STAGE[stage] || STAGE.pickup;
+    const sm = STAGE[stage] || STAGE.pending;
     const pickup = item?.sample_pickup_date ? moment(item.sample_pickup_date).format('DD MMM') : '-';
     const report = item?.report_status || sm.label;
     const pay = payLbl(item?.payment_mode);
+    const payIcon = payIconUri(item);
     const unpaid = String(item?.payment_status || '').toLowerCase() !== 'paid';
     const hasPdf = Array.isArray(item?.report) && item.report.length > 0;
     const pdfCount = hasPdf ? item.report.length : 0;
@@ -230,7 +248,7 @@ class SoilOrders extends Component {
           <View style={st.spacer} />
           <FootItem icon={CARD_ICO.cal} text={pickup} />
           <Text style={st.metaDot}>·</Text>
-          <FootItem icon={CARD_ICO.pay} text={pay} />
+          <FootItem icon={CARD_ICO.pay} iconUri={payIcon || undefined} text={pay} />
           {unpaid && (
             <>
               <Text style={st.metaDot}>·</Text>
@@ -303,7 +321,7 @@ class SoilOrders extends Component {
           )}
         </View>
 
-        <View style={[st.footerSafe, { paddingBottom: FOOTER_BOTTOM }]}>
+        <View style={[st.footerSafe, { paddingBottom: screenFooterPadding() }]}>
           <View style={st.footer}>
             <TouchableOpacity style={st.bookBtn} activeOpacity={0.88} onPress={this.onBook}>
               <Image source={require('./assets/soil.png')} style={st.bookIco} />
@@ -339,8 +357,8 @@ const st = StyleSheet.create({
     backgroundColor: '#FFF', borderRadius: 9,
     shadowColor: S.P, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 2,
   },
-  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9 },
-  tabLbl: { fontSize: 12, fontWeight: '500', color: S.P_DARK, opacity: 0.65 },
+  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 2 },
+  tabLbl: { fontSize: 10.5, fontWeight: '500', color: S.P_DARK, opacity: 0.65 },
   tabLblOn: { color: S.P, fontWeight: '600', opacity: 1 },
 
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },

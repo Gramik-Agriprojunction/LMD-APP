@@ -1,11 +1,14 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import PushNotification from 'react-native-push-notification';
 import PushNotificationIOS from '@react-native-community/push-notification-ios';
+import {
+  navigateFromNotification,
+  flushPendingNotificationNavigation,
+  parseNotificationPayload,
+} from './notificationNavigation';
 
 const DEFAULT_CHANNEL_ID = 'lmd-default';
 
-// Lazy-load Firebase so a missing GoogleService-Info.plist / google-services.json
-// only disables FCM token fetching — it doesn't crash app boot.
 let _messaging = null;
 let _firebaseTried = false;
 let _firebaseAvailable = false;
@@ -16,7 +19,6 @@ const getMessaging = () => {
   try {
     // eslint-disable-next-line global-require
     const mod = require('@react-native-firebase/messaging').default;
-    // Touching mod() throws if no FirebaseApp is configured.
     mod();
     _messaging = mod;
     _firebaseAvailable = true;
@@ -48,7 +50,6 @@ const requestIOSAuth = async () => {
   if (Platform.OS !== 'ios') return true;
   const messaging = getMessaging();
   if (!messaging) {
-    // Fall back to RNCPushNotificationIOS permission prompt
     try {
       await PushNotificationIOS.requestPermissions();
       return true;
@@ -68,14 +69,19 @@ const requestIOSAuth = async () => {
   }
 };
 
+const handleNotificationOpen = (raw) => {
+  try {
+    navigateFromNotification(raw);
+  } catch (e) {
+    console.log('[push] navigateFromNotification error', e?.message || e);
+  }
+};
+
 const configurePushNotification = () => {
   if (configured) return;
   configured = true;
 
   PushNotification.configure({
-    // On Android this is the FCM token (when google-services.json is configured).
-    // On iOS this is the APNs token (HEX) from RNCPushNotificationIOS.
-    // We use this as a fallback when @react-native-firebase isn't configured.
     onRegister: (token) => {
       console.log('[push] onRegister', token);
       if (!global.fcmToken && token?.token) {
@@ -87,6 +93,10 @@ const configurePushNotification = () => {
 
     onNotification: (notification) => {
       console.log('[push] onNotification', notification);
+      if (notification?.userInteraction) {
+        const data = notification?.data || notification?.userInfo || {};
+        handleNotificationOpen(data);
+      }
       if (Platform.OS === 'ios') {
         notification.finish(PushNotificationIOS.FetchResult.NoData);
       }
@@ -115,10 +125,26 @@ const configurePushNotification = () => {
   }
 };
 
+const showForegroundNotification = (remoteMessage) => {
+  const n = remoteMessage?.notification;
+  const data = remoteMessage?.data || {};
+  const title = n?.title || data.title || 'LMD';
+  const message = n?.body || data.message || data.body || '';
+
+  PushNotification.localNotification({
+    channelId: DEFAULT_CHANNEL_ID,
+    title,
+    message,
+    playSound: true,
+    soundName: 'default',
+    userInfo: data,
+    data,
+  });
+};
+
 const fetchFcmToken = async () => {
   const messaging = getMessaging();
   if (!messaging) {
-    // Firebase not configured — token will come from RNPN's onRegister callback (APNs/FCM).
     return global.fcmToken || '';
   }
   try {
@@ -151,25 +177,28 @@ const subscribeToMessages = () => {
 
   const unsubForeground = messaging().onMessage(async (remoteMessage) => {
     console.log('[push] FCM foreground message', remoteMessage);
-    const n = remoteMessage?.notification;
-    if (!n) return;
-    PushNotification.localNotification({
-      channelId: DEFAULT_CHANNEL_ID,
-      title: n.title,
-      message: n.body || '',
-      playSound: true,
-      soundName: 'default',
-      userInfo: remoteMessage?.data || {},
-    });
+    showForegroundNotification(remoteMessage);
   });
 
-  try {
-    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-      console.log('[push] FCM background message', remoteMessage);
-    });
-  } catch (e) {}
+  const unsubOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
+    console.log('[push] FCM opened from background', remoteMessage);
+    handleNotificationOpen(remoteMessage);
+  });
 
-  return unsubForeground;
+  messaging()
+    .getInitialNotification()
+    .then((remoteMessage) => {
+      if (remoteMessage) {
+        console.log('[push] FCM opened from quit', remoteMessage);
+        handleNotificationOpen(remoteMessage);
+      }
+    })
+    .catch((e) => console.log('[push] getInitialNotification error', e?.message || e));
+
+  return () => {
+    unsubForeground();
+    unsubOpened();
+  };
 };
 
 export const initPushNotifications = async () => {
@@ -194,3 +223,5 @@ export const getFcmToken = () => global.fcmToken || '';
 export const refreshFcmToken = fetchFcmToken;
 
 export const isFirebaseAvailable = () => _firebaseAvailable;
+
+export { flushPendingNotificationNavigation, parseNotificationPayload };

@@ -8,7 +8,8 @@ import {
 import BottomSheet from '../components/BottomSheet';
 import DatePicker from 'react-native-date-picker';
 import { WebView } from 'react-native-webview';
-import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { screenFooterPadding, overlayBottomPadding } from '../utils/safeAreaInsets';
 import * as Animatable from 'react-native-animatable';
 import moment from 'moment';
 import Toast from 'react-native-simple-toast';
@@ -35,12 +36,10 @@ const EASE = {
 
 const W = Dimensions.get('window').width;
 const H = Dimensions.get('window').height;
-const SAFE_BOTTOM = initialWindowMetrics?.insets?.bottom ?? 0;
 const PAD = 10;
 const FOOTER_PAD = 20;
 const FOOTER_ROW_H = 48;
 const FOOTER_H = 52;
-const FOOTER_BOTTOM = Math.max(Math.round((initialWindowMetrics?.insets?.bottom || 0) * 0.35), 6);
 const PAY_GREEN = '#26BD26';
 const HIT = { top: 10, bottom: 10, left: 10, right: 10 };
 const BANNER_RATIO = 665 / 1024;
@@ -368,20 +367,29 @@ class CreateSoilOrder extends Component {
     Animated.spring(this.totalAnim, { toValue: target, friction: 8, tension: 40, useNativeDriver: false }).start();
   };
 
-  prefillLocation = async ({ silent = false } = {}) => {
+  prefillLocation = async ({ silent = false, useCache = true } = {}) => {
     if (this.state.locating) return;
     this.setState({ locating: true });
     try {
-      const { lat, lng, pincode, error } = await getLocationPincode();
+      const { lat, lng, pincode, error } = await getLocationPincode({
+        useCache,
+        maxWaitMs: silent ? 12000 : 15000,
+      });
       if (error === 'permission_denied') {
-        this.setState({ locating: false });
+        if (!silent) Toast.show('Location permission allow karein', Toast.SHORT);
         return;
       }
-      this.setState({ lat, lng, pincode: pincode || this.state.pincode, locating: false }, () => {
+      if (error === 'timeout' || error === 'location_unavailable') {
+        if (!silent) Toast.show('PIN manually daalein', Toast.SHORT);
+        return;
+      }
+      this.setState({ lat, lng, pincode: pincode || this.state.pincode }, () => {
         if (pincode?.length === 6) this.fetchPostOffice(pincode, lat, lng);
         else if (!silent && !pincode) Toast.show('PIN manually daalein', Toast.SHORT);
       });
     } catch (e) {
+      if (!silent) Toast.show('Location load nahi ho payi', Toast.SHORT);
+    } finally {
       this.setState({ locating: false });
     }
   };
@@ -1018,7 +1026,7 @@ class CreateSoilOrder extends Component {
             {locating || fetchingPO ? (
               <View style={$.autoBtn}><ActivityIndicator color="#FFF" size="small" /></View>
             ) : (
-              <TouchableOpacity onPress={() => this.prefillLocation()} hitSlop={HIT} style={$.autoBtn} activeOpacity={0.85}>
+              <TouchableOpacity onPress={() => this.prefillLocation({ useCache: false })} hitSlop={HIT} style={$.autoBtn} activeOpacity={0.85}>
                 <Image source={I.gps} style={$.autoBtnIco} />
                 <Text style={$.autoBtnTxt}>Auto</Text>
               </TouchableOpacity>
@@ -1289,8 +1297,8 @@ class CreateSoilOrder extends Component {
     if (!calMonth) return null;
     const isTime = calStep === 'time';
     const rows = calGridRows(calMonth);
-    const dateSheetH = 210 + rows * (CAL_CELL_H + CAL_GAP) + 56 + SAFE_BOTTOM;
-    const timeSheetH = 130 + 48 + CAL_WHEEL_H + 120 + 52 + 36 + SAFE_BOTTOM;
+    const dateSheetH = 210 + rows * (CAL_CELL_H + CAL_GAP) + 56 + overlayBottomPadding();
+    const timeSheetH = 130 + 48 + CAL_WHEEL_H + 120 + 52 + 36 + overlayBottomPadding();
     const sheetMax = isTime
       ? Math.max(timeSheetH, Math.round(H * 0.72))
       : Math.max(Math.round(H * 0.62), Math.min(dateSheetH, Math.round(H * 0.82)));
@@ -1304,7 +1312,7 @@ class CreateSoilOrder extends Component {
         enableContentPanningGesture={!isTime}
         onSheetClose={this.onCalendarClosed}
       >
-        <View style={[$.calSheetInner, { paddingBottom: (isTime ? 36 : 24) + SAFE_BOTTOM }]}>
+        <View style={[$.calSheetInner, { paddingBottom: (isTime ? 36 : 24) + overlayBottomPadding() }]}>
           <View style={$.calTopBand}>
             {isTime ? (
               <TouchableOpacity onPress={this.backToCalDate} style={$.calBackBtn} hitSlop={HIT}>
@@ -1615,7 +1623,7 @@ class CreateSoilOrder extends Component {
     const btnLabel = cod ? 'Order Karien' : `Pay ₹${total}`;
 
     return (
-      <View style={[$.footerWrap, { paddingBottom: FOOTER_BOTTOM }]}>
+      <View style={[$.footerWrap, { paddingBottom: screenFooterPadding() }]}>
         <View style={$.footerRow}>
           <TouchableOpacity style={$.payViaBox} activeOpacity={0.85} onPress={this.scrollToPayment}>
             <View style={$.payViaRow}>

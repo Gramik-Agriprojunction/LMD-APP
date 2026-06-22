@@ -11,6 +11,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { overlayBottomPadding } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import BottomSheet from '../components/BottomSheet';
@@ -25,6 +26,8 @@ const resetAction = StackActions.reset({
   index: 0,                       
   actions: [NavigationActions.navigate({ routeName: 'Login'})],
 });
+
+const SAFE_BOTTOM = overlayBottomPadding();
 
 const THEME = {
   green: '#5D3FD3',
@@ -64,6 +67,10 @@ class Profile extends Component {
     // this.props?.navigation?.navigate('CashSettlement');
     this.props?.navigation?.navigate('SettlementList');
 
+  };
+
+  goToPenaltyOrders = () => {
+    this.props?.navigation?.navigate('PenaltyOrders');
   };
 
   onRefresh = () => {
@@ -202,16 +209,26 @@ class Profile extends Component {
           }
         >
 
-          {/* Earnings & Penalties */}
-          <View style={styles.earningsRow}>
-            <View style={[styles.earningCard, { backgroundColor: '#5D3FD3', marginRight: 5 }]}>
-              <Text style={styles.earningLabel}>My Earnings</Text>
-              <Text style={styles.earningValue}>{`₹ ${this.toNum(profile?.earnings?.this_month).toLocaleString('en-IN')}`}</Text>
+          {/* Earnings & Penalties — same layout as LMDDashboard */}
+          <View style={styles.earnRow}>
+            <View style={[styles.earnCard, { backgroundColor: '#16A34A' }]}>
+              <Text style={styles.earnLbl}>My Earnings</Text>
+              <Text style={styles.earnVal}>{`₹ ${this.toNum(profile?.earnings?.this_month).toLocaleString('en-IN')}`}</Text>
             </View>
-            <View style={[styles.earningCard, { backgroundColor: '#D64545', marginLeft: 5 }]}>
-              <Text style={styles.earningLabel}>Penalties</Text>
-              <Text style={styles.earningValue}>{`₹ ${this.toNum(profile?.penalties?.this_month).toLocaleString('en-IN')}`}</Text>
-            </View>
+            <View style={{ width: 8 }} />
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={this.goToPenaltyOrders}
+              style={[styles.earnCard, styles.penCard, { backgroundColor: '#EF4444' }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.earnLbl}>Penalties</Text>
+                <Text style={styles.earnVal}>{`₹ ${this.toNum(profile?.penalties?.this_month).toLocaleString('en-IN')}`}</Text>
+              </View>
+              <View style={styles.penArrow}>
+                <Image source={require('./assets/arrow.png')} style={styles.penArrowIco} />
+              </View>
+            </TouchableOpacity>
           </View>
 
           {/* ✅ Live Orders (exact same structure as LMDDashboard) */}
@@ -257,7 +274,7 @@ class Profile extends Component {
             activeOpacity={0.92}
             onPress={() => this.props?.navigation?.navigate('SoilOrders')}
           >
-            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/planting.png')} />
+            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/soil.png')} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionTitle}>Soil Testing</Text>
               <Text style={styles.actionSub}>Mitti jaanch orders dekhein aur track karein</Text>
@@ -297,11 +314,12 @@ class Profile extends Component {
         {this.state.show_login ? (
           <BottomSheet
             visible={this.state.show_login}
+            dynamicSize
             onSheetClose={() => this.setState({ show_login: false })}
             enablePanDownToClose={true}
             onChange={(status) => status === -1 ? this.setState({ show_login: false }) : null}
           >
-            <View style={{ padding: 24, paddingTop: 8, alignItems: 'center' }}>
+            <View style={{ padding: 24, paddingTop: 8, paddingBottom: 16 + SAFE_BOTTOM, alignItems: 'center' }}>
               <Image style={{ width: 50, height: 50, resizeMode: 'contain', marginBottom: 16 }} source={require('./assets/exit.png')} />
               <Text style={{ fontSize: 20, fontWeight: '800', color: '#E35335', marginBottom: 8 }}>Logout</Text>
               <Text style={{ fontSize: 14, fontWeight: '400', color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Kya aap waqai logout karna chahte hain?</Text>
@@ -342,10 +360,31 @@ const styles = StyleSheet.create({
 
   container: { padding:8, paddingBottom: 20 },
 
-  earningsRow: { flexDirection: 'row', marginBottom: 12 },
-  earningCard: { flex: 1, borderRadius: 10, paddingVertical: 15, paddingHorizontal: 12, alignItems: 'center' },
-  earningLabel: { color: '#fff', fontSize: 11, fontWeight: '600', marginBottom: 6 },
-  earningValue: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  earnRow: { flexDirection: 'row', marginBottom: 12 },
+  earnCard: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+  },
+  earnLbl: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '500' },
+  earnVal: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 3 },
+  penCard: { flexDirection: 'row', alignItems: 'center' },
+  penArrow: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  penArrowIco: { width: 9, height: 9, resizeMode: 'contain', tintColor: '#EF4444' },
 
   profileCard: {
     backgroundColor: '#A7C7E7',

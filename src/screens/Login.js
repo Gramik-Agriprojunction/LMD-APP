@@ -4,6 +4,7 @@ import {
   TouchableOpacity, TextInput, Keyboard, ActivityIndicator, Platform, Animated, Image, ScrollView, Easing, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Compat';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -697,7 +698,7 @@ class Login extends React.Component {
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
-        <SafeAreaView edges={['bottom']} style={{ flex: 0, backgroundColor: BG }}/>
+        <SafeAreaView edges={safeBottomEdges()} style={{ flex: 0, backgroundColor: BG }}/>
       </View>
     );
   }

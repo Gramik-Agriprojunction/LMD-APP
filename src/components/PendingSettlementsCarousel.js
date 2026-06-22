@@ -1,15 +1,24 @@
 import React, { Component } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Animated, Image,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Animated, Image, Easing,
 } from 'react-native';
+import { getStatus } from '../utils/statusColors';
 
 const { width: SW } = Dimensions.get('window');
-const PAD = 8;
-const CARD_W = SW - PAD * 2;
-const SLIDE_MS = 3800;
+const OUTER_PAD = 8;
+const CARD_W = SW - OUTER_PAD * 2;
+const SLIDE_MS = 4500;
 const GREEN = '#16A34A';
-const SECTION_ICON = 24;
 const GREEN_DARK = '#15803D';
+const GREEN_BG = '#F0FDF4';
+const SECTION_ICON = 22;
+
+const maskMobile = (p) => {
+  if (!p) return '';
+  const s = String(p).replace(/\s+/g, '');
+  if (s.length < 6) return s;
+  return `${s.slice(0, 2)}****${s.slice(-2)}`;
+};
 
 export default class PendingSettlementsCarousel extends Component {
   constructor(props) {
@@ -38,6 +47,7 @@ export default class PendingSettlementsCarousel extends Component {
 
   componentWillUnmount() {
     this.stopAutoSlide();
+    this.arrowX.stopAnimation();
   }
 
   getItems = () => this.props.items || [];
@@ -62,13 +72,22 @@ export default class PendingSettlementsCarousel extends Component {
   };
 
   startArrow = () => {
-    const loop = () => {
+    Animated.loop(
       Animated.sequence([
-        Animated.timing(this.arrowX, { toValue: 5, duration: 700, useNativeDriver: true }),
-        Animated.timing(this.arrowX, { toValue: 0, duration: 700, useNativeDriver: true }),
-      ]).start(() => loop());
-    };
-    loop();
+        Animated.timing(this.arrowX, {
+          toValue: 6,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(this.arrowX, {
+          toValue: 0,
+          duration: 650,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
   };
 
   startAutoSlide = () => {
@@ -137,39 +156,95 @@ export default class PendingSettlementsCarousel extends Component {
     return s.endsWith('.00') ? s.replace('.00', '') : s;
   };
 
-  onPressItem = () => {
+  resolveItem = (item) => {
+    const address = String(item?.shipping_address || '').trim();
+    const dsName = String(item?.dark_store?.name || '').trim();
+    const dsCity = String(item?.dark_store?.city || '').trim();
+    const parts = address.split(',').map((s) => s.trim()).filter(Boolean);
+    const shortLoc = [parts[parts.length - 2] || parts[parts.length - 1], dsName || dsCity]
+      .filter(Boolean)
+      .join(' · ');
+
+    return {
+      code: String(item?.order_code || item?.order_id || '—'),
+      farmer: String(item?.farmer_name || item?.farmer?.name || 'Farmer').trim(),
+      mobile: maskMobile(item?.farmer_mobile || item?.farmer?.mobile),
+      shortLoc,
+      amount: this.money(item?.amount ?? item?.collected_amount ?? item?.deposited_amount ?? item?.order_amount),
+      payMode: String(item?.payment_mode || '').trim(),
+      payStatus: String(item?.payment_status || '').trim(),
+      status: String(item?.status || '').trim(),
+    };
+  };
+
+  computedTotal = () => {
+    const { totalAmount } = this.props;
+    const n = Number(totalAmount);
+    if (Number.isFinite(n) && n > 0) return this.money(n);
+    const sum = this.getItems().reduce((acc, it) => acc + (Number(it?.amount) || 0), 0);
+    return this.money(sum);
+  };
+
+  onSettle = () => {
     const { onNavigate } = this.props;
     if (onNavigate) onNavigate();
   };
 
+  renderChip = (label, tone) => {
+    if (!label) return null;
+    const tones = {
+      warn: { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA' },
+      ok: { bg: '#ECFDF5', text: GREEN_DARK, border: '#A7F3D0' },
+      muted: { bg: '#F1F5F9', text: '#64748B', border: '#E2E8F0' },
+    };
+    const t = tones[tone] || tones.muted;
+    return (
+      <View style={[$.chip, { backgroundColor: t.bg, borderColor: t.border }]}>
+        <Text style={[$.chipT, { color: t.text }]}>{label}</Text>
+      </View>
+    );
+  };
+
   renderCard = (item, index) => {
-    const farmer = item?.farmer || {};
-    const amount = this.money(item?.collected_amount || item?.deposite_amount || item?.order_amount);
-    const slot = String(item?.slot || '').trim();
+    const d = this.resolveItem(item);
+    const orderSt = getStatus(d.status);
+    const unpaid = d.payStatus.toLowerCase() !== 'paid';
 
     return (
       <View key={`${item?.order_id || item?.id || index}-${index}`} style={[$.slide, { width: CARD_W }]}>
-        <TouchableOpacity style={$.card} activeOpacity={0.92} onPress={this.onPressItem}>
-          <View style={$.cardTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={$.code}>#{item?.order_code || item?.order_id || '—'}</Text>
-              <Text style={$.farmer} numberOfLines={1}>{farmer?.name || 'Farmer'}</Text>
-              {slot ? <Text style={$.slot} numberOfLines={1}>{slot}</Text> : null}
+        <View style={$.card}>
+          <View style={$.cardBody}>
+            <View style={$.topRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={$.code} numberOfLines={1}>{d.code}</Text>
+                <Text style={$.farmerLine} numberOfLines={1}>
+                  {d.farmer}{d.mobile ? ` · ${d.mobile}` : ''}
+                </Text>
+                {!!d.shortLoc && (
+                  <Text style={$.locLine} numberOfLines={1}>{d.shortLoc}</Text>
+                )}
+              </View>
+              <Text style={$.amtVal}>₹{d.amount}</Text>
             </View>
-            <View style={$.amtBox}>
-              <Text style={$.amtLbl}>Jama</Text>
-              <Text style={$.amtVal}>₹ {amount}</Text>
+
+            <View style={$.chipRow}>
+              {this.renderChip(d.payMode, 'muted')}
+              {this.renderChip(unpaid ? 'Unpaid' : 'Paid', unpaid ? 'warn' : 'ok')}
+              {this.renderChip(orderSt.label, 'ok')}
             </View>
           </View>
 
-          <TouchableOpacity style={$.btn} activeOpacity={0.88} onPress={this.onPressItem}>
-            <Text style={$.btnT}>Settle Karien</Text>
+          <TouchableOpacity style={$.settleBtn} activeOpacity={0.88} onPress={this.onSettle}>
+            <View style={$.settleBadge}>
+              <Text style={$.settleBadgeT}>₹</Text>
+            </View>
+            <Text style={$.settleBtnT}>Abhi settle karien</Text>
             <Animated.Image
               source={require('../screens/assets/arrow.png')}
-              style={[$.btnArrow, { transform: [{ translateX: this.arrowX }] }]}
+              style={[$.settleArrow, { transform: [{ translateX: this.arrowX }] }]}
             />
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -179,9 +254,9 @@ export default class PendingSettlementsCarousel extends Component {
     if (!items.length) return null;
 
     const loopItems = this.getLoopItems();
-    const { totalAmount, totalCount } = this.props;
+    const { totalCount } = this.props;
     const count = totalCount ?? items.length;
-    const total = this.money(totalAmount);
+    const total = this.computedTotal();
 
     return (
       <View style={$.wrap}>
@@ -196,6 +271,7 @@ export default class PendingSettlementsCarousel extends Component {
             </View>
           </View>
           <View style={$.pill}>
+            <View style={$.pillDot} />
             <Text style={$.pillT}>Pending</Text>
           </View>
         </View>
@@ -233,8 +309,10 @@ const $ = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 12,
     marginBottom: 10,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E8ECF1',
     elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -244,56 +322,81 @@ const $ = StyleSheet.create({
   },
   head: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    marginBottom: 8,
     gap: 8,
   },
   headLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   headIcoBox: { width: SECTION_ICON, height: SECTION_ICON, alignItems: 'center', justifyContent: 'center' },
   headIco: { width: SECTION_ICON, height: SECTION_ICON },
   title: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
-  sub: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 2 },
+  sub: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 1 },
   pill: {
-    backgroundColor: '#DCFCE7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: GREEN_BG,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#86EFAC',
-  },
-  pillT: { fontSize: 10, fontWeight: '700', color: GREEN_DARK },
-
-  slide: { paddingHorizontal: 0 },
-  card: {
-    marginHorizontal: 12,
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: '#BBF7D0',
-    padding: 12,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
-  code: { fontSize: 12, fontWeight: '700', color: GREEN_DARK },
-  farmer: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginTop: 2 },
-  slot: { fontSize: 10, fontWeight: '500', color: '#64748B', marginTop: 2 },
-  amtBox: { alignItems: 'flex-end', marginLeft: 8 },
-  amtLbl: { fontSize: 10, fontWeight: '500', color: '#64748B' },
-  amtVal: { fontSize: 18, fontWeight: '800', color: GREEN, marginTop: 1 },
+  pillDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: GREEN },
+  pillT: { fontSize: 10, fontWeight: '700', color: GREEN_DARK },
 
-  btn: {
+  slide: { paddingHorizontal: 10 },
+  card: {
+    backgroundColor: GREEN_BG,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    overflow: 'hidden',
+  },
+  cardBody: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8 },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  code: { fontSize: 11, fontWeight: '700', color: GREEN_DARK, letterSpacing: 0.2 },
+  farmerLine: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginTop: 3 },
+  locLine: { fontSize: 10.5, fontWeight: '400', color: '#64748B', marginTop: 2 },
+  amtVal: { fontSize: 18, fontWeight: '800', color: GREEN, letterSpacing: -0.3 },
+
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 },
+  chip: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  chipT: { fontSize: 9.5, fontWeight: '600' },
+
+  settleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: GREEN,
-    borderRadius: 10,
     paddingVertical: 11,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
+    marginHorizontal: 8,
+    marginBottom: 8,
+    borderRadius: 10,
   },
-  btnT: { fontSize: 13, fontWeight: '700', color: '#FFF', letterSpacing: 0.2 },
-  btnArrow: { width: 12, height: 12, tintColor: '#FFF', marginLeft: 8, resizeMode: 'contain' },
+  settleBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  settleBadgeT: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  settleBtnT: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '700' },
+  settleArrow: { width: 12, height: 12, tintColor: '#FFF', resizeMode: 'contain', marginLeft: 4 },
 
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10, gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1FAE5' },
-  dotOn: { width: 16, backgroundColor: GREEN },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8, gap: 5 },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#D1FAE5' },
+  dotOn: { width: 14, backgroundColor: GREEN },
 });

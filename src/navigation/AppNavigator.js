@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { navigationRef, flushPendingNotificationNavigation } from '../utils/notificationNavigation';
 
 import Splash from '../screens/Splash';
 import Login from '../screens/Login';
@@ -14,6 +15,7 @@ import Profile from '../screens/Profile';
 import SettlementList from '../screens/SettlementList';
 import CashSettlement from '../screens/CashSettlement';
 import SettlementHistory from '../screens/SettlementHistory';
+import SettlementDetail from '../screens/SettlementDetail';
 import Earnings from '../screens/Earnings';
 import Notifications from '../screens/Notifications';
 import OrderOtpVerify from '../screens/OrderOtpVerify';
@@ -30,7 +32,10 @@ const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={flushPendingNotificationNavigation}
+    >
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{
@@ -54,6 +59,11 @@ export default function AppNavigator() {
         <Stack.Screen name="SettlementList" component={SettlementList} />
         <Stack.Screen name="CashSettlement" component={CashSettlement} />
         <Stack.Screen name="SettlementHistory" component={SettlementHistory} />
+        <Stack.Screen
+          name="SettlementDetail"
+          component={SettlementDetail}
+          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
+        />
         <Stack.Screen name="Earnings" component={Earnings} />
         <Stack.Screen name="Notifications" component={Notifications} />
         <Stack.Screen name="OrderOtpVerify" component={OrderOtpVerify} />

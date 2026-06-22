@@ -4,11 +4,19 @@ import {
   Image, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
-import { withV4Navigation } from '../utils/v4Compat';
+import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
+import { invalidateOrderRelated } from '../utils/dataCache';
+import {
+  prefetchVerifyLocation,
+  getCachedCoordsForApi,
+  coordsForStatusApi,
+} from '../utils/locationHelper';
 import ScreenHeader from '../components/ScreenHeader';
+import VerifySuccessCheck from '../components/VerifySuccessCheck';
 import { STATUS } from '../utils/statusColors';
 
 // Bulk pickup → use the canonical PICKUP status colour so the screen reads
@@ -26,12 +34,6 @@ class BatchPickupOtp extends Component {
     this.formFade = new Animated.Value(0);
     this.formY = new Animated.Value(30);
     this.arrowX = new Animated.Value(0);
-    this.checkScale = new Animated.Value(0);
-    this.checkOpacity = new Animated.Value(0);
-    this.ringScale = new Animated.Value(0.5);
-    this.ringOpacity = new Animated.Value(0);
-    this.ring2Scale = new Animated.Value(0.5);
-    this.ring2Opacity = new Animated.Value(0);
   }
 
   getOrderIds = () => {
@@ -72,7 +74,49 @@ class BatchPickupOtp extends Component {
       ]).start(() => arrowLoop());
     };
     arrowLoop();
+    this.startLocationPrefetch();
   }
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
+  };
+
+  getReadyCoords = () => {
+    if (this._verifyCoords?.lat != null && this._verifyCoords?.lng != null) {
+      return this._verifyCoords;
+    }
+    const cached = getCachedCoordsForApi();
+    if (cached.lat != null && cached.lng != null) {
+      this._verifyCoords = cached;
+      return cached;
+    }
+    return { lat: null, lng: null };
+  };
+
+  submitStatusUpdate = (orderIds, otp, coords = {}) => {
+    const { lat, long } = coordsForStatusApi(coords);
+    const body = {
+      status: 'pickup',
+      order_id: orderIds.map((id) => String(id)),
+      otp: String(otp),
+      type: '',
+      reason: '',
+      lat,
+      long,
+    };
+
+    return fetch(constants.updateStatus, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  };
 
   componentWillUnmount() {
     this._unmounted = true;
@@ -88,19 +132,20 @@ class BatchPickupOtp extends Component {
 
     this.setState({ isLoading: true, otp });
 
-    fetch(constants.bulkPickupOtpVerify, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + global.token,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ orderIds, otp }),
-    })
-      .then(r => r.json())
-      .then(json => {
+    const coords = this.getReadyCoords();
+    const apiCoords = coordsForStatusApi(coords);
+    console.log('[BatchPickup] calling Update Status API', {
+      orderIds,
+      lat: apiCoords.lat,
+      long: apiCoords.long,
+    });
+
+    this.submitStatusUpdate(orderIds, otp, coords)
+      .then((r) => r.json())
+      .then((json) => {
         if (this._unmounted) return;
         if (json?.status || json?.success) {
+          invalidateOrderRelated();
           if (json?.message) Toast.show(String(json.message), Toast.SHORT);
           this.showVerifiedAnimation();
         } else {
@@ -117,34 +162,12 @@ class BatchPickupOtp extends Component {
 
   showVerifiedAnimation = () => {
     this.setState({ verified: true }, () => {
-      Animated.sequence([
-        Animated.parallel([
-          Animated.spring(this.checkScale, { toValue: 1.15, friction: 3, tension: 80, useNativeDriver: true }),
-          Animated.timing(this.checkOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-        ]),
-        Animated.spring(this.checkScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
-      ]).start();
-
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(this.ringScale, { toValue: 2, duration: 800, useNativeDriver: true }),
-          Animated.timing(this.ringOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
-        ]).start();
-      }, 200);
-
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(this.ring2Scale, { toValue: 2.2, duration: 900, useNativeDriver: true }),
-          Animated.timing(this.ring2Opacity, { toValue: 0, duration: 900, useNativeDriver: true }),
-        ]).start();
-      }, 500);
-
       this._navTimer = setTimeout(() => {
         if (this._unmounted) return;
         const onDone = this.getOnDone();
         if (typeof onDone === 'function') onDone();
         this.props.navigation.goBack();
-      }, 1600);
+      }, 2200);
     });
   };
 
@@ -159,27 +182,32 @@ class BatchPickupOtp extends Component {
     return (
       <View style={s.root}>
         <StatusBar barStyle="light-content" backgroundColor={BG} />
+        <NavigationEvents onDidFocus={this.startLocationPrefetch} />
 
         <ScreenHeader bg={BG} title="Multiple Orders Pickup Karein" onBack={this.goBack} />
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {verified ? (
+            <View style={s.successLayer} pointerEvents="none">
+              <VerifySuccessCheck
+                visible
+                title="Pickup Ho Gaya!"
+                subtitle="Order status update ho raha hai..."
+                circleBg="#FFF"
+                tickColor={BG}
+                ringColor="rgba(255,255,255,0.85)"
+              />
+            </View>
+          ) : null}
 
-            {verified ? (
-              <View style={s.verifiedWrap}>
-                <View style={s.checkArea}>
-                  <Animated.View style={[s.ring, { opacity: this.ringOpacity.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] }), transform: [{ scale: this.ringScale }] }]} />
-                  <Animated.View style={[s.ring, { opacity: this.ring2Opacity.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }), transform: [{ scale: this.ring2Scale }] }]} />
-                  <Animated.View style={[s.checkCircle, { opacity: this.checkOpacity, transform: [{ scale: this.checkScale }] }]}>
-                    <Text style={s.checkMark}>✓</Text>
-                  </Animated.View>
-                </View>
-                <Animated.View style={{ opacity: this.checkOpacity, alignItems: 'center' }}>
-                  <Text style={s.verifiedTitle}>Pickup Ho Gaya!</Text>
-                  <Text style={s.verifiedSub}>Order status update ho raha hai...</Text>
-                </Animated.View>
-              </View>
-            ) : (
+          <ScrollView
+            contentContainerStyle={s.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            clipToPadding={false}
+          >
+
+            {!verified ? (
               <>
                 <Animated.View style={[s.titleWrap, { opacity: this.iconFade, transform: [{ translateY: this.titleY }] }]}>
                   <Text style={s.title}>OTP Daalein</Text>
@@ -252,12 +280,12 @@ class BatchPickupOtp extends Component {
                   )}
                 </Animated.View>
               </>
-            )}
+            ) : null}
 
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: BG }} />
+        <SafeAreaView edges={safeBottomEdges()} style={{ backgroundColor: BG }} />
       </View>
     );
   }
@@ -266,6 +294,7 @@ class BatchPickupOtp extends Component {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 },
+  successLayer: { overflow: 'visible', zIndex: 2 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#FFF' },
@@ -308,14 +337,6 @@ const s = StyleSheet.create({
   btn: { width: OTP_ROW_W, height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   btnT: { fontSize: 15, fontWeight: '800', color: BG, letterSpacing: 0.3 },
   btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
-
-  verifiedWrap: { alignItems: 'center', marginTop: 40, marginBottom: 20 },
-  checkArea: { width: 90, height: 90, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  ring: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: '#16A34A' },
-  checkCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center', shadowColor: '#16A34A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 3 },
-  checkMark: { fontSize: 38, fontWeight: '900', color: '#FFF' },
-  verifiedTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
-  verifiedSub: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
 });
 
 export default withV4Navigation(BatchPickupOtp);

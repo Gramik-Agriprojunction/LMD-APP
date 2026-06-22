@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { safeBottomEdges } from '../utils/safeAreaInsets';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
@@ -361,7 +362,7 @@ class RejectDelivery extends Component {
             iOS already lifts the button above the home indicator visually, so
             we skip the safe-area inset there. Android still respects gesture-bar
             inset via the SafeAreaView bottom edge. */}
-        <SafeAreaView edges={Platform.OS === 'ios' ? [] : ['bottom']} style={s.bottomWrap}>
+        <SafeAreaView edges={Platform.OS === 'ios' ? [] : safeBottomEdges()} style={s.bottomWrap}>
           <Animated.View style={{ opacity: this.ctaFade, transform: [{ translateY: this.ctaY }] }}>
             <TouchableOpacity
               disabled={!canConfirm}
