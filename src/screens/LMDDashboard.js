@@ -13,8 +13,19 @@ import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
 import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import { flushPendingNotificationNavigation } from '../utils/notificationNavigation';
+import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
+import NotificationBellButton from '../components/NotificationBellButton';
+import GroupOrdersFilterSheet from '../components/GroupOrdersFilterSheet';
+import OrderGroupHeader from '../components/OrderGroupHeader';
+import {
+  DEFAULT_GROUP_BY,
+  GROUP_FILTERS,
+  buildListRows,
+  homescreenUrl,
+  flattenFromApiGroups,
+} from '../utils/orderGrouping';
 
 const P = '#5D3FD3';
 const SECTION_ICON = 24;
@@ -49,25 +60,30 @@ const QUICK_ACTIONS = [
 class LMDDashboard extends Component {
   constructor() {
     super();
-    // Read cached dashboard data on mount → render instantly without shimmer.
-    const cached = cacheGet(KEYS.DASHBOARD);
+    const groupBy = DEFAULT_GROUP_BY;
+    const cached = cacheGet(this.dashboardCacheKey(groupBy));
     this.state = {
       loading: !cached,
       refreshing: false,
       data: cached || null,
-      notif: Number(cached?.notification_count || 0),
+      groupBy,
+      filterDraft: groupBy,
+      showFilterSheet: false,
     };
     this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
+    this.filterSheetRef = null;
   }
 
+  dashboardCacheKey = (groupBy) => `${KEYS.DASHBOARD}_${groupBy || ''}`;
+
   componentDidMount() {
-    // Subscribe to cache updates so this screen reflects mutations from other screens.
-    this.unsubscribe = cacheSubscribe(KEYS.DASHBOARD, (data) => {
+    prefetchSoilOrderPincode();
+    const { groupBy } = this.state;
+    this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(groupBy), (data) => {
       if (!data) return;
-      this.setState({ data, notif: Number(data.notification_count || 0) });
+      this.setState({ data });
     });
-    // Always refresh in background; UI shows cached data meanwhile.
-    this.load(cacheHas(KEYS.DASHBOARD));
+    this.load(cacheHas(this.dashboardCacheKey(groupBy)));
     flushPendingNotificationNavigation();
   }
 
@@ -79,23 +95,25 @@ class LMDDashboard extends Component {
 
   // silent=true → background refresh, no shimmer flicker
   load = (silent = false) => {
+    const groupBy = this.state.groupBy || DEFAULT_GROUP_BY;
+    const cacheKey = this.dashboardCacheKey(groupBy);
     if (!silent && !this.state.refreshing) this.setState({ loading: true });
-    fetch(constants.homescreen, {
+    fetch(homescreenUrl(constants.homescreen, groupBy), {
       headers: { 'X-localization': 'en', Authorization: 'Bearer ' + global.token }, method: 'GET',
     })
       .then(r => r.json())
       .then(j => {
         if (j.status) {
           const data = j.data || {};
+          cacheSet(cacheKey, data);
           cacheSet(KEYS.DASHBOARD, data);
-          // Pre-warm any product/farmer images so cards render instantly.
           const urls = [];
-          (data?.today_deliveries || []).forEach((o) => {
+          flattenFromApiGroups(data?.today_deliveries || []).forEach((o) => {
             if (typeof o?.farmer_data?.image === 'string') urls.push(o.farmer_data.image);
             (o?.order_items || []).forEach((it) => { if (typeof it?.image === 'string') urls.push(it.image); });
           });
           preloadImages(urls);
-          this.setState({ loading: false, refreshing: false, data, notif: Number(data.notification_count || 0) });
+          this.setState({ loading: false, refreshing: false, data });
         } else this.setState({ loading: false, refreshing: false });
       })
       .catch(() => this.setState({ loading: false, refreshing: false }));
@@ -105,7 +123,55 @@ class LMDDashboard extends Component {
     this.setState({ refreshing: true }, () => this.load(true));
   };
 
-  go = (s) => this.props.navigation.navigate('TrackOrders', { selectedStatus: s || 'ALL' });
+  go = (s) => this.props.navigation.navigate('TrackOrders', {
+    selectedStatus: s || 'ALL',
+    groupBy: this.state.groupBy || DEFAULT_GROUP_BY,
+  });
+
+  openFilterSheet = () => {
+    this.setState({
+      showFilterSheet: true,
+      filterDraft: this.state.groupBy || DEFAULT_GROUP_BY,
+    });
+  };
+
+  closeFilterSheet = () => {
+    this.filterSheetRef?.close?.();
+  };
+
+  onFilterSheetClosed = () => {
+    this.setState({ showFilterSheet: false });
+  };
+
+  selectFilterDraft = (id) => {
+    this.setState({ filterDraft: this.state.filterDraft === id ? null : id });
+  };
+
+  applyFilters = () => {
+    const nextGroup = this.state.filterDraft || DEFAULT_GROUP_BY;
+    if (this.unsubscribe) this.unsubscribe();
+    this.setState({ groupBy: nextGroup, filterDraft: nextGroup, showFilterSheet: false }, () => {
+      this.closeFilterSheet();
+      this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
+        if (!data) return;
+        this.setState({ data });
+      });
+      this.load(true);
+    });
+  };
+
+  clearFilters = () => {
+    const nextGroup = DEFAULT_GROUP_BY;
+    if (this.unsubscribe) this.unsubscribe();
+    this.setState({ groupBy: nextGroup, filterDraft: nextGroup, showFilterSheet: false }, () => {
+      this.closeFilterSheet();
+      this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
+        if (!data) return;
+        this.setState({ data });
+      });
+      this.load(true);
+    });
+  };
   dial = async (p) => {
     if (!p) return;
     const url = `tel:${String(p).replace(/\s+/g, '')}`;
@@ -138,16 +204,30 @@ class LMDDashboard extends Component {
     />
   );
 
+  renderTodayItem = ({ item: row }) => {
+    if (row.type === 'header') {
+      return (
+        <OrderGroupHeader
+          title={row.title}
+          count={row.count}
+          groupBy={this.state.groupBy || DEFAULT_GROUP_BY}
+          compact
+        />
+      );
+    }
+    return this.renderItem({ item: row.item });
+  };
+
   a = (i) => ({ opacity: this.anims[Math.min(i,4)].o, transform: [{ translateY: this.anims[Math.min(i,4)].y }] });
 
   goSettlements = () => {
     this.props.navigation.navigate('SettlementList', { initialTab: 'pending' });
   };
 
-  renderSectionHead = (icon, title) => (
+  renderSectionHead = (icon, title, iconSize = SECTION_ICON) => (
     <View style={$.sectionHeadLeft}>
-      <View style={$.sectionIcoBox}>
-        <Image source={icon} style={$.sectionIco} resizeMode="contain" />
+      <View style={[$.sectionIcoBox, { width: iconSize, height: iconSize }]}>
+        <Image source={icon} style={{ width: iconSize, height: iconSize }} resizeMode="contain" />
       </View>
       <Text style={$.sectionTitle}>{title}</Text>
     </View>
@@ -155,10 +235,15 @@ class LMDDashboard extends Component {
 
   render() {
     const d = this.state.data;
+    const { groupBy } = this.state;
+    const effectiveGroupBy = groupBy || DEFAULT_GROUP_BY;
     const name = d?.partner?.name || '';
     const rule = d?.partner?.rule;
     const live = d?.live_orders || {};
-    const today = d?.today_deliveries || [];
+    const todayRaw = d?.today_deliveries || [];
+    const todayRows = buildListRows(todayRaw, effectiveGroupBy);
+    const hasToday = todayRows.some((r) => r.type === 'order');
+    const activeFilter = GROUP_FILTERS.find((g) => g.id === effectiveGroupBy);
     const pendingSettlements = d?.pending_settlements || [];
     const pendingAmount = d?.pending_settlement_amount;
     const pendingCount = d?.pending_settlement_orders_count;
@@ -188,10 +273,7 @@ class LMDDashboard extends Component {
                   <Text style={$.hdrName} numberOfLines={1}>{name || '-'}</Text>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity style={$.hdrBtn} onPress={() => this.props.navigation.navigate('Notifications')} activeOpacity={0.7}>
-                <Image source={require('./assets/bell.png')} style={$.hdrIco} />
-                {this.state.notif > 0 && <View style={$.hdrBadge}><Text style={$.hdrBadgeT}>{this.state.notif}</Text></View>}
-              </TouchableOpacity>
+              <NotificationBellButton navigation={this.props.navigation} />
             </View>
           </SafeAreaView>
         </View>
@@ -245,22 +327,41 @@ class LMDDashboard extends Component {
                   {this.renderSectionHead(
                     require('./assets/reward.png'),
                     `Live Orders (${this.n(live?.all_orders ?? allCount(live))})`,
+                    20,
                   )}
                   <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
                 </View>
                 <LiveOrdersGrid live={live} onPress={this.go} />
               </Animated.View>
 
-              <Animated.View style={[$.card, this.a(3), today.length ? { paddingBottom: 4 } : null]}>
-                <View style={[$.cardH, { marginBottom: today.length ? 10 : 8 }]}>
+              <Animated.View style={[$.card, this.a(3), hasToday ? { paddingBottom: 4 } : null]}>
+                <View style={[$.cardH, $.todayCardH]}>
                   {this.renderSectionHead(
                     require('./assets/truck.png'),
                     'Aaj Ki Deliveries',
                   )}
-                  <TouchableOpacity onPress={() => this.go('TODAY')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={this.openFilterSheet}
+                    activeOpacity={0.85}
+                    style={[$.filterBtn, $.filterBtnOn]}
+                  >
+                    <Image source={require('./assets/filter.png')} style={$.filterIco} />
+                    <View style={$.filterDot} />
+                  </TouchableOpacity>
                 </View>
-                {today.length > 0 ? (
-                  <FlatList data={today} keyExtractor={(it, i) => `${it?.order_id || i}`} renderItem={this.renderItem} scrollEnabled={false} />
+                {hasToday && (
+                  <Text style={$.groupNote} numberOfLines={1}>
+                    Grouped: {(activeFilter || GROUP_FILTERS.find((g) => g.id === DEFAULT_GROUP_BY)).label}
+                  </Text>
+                )}
+                {hasToday ? (
+                  <FlatList
+                    data={todayRows}
+                    keyExtractor={(row) => row.key || `${row?.item?.order_id}`}
+                    renderItem={this.renderTodayItem}
+                    scrollEnabled={false}
+                    extraData={effectiveGroupBy}
+                  />
                 ) : (
                   <View style={$.emptyWrap}>
                     <Image source={require('./assets/dlh.png')} style={$.emptyImg} />
@@ -294,6 +395,17 @@ class LMDDashboard extends Component {
           )}
         </View>
         <NetBanner />
+        <GroupOrdersFilterSheet
+          visible={this.state.showFilterSheet}
+          filterDraft={this.state.filterDraft || DEFAULT_GROUP_BY}
+          groupBy={effectiveGroupBy}
+          sheetRef={(r) => { this.filterSheetRef = r; }}
+          onClose={this.closeFilterSheet}
+          onSheetClosed={this.onFilterSheetClosed}
+          onSelectDraft={this.selectFilterDraft}
+          onApply={this.applyFilters}
+          onReset={this.clearFilters}
+        />
       </View>
     );
   }
@@ -314,8 +426,6 @@ const $ = StyleSheet.create({
   hdrInfo: { flex: 1, marginLeft: 12 },
   hdrSub: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
   hdrName: { fontSize: 15, fontWeight: '600', color: '#FFF' },
-  hdrBadge: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: P },
-  hdrBadgeT: { color: '#FFF', fontSize: 8, fontWeight: '700' },
 
   scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 28 },
 
@@ -341,10 +451,22 @@ const $ = StyleSheet.create({
 
   card: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
   cardH: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  todayCardH: { marginBottom: 2 },
   cardT: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  filterBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  filterBtnOn: { backgroundColor: '#EDE9FE', borderColor: '#C4B5FD' },
+  filterIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: P },
+  filterDot: {
+    position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#FCD34D', borderWidth: 1, borderColor: P,
+  },
+  groupNote: { fontSize: 10.5, fontWeight: '600', color: P, marginBottom: 6, marginTop: -2 },
   sectionHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 8 },
   sectionIcoBox: { width: SECTION_ICON, height: SECTION_ICON, alignItems: 'center', justifyContent: 'center' },
-  sectionIco: { width: SECTION_ICON, height: SECTION_ICON },
   sectionTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B' },
   viewAll: { color: P, fontSize: 11, fontWeight: '600' },
   viewAllWrap: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },

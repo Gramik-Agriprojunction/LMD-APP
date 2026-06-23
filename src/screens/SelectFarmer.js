@@ -10,6 +10,8 @@ import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 import { S, soilIcons as I } from '../utils/soilTheme';
+import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import { setPendingSelectedFarmer } from '../utils/pendingFarmer';
 
 const PER_PAGE = 20;
 const SCREEN_BG = '#edf1f7';
@@ -38,7 +40,10 @@ const parsePagination = (json, page, listLen) => {
 
 const farmerName = (f) => f?.name || f?.farmer_name || f?.fullName || f?.full_name || 'Farmer';
 const farmerPhone = (f) => f?.mobile || f?.phone || f?.farmer_mobile || f?.contact || '';
-const farmerVillage = (f) => f?.village || f?.city || f?.district || f?.address || '';
+const farmerAddress = (f) => String(
+  f?.address || f?.full_address || f?.fullAddress || f?.address_line
+  || f?.village || f?.city || f?.district || '',
+).trim();
 const farmerId = (f) => f?.id || f?.farmer_id || f?.user_id;
 
 class SelectFarmer extends Component {
@@ -58,6 +63,7 @@ class SelectFarmer extends Component {
   }
 
   componentDidMount() {
+    prefetchSoilOrderPincode();
     this.fetchFarmers('', { page: 1, append: false });
   }
 
@@ -127,28 +133,39 @@ class SelectFarmer extends Component {
   };
 
   selectFarmer = (farmer) => {
-    this.props.navigation.navigate('CreateSoilOrder', { selectedFarmer: farmer });
+    prefetchSoilOrderPincode();
+    setPendingSelectedFarmer(farmer);
+    this.props.navigation.goBack();
   };
 
   renderItem = ({ item, index }) => {
     const name = farmerName(item);
     const phone = farmerPhone(item);
-    const village = farmerVillage(item);
+    const addr = farmerAddress(item);
     return (
       <Animatable.View animation="fadeInUp" duration={260} delay={Math.min(index * 35, 180)} useNativeDriver>
-        <Pressable onPress={() => this.selectFarmer(item)} style={({ pressed }) => [st.card, pressed && { opacity: 0.9 }]}>
+        <Pressable onPress={() => this.selectFarmer(item)} style={({ pressed }) => [st.card, pressed && { opacity: 0.92 }]}>
           <View style={st.icoWrap}>
             <Image source={I.farmerNew} style={st.ico} />
           </View>
           <View style={st.info}>
-            <Text style={st.name} numberOfLines={1}>{name}</Text>
+            <Text style={st.name}>{name}</Text>
             {!!phone && (
               <View style={st.metaRow}>
-                <Image source={I.call} style={st.metaIco} />
-                <Text style={st.meta} numberOfLines={1}>{phone}</Text>
+                <View style={st.metaIcoWrap}>
+                  <Image source={I.call} style={st.metaIco} />
+                </View>
+                <Text style={st.meta}>{phone}</Text>
               </View>
             )}
-            {!!village && <Text style={st.addr} numberOfLines={2}>{village}</Text>}
+            {!!addr && (
+              <View style={st.addrRow}>
+                <View style={st.metaIcoWrap}>
+                  <Image source={I.location} style={[st.metaIco, st.addrIco]} />
+                </View>
+                <Text style={st.addr}>{addr}</Text>
+              </View>
+            )}
           </View>
           <View style={st.arrowWrap}>
             <Image source={I.arrow} style={st.arrowIco} />
@@ -207,7 +224,12 @@ class SelectFarmer extends Component {
               autoCorrect={false}
             />
             {!!search && (
-              <TouchableOpacity onPress={this.clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={this.clearSearch}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={st.clearBtn}
+                activeOpacity={0.75}
+              >
                 <Image source={I.close} style={st.clearIco} />
               </TouchableOpacity>
             )}
@@ -258,12 +280,16 @@ const st = StyleSheet.create({
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
-    marginHorizontal: 12, marginTop: 10, marginBottom: 4, borderRadius: 11,
-    borderWidth: 1, borderColor: CARD_BORDER, paddingHorizontal: 11,
+    marginHorizontal: 12, marginTop: 10, marginBottom: 4, borderRadius: 12,
+    borderWidth: 1, borderColor: CARD_BORDER, paddingHorizontal: 11, minHeight: 46,
   },
   searchIco: { width: 15, height: 15, tintColor: S.MUTED, marginRight: 8, resizeMode: 'contain' },
   searchIn: { flex: 1, fontSize: 14, color: S.TXT, paddingVertical: 11 },
-  clearIco: { width: 14, height: 14, tintColor: S.MUTED, resizeMode: 'contain' },
+  clearBtn: {
+    width: 26, height: 26, borderRadius: 13, backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 4,
+  },
+  clearIco: { width: 11, height: 11, tintColor: S.SUB, resizeMode: 'contain' },
 
   countLbl: { fontSize: 11, color: S.SUB, marginHorizontal: 14, marginTop: 10, marginBottom: 8 },
 
@@ -272,25 +298,31 @@ const st = StyleSheet.create({
   loadTxt: { marginTop: 10, fontSize: 13, color: S.SUB },
 
   card: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+    flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFF',
     borderRadius: 14, padding: 12, marginBottom: 8,
     borderWidth: 1, borderColor: CARD_BORDER,
   },
   icoWrap: {
-    width: 48, height: 48, borderRadius: 14, backgroundColor: S.P_TINT,
-    alignItems: 'center', justifyContent: 'center', marginRight: 11,
+    width: 46, height: 46, borderRadius: 13, backgroundColor: S.P_TINT,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
     borderWidth: 1, borderColor: '#E9E4FC',
   },
-  ico: { width: 40, height: 40, resizeMode: 'contain' },
-  info: { flex: 1, minWidth: 0 },
-  name: { fontSize: 14, fontWeight: '600', color: S.TXT },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  metaIco: { width: 11, height: 11, tintColor: S.SUB, marginRight: 5, resizeMode: 'contain' },
-  meta: { fontSize: 12, color: S.SUB, flex: 1 },
-  addr: { fontSize: 11.5, color: S.MUTED, marginTop: 3, lineHeight: 15 },
+  ico: { width: 34, height: 34, resizeMode: 'contain' },
+  info: { flex: 1, minWidth: 0, paddingTop: 1 },
+  name: { fontSize: 14.5, fontWeight: '700', color: S.TXT, marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 },
+  addrRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6, gap: 6 },
+  metaIcoWrap: {
+    width: 20, height: 20, borderRadius: 10, backgroundColor: '#F8FAFC',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  metaIco: { width: 11, height: 11, tintColor: S.P, resizeMode: 'contain' },
+  addrIco: { tintColor: S.ORANGE },
+  meta: { fontSize: 12.5, fontWeight: '600', color: S.SUB, flex: 1 },
+  addr: { flex: 1, fontSize: 12.5, color: S.MUTED, lineHeight: 18 },
   arrowWrap: {
     width: 28, height: 28, borderRadius: 14, backgroundColor: S.P_TINT,
-    alignItems: 'center', justifyContent: 'center', marginLeft: 6,
+    alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginTop: 2,
   },
   arrowIco: { width: 10, height: 10, tintColor: S.P, resizeMode: 'contain' },
 

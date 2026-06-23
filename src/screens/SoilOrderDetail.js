@@ -37,16 +37,16 @@ const ICO = {
   down: require('./assets/down.png'),
 };
 
-const STEP_META = [
-  { key: 'pickup', label: 'Pickup', wait: 'Pending', ico: ICO.clock, color: S.ORANGE, bg: S.ORANGE_BG },
-  { key: 'lab', label: 'Lab', wait: 'Waiting', ico: ICO.fertilizer, color: S.BLUE, bg: S.BLUE_BG },
-  { key: 'ready', label: 'Report', wait: 'Pending', ico: ICO.pdf, color: S.GREEN_DARK, bg: S.GREEN_BG },
+const ORDER_STEPS = [
+  { key: 'pending', label: 'Pending', ico: ICO.clock, color: S.ORANGE, bg: S.ORANGE_BG },
+  { key: 'picked', label: 'Sample Picked', ico: ICO.soil, color: S.BLUE, bg: S.BLUE_BG },
+  { key: 'terminal', label: 'Completed', cancelLabel: 'Cancelled', ico: ICO.pdf, color: S.GREEN_DARK, bg: S.GREEN_BG, cancelColor: S.RED, cancelBg: S.RED_BG },
 ];
 
 const STAGE = {
-  0: { color: S.ORANGE, bg: S.ORANGE_BG, label: 'Pickup pending' },
-  1: { color: S.BLUE, bg: S.BLUE_BG, label: 'In lab' },
-  2: { color: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Report ready' },
+  0: { color: S.ORANGE, bg: S.ORANGE_BG, label: 'Pending' },
+  1: { color: S.BLUE, bg: S.BLUE_BG, label: 'Sample picked' },
+  2: { color: S.GREEN_DARK, bg: S.GREEN_BG, label: 'Completed' },
 };
 
 const PKG = {
@@ -75,25 +75,65 @@ const maskMobile = (p) => {
   return `${s.slice(0, 2)}****${s.slice(-2)}`;
 };
 
-const getStage = (order) => {
-  const st = String(order?.status || '').toLowerCase();
-  const rs = String(order?.report_status || '').toLowerCase();
-  const hasReport = Array.isArray(order?.report) && order.report.length > 0;
-  if (hasReport || st === 'ready' || st === 'completed' || st === 'report_ready' || rs.includes('ready') || rs.includes('generated')) return 2;
-  if (['in_lab', 'lab', 'processing', 'sample_collected', 'picked_up', 'picked', 'in_progress'].includes(st) || rs.includes('test') || rs.includes('pending')) return 1;
-  return 0;
-};
-
-const parseOrderResponse = (json) => {
-  const d = json?.data;
-  if (d && typeof d === 'object' && !Array.isArray(d)) return d;
-  if (Array.isArray(d) && d.length) return d[0];
-  return null;
-};
-
 const isCancelled = (order) => {
   const st = String(order?.status || '').toLowerCase();
   return st === 'cancelled' || !!order?.cancelled_date;
+};
+
+const wasSamplePicked = (order) => {
+  if (order?.picked_date) return true;
+  const st = String(order?.status || '').toLowerCase();
+  return ['picked_up', 'picked', 'sample_collected', 'in_lab', 'lab', 'processing', 'in_progress'].includes(st);
+};
+
+const isOrderCompleted = (order) => {
+  const st = String(order?.status || '').toLowerCase();
+  const rs = String(order?.report_status || '').toLowerCase();
+  const hasReport = Array.isArray(order?.report) && order.report.length > 0;
+  return hasReport || st === 'ready' || st === 'completed' || st === 'report_ready'
+    || rs.includes('ready') || rs.includes('generated');
+};
+
+const getOrderProgress = (order) => {
+  if (isCancelled(order)) {
+    return { index: 2, terminal: 'cancelled', picked: wasSamplePicked(order) };
+  }
+  if (isOrderCompleted(order)) {
+    return { index: 2, terminal: 'completed', picked: true };
+  }
+  if (wasSamplePicked(order)) {
+    return { index: 1, terminal: null, picked: true };
+  }
+  return { index: 0, terminal: null, picked: false };
+};
+
+const getStage = (order) => getOrderProgress(order).index;
+
+const parseOrderResponse = (json) => {
+  const d = json?.data;
+  let order = null;
+  if (d && typeof d === 'object' && !Array.isArray(d)) order = d;
+  else if (Array.isArray(d) && d.length) order = d[0];
+  if (!order) return null;
+  return {
+    ...order,
+    sample_pickup_date: order.order_sample_pickup_date || order.sample_pickup_date || null,
+  };
+};
+
+const scheduledPickupRaw = (order) => order?.order_sample_pickup_date || order?.sample_pickup_date || null;
+
+const formatScheduledPickup = (order) => {
+  const raw = scheduledPickupRaw(order);
+  if (!raw) return '-';
+  return moment(raw).format('DD MMM YYYY');
+};
+
+const formatActualPickup = (order) => {
+  if (order?.lmd_sample_pickup) return String(order.lmd_sample_pickup).trim();
+  const raw = order?.picked_date || order?.mark_picked_at;
+  if (!raw) return null;
+  return moment(raw).format('DD MMM YYYY · hh:mm A');
 };
 
 const canCancelOrder = (order) => {
@@ -439,9 +479,18 @@ class SoilOrderDetail extends Component {
       });
   };
 
-  renderTracker = (active, order) => {
-    const liveStatus = order?.report_status || STEP_META[active]?.label || '';
-    const sm = STAGE[active] || STAGE[0];
+  renderTracker = (order) => {
+    const progress = getOrderProgress(order);
+    const { index: active, terminal, picked } = progress;
+    const cancelled = terminal === 'cancelled';
+    const stepStatus = cancelled
+      ? ORDER_STEPS[2].cancelLabel
+      : active === 2
+        ? ORDER_STEPS[2].label
+        : ORDER_STEPS[active]?.label || '';
+    const sm = cancelled
+      ? { color: S.RED, bg: S.RED_BG, label: stepStatus }
+      : STAGE[active] || STAGE[0];
 
     return (
       <View style={st.steps}>
@@ -449,40 +498,47 @@ class SoilOrderDetail extends Component {
           <Text style={st.stepsTitle}>Order progress</Text>
           <View style={[st.stepsPill, { backgroundColor: sm.bg }]}>
             <View style={[st.stepsPillDot, { backgroundColor: sm.color }]} />
-            <Text style={[st.stepsPillTxt, { color: sm.color }]} numberOfLines={1}>{liveStatus}</Text>
+            <Text style={[st.stepsPillTxt, { color: sm.color }]} numberOfLines={1}>{stepStatus}</Text>
           </View>
         </View>
 
         <View style={st.stepsRow}>
-          {STEP_META.map((step, i) => {
-            const done = i < active;
+          {ORDER_STEPS.map((step, i) => {
+            const isTerminalStep = i === 2;
+            const stepLabel = isTerminalStep && cancelled ? step.cancelLabel : step.label;
+            const stepColor = isTerminalStep && cancelled && active === 2 ? step.cancelColor : step.color;
+            const stepBg = isTerminalStep && cancelled && active === 2 ? step.cancelBg : step.bg;
+            const done = i < active || (active === 2 && picked && i < 2);
             const on = i === active;
-            const sub = done ? 'Done' : on ? 'Now' : 'Wait';
             return (
               <React.Fragment key={step.key}>
                 {i > 0 && (
                   <View style={st.stepConnWrap}>
-                    <View style={[st.stepConn, i <= active && { backgroundColor: STEP_META[i - 1].color }]} />
+                    <View style={[st.stepConn, (done || on) && { backgroundColor: ORDER_STEPS[i - 1].color }]} />
                   </View>
                 )}
                 <View style={st.stepCol}>
                   <View style={[
                     st.stepDot,
-                    done && { backgroundColor: step.color, borderColor: step.color },
-                    on && { backgroundColor: step.bg, borderColor: step.color, borderWidth: 2 },
+                    done && { backgroundColor: stepColor, borderColor: stepColor },
+                    on && { backgroundColor: stepBg, borderColor: stepColor, borderWidth: 2.5 },
                     !done && !on && { backgroundColor: '#FFF', borderColor: '#E2E8F0' },
                   ]}>
                     {done ? (
-                      <Image source={I.tick} style={st.stepTick} />
+                      <Text style={st.stepTickTxt}>✓</Text>
                     ) : (
-                      <Image source={step.ico} style={st.stepIco} resizeMode="contain" />
+                      <Image source={step.ico} style={[st.stepIco, on && { tintColor: stepColor }]} resizeMode="contain" />
                     )}
                   </View>
-                  <Text style={[st.stepLbl, (done || on) && { color: step.color }]} numberOfLines={1}>
-                    {step.label}
-                  </Text>
-                  <Text style={[st.stepSub, on && { color: step.color, fontWeight: '600' }]} numberOfLines={1}>
-                    {sub}
+                  <Text
+                    style={[
+                      st.stepLbl,
+                      done && { color: stepColor },
+                      on && { color: stepColor, fontWeight: '800' },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {stepLabel}
                   </Text>
                 </View>
               </React.Fragment>
@@ -499,19 +555,13 @@ class SoilOrderDetail extends Component {
     }
     return (
       <View style={st.farmerWrap}>
-        <View style={st.farmerMain}>
+        <View style={st.farmerTopRow}>
           <View style={st.farmerAvtRing}>
             <Image source={ICO.farmer} style={st.farmerAvt} resizeMode="contain" />
           </View>
           <View style={st.farmerMeta}>
-            {!!name && <Text style={st.farmerCardName} numberOfLines={1}>{name}</Text>}
-            {!!addr && (
-              <View style={st.farmerLocChip}>
-                <Image source={I.location} style={st.farmerLocIco} resizeMode="contain" />
-                <Text style={st.farmerLocTxt} numberOfLines={1}>{addr}</Text>
-              </View>
-            )}
-            {!!phone && !addr && (
+            <Text style={st.farmerCardName}>{name || 'Farmer'}</Text>
+            {!!phone && (
               <Text style={st.farmerPhoneInline}>{maskMobile(phone)}</Text>
             )}
           </View>
@@ -526,7 +576,7 @@ class SoilOrderDetail extends Component {
                 <Image source={ICO.call} style={st.farmerActIco} resizeMode="contain" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[st.farmerActBtn, st.farmerActBtnWa]}
+                style={st.farmerActBtn}
                 activeOpacity={0.75}
                 onPress={() => this.whatsapp(phone)}
                 hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
@@ -536,11 +586,10 @@ class SoilOrderDetail extends Component {
             </View>
           )}
         </View>
-        {!!phone && !!addr && (
-          <View style={st.farmerPhoneBand}>
-            <Image source={ICO.call} style={st.farmerPhoneBandIco} resizeMode="contain" />
-            <Text style={st.farmerPhoneBandLbl}>Mobile</Text>
-            <Text style={st.farmerPhoneBandVal}>{maskMobile(phone)}</Text>
+        {!!addr && (
+          <View style={st.farmerAddrRow}>
+            <Image source={I.location} style={st.farmerLocIco} resizeMode="contain" />
+            <Text style={st.farmerLocTxtFull}>{addr}</Text>
           </View>
         )}
       </View>
@@ -614,7 +663,7 @@ class SoilOrderDetail extends Component {
             </TouchableOpacity>
           )}
           {!!wa && (
-            <TouchableOpacity style={[st.helpBtn, st.helpWa]} activeOpacity={0.75} onPress={() => this.whatsapp(wa)}>
+            <TouchableOpacity style={st.helpBtn} activeOpacity={0.75} onPress={() => this.whatsapp(wa)}>
               <Image source={ICO.whatsapp} style={st.helpIco} resizeMode="contain" />
               <View style={{ flex: 1 }}>
                 <Text style={[st.helpTxt, { color: S.GREEN_DARK }]}>WhatsApp</Text>
@@ -683,8 +732,8 @@ class SoilOrderDetail extends Component {
 
     const id = this.orderId();
     const farmer = order?.farmer?.name || order?.address?.fullName || 'Farmer';
-    const pickupDate = order?.sample_pickup_date
-      ? moment(order.sample_pickup_date).format('DD MMM YYYY')
+    const pickupDate = scheduledPickupRaw(order)
+      ? moment(scheduledPickupRaw(order)).format('DD MMM YYYY')
       : null;
 
     return (
@@ -741,8 +790,8 @@ class SoilOrderDetail extends Component {
     const pkg = pkgLine?.package || {};
     const farmer = order?.farmer || {};
     const addr = order?.address || {};
-    const pickup = order?.sample_pickup_date ? moment(order.sample_pickup_date).format('DD MMM YYYY') : '-';
-    const picked = order?.picked_date ? moment(order.picked_date).format('DD MMM YYYY') : null;
+    const scheduledPickup = formatScheduledPickup(order);
+    const actualPickup = formatActualPickup(order);
     const stage = getStage(order);
     const sm = STAGE[stage] || STAGE[0];
     const showCancel = canCancelOrder(order);
@@ -752,7 +801,8 @@ class SoilOrderDetail extends Component {
     const unpaid = payStatus.toLowerCase() !== 'paid';
     const addrText = addr?.fullAddressLine || addr?.address || farmer?.address;
     const contactName = addr?.fullName || farmer?.name;
-    const contactPhone = addr?.mobile || farmer?.mobile;
+    const farmerDisplayName = farmer?.name || farmer?.farmer_name || contactName;
+    const contactPhone = farmer?.mobile || farmer?.phone || addr?.mobile;
     const pkgKey = String(pkg?.name || pkg?.type || 'BASIC').toUpperCase();
     const pt = PKG[pkgKey] || PKG.BASIC;
     const pkgLabel = pt.label || pkgKey;
@@ -807,12 +857,8 @@ class SoilOrderDetail extends Component {
                     <Text style={st.summaryPrice}>₹{Number(amount).toLocaleString('en-IN')}</Text>
                   </View>
 
-                  {!isCancelled(order) && (
-                    <>
-                      <View style={st.summaryDivider} />
-                      {this.renderTracker(stage, order)}
-                    </>
-                  )}
+                  <View style={st.summaryDivider} />
+                  {this.renderTracker(order)}
 
                   {isCancelled(order) && (
                     <View style={st.cancelBanner}>
@@ -828,8 +874,10 @@ class SoilOrderDetail extends Component {
 
                 {/* order info */}
                 <SectionCard title="Order info">
-                  <DetailRow icon={ICO.cal} label="Pickup date" value={pickup} />
-                  {!!picked && <DetailRow icon={ICO.trk} label="Sample picked" value={picked} />}
+                  <DetailRow icon={ICO.cal} label="Scheduled pickup" value={scheduledPickup} />
+                  {!!actualPickup && (
+                    <DetailRow icon={ICO.trk} label="Sample picked" value={actualPickup} />
+                  )}
                   <DetailRow
                     icon={ICO.pay}
                     iconUri={payIconUri(order) || undefined}
@@ -843,7 +891,7 @@ class SoilOrderDetail extends Component {
 
                 {/* farmer / address */}
                 <SectionCard title="Farmer & pickup">
-                  {this.renderFarmer(contactName, addrText, contactPhone)}
+                  {this.renderFarmer(farmerDisplayName, addrText, contactPhone)}
                 </SectionCard>
 
                 {this.renderSupport(order?.support)}
@@ -955,17 +1003,16 @@ const st = StyleSheet.create({
   stepsPillTxt: { fontSize: 10, fontWeight: '600', flexShrink: 1 },
 
   stepsRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  stepCol: { width: 54, alignItems: 'center' },
-  stepConnWrap: { flex: 1, height: 26, justifyContent: 'center', paddingHorizontal: 2, minWidth: 8 },
+  stepCol: { flex: 1, alignItems: 'center', minWidth: 0 },
+  stepConnWrap: { flex: 1, height: 26, justifyContent: 'center', paddingHorizontal: 2, minWidth: 12, maxWidth: 36 },
   stepConn: { height: 2, borderRadius: 1, backgroundColor: '#E8EDF3' },
   stepDot: {
-    width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: '#E2E8F0',
+    width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: '#E2E8F0',
     alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF',
   },
   stepIco: { width: 14, height: 14 },
-  stepTick: { width: 12, height: 12, resizeMode: 'contain', tintColor: '#FFF' },
-  stepLbl: { fontSize: 10, fontWeight: '600', color: S.MUTED, marginTop: 5, textAlign: 'center' },
-  stepSub: { fontSize: 9, fontWeight: '500', color: S.MUTED, marginTop: 1, textAlign: 'center' },
+  stepTickTxt: { fontSize: 14, fontWeight: '900', color: '#FFF', includeFontPadding: false, lineHeight: 16 },
+  stepLbl: { fontSize: 9.5, fontWeight: '600', color: S.MUTED, marginTop: 5, textAlign: 'center', lineHeight: 12 },
 
   cancelBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -1015,37 +1062,24 @@ const st = StyleSheet.create({
   openBtnArrow: { width: 10, height: 10, tintColor: '#FFF', resizeMode: 'contain' },
 
   farmerWrap: { marginTop: -2 },
-  farmerMain: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  farmerTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   farmerAvtRing: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: S.P_SOFT,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: S.P_GLOW,
   },
   farmerAvt: { width: 28, height: 28 },
-  farmerMeta: { flex: 1, minWidth: 0 },
-  farmerCardName: { fontSize: 14, fontWeight: '700', color: S.TXT, marginBottom: 3 },
-  farmerLocChip: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    backgroundColor: '#F8FAFC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: '#E8ECF1', maxWidth: '100%',
+  farmerMeta: { flex: 1, minWidth: 0, paddingTop: 2 },
+  farmerCardName: { fontSize: 14, fontWeight: '700', color: S.TXT, marginBottom: 2 },
+  farmerPhoneInline: { fontSize: 12, fontWeight: '600', color: S.SUB, letterSpacing: 0.3 },
+  farmerAddrRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10,
+    paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F1F5F9',
   },
-  farmerLocIco: { width: 13, height: 13 },
-  farmerLocTxt: { fontSize: 11.5, fontWeight: '500', color: S.SUB, flexShrink: 1 },
-  farmerPhoneInline: { fontSize: 12, fontWeight: '600', color: S.TXT, letterSpacing: 0.2 },
-  farmerActs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  farmerActBtn: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: S.P_SOFT,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: S.P_GLOW,
-  },
-  farmerActBtnWa: { backgroundColor: S.GREEN_TINT, borderColor: '#BBF7D0' },
-  farmerActIco: { width: 20, height: 20 },
-  farmerPhoneBand: {
-    flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F1F5F9', gap: 6,
-  },
-  farmerPhoneBandIco: { width: 16, height: 16 },
-  farmerPhoneBandLbl: { fontSize: 12, fontWeight: '500', color: S.SUB },
-  farmerPhoneBandVal: { fontSize: 12.5, fontWeight: '700', color: S.TXT, letterSpacing: 0.4 },
+  farmerLocIco: { width: 14, height: 14, marginTop: 2, flexShrink: 0 },
+  farmerLocTxtFull: { flex: 1, fontSize: 12.5, fontWeight: '500', color: S.SUB, lineHeight: 18 },
+  farmerActs: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  farmerActBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  farmerActIco: { width: 28, height: 28, resizeMode: 'contain' },
   addrEmpty: { fontSize: 12.5, fontWeight: '400', color: S.MUTED, fontStyle: 'italic' },
 
   helpRow: { flexDirection: 'row', gap: 6 },
@@ -1054,8 +1088,7 @@ const st = StyleSheet.create({
     backgroundColor: '#F8FAFC', borderRadius: 9, padding: 9, gap: 8,
     borderWidth: StyleSheet.hairlineWidth, borderColor: '#E8ECF1',
   },
-  helpWa: { backgroundColor: S.GREEN_TINT, borderColor: '#BBF7D0' },
-  helpIco: { width: 26, height: 26 },
+  helpIco: { width: 28, height: 28, resizeMode: 'contain' },
   helpTxt: { fontSize: 12.5, fontWeight: '600', color: S.TXT },
   helpSub: { fontSize: 11, fontWeight: '400', color: S.SUB, marginTop: 1 },
 

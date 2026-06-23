@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, StatusBar, Image,
   TouchableOpacity, TextInput, ActivityIndicator, Pressable,
   Animated, Platform, UIManager, LayoutAnimation, KeyboardAvoidingView, Linking, Easing,
-  Dimensions, Keyboard, Modal,
+  Dimensions, Keyboard, Modal, InteractionManager,
 } from 'react-native';
 import BottomSheet from '../components/BottomSheet';
 import DatePicker from 'react-native-date-picker';
@@ -16,8 +16,10 @@ import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import CachedImage from '../components/CachedImage';
+import SoilOrderSkeleton from '../components/SoilOrderSkeleton';
 import { S, soilIcons as I } from '../utils/soilTheme';
-import { getLocationPincode } from '../utils/locationHelper';
+import { getFreshCoords, lookupPincodeFromCoords, getCachedPrefetchedPincode, runSoilPinPrefill } from '../utils/locationHelper';
+import { consumePendingSelectedFarmer } from '../utils/pendingFarmer';
 import {
   isOnlinePayment, isUpiAppPayment, parseCreateOrderResponse, paymentConfigFromPage,
   openRazorpayCheckout, openUpiPayment, waitForAppReturn,
@@ -124,11 +126,20 @@ const activePayments = (methods) => {
 
 const pkgStyle = (type) => PKG_STYLE[String(type || '').toUpperCase()] || PKG_STYLE.BASIC;
 
-const farmerName = (f) => f?.name || f?.farmer_name || f?.fullName || f?.full_name || '';
+const farmerName = (f) => f?.name || f?.farmer_name || f?.fullName || f?.full_name || 'Farmer';
 const farmerPhone = (f) => f?.mobile || f?.phone || f?.farmer_mobile || f?.contact || '';
 const farmerEmail = (f) => f?.email || f?.farmer_email || '';
 const farmerVillage = (f) => f?.village || f?.city || f?.district || f?.address || '';
+const farmerAddress = (f) => String(
+  f?.address || f?.full_address || f?.fullAddress || f?.address_line || farmerVillage(f) || '',
+).trim();
 const farmerId = (f) => f?.id || f?.farmer_id || f?.user_id;
+const maskMobile = (p) => {
+  if (!p) return '';
+  const s = String(p).replace(/\s+/g, '');
+  if (s.length < 6) return s;
+  return `${s.slice(0, 2)}****${s.slice(-2)}`;
+};
 const isValidFarmer = (f) => !!(f && (farmerId(f) || String(farmerName(f)).trim()));
 const initials = (name) => String(name || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '+';
 
@@ -207,8 +218,9 @@ class CreateSoilOrder extends Component {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(10, 0, 0, 0);
+    this._pinUserEdited = false;
     this.state = {
-      loading: true, submitting: false, locating: false, fetchingPO: false,
+      loading: true, submitting: false, locating: false, fetchingPin: false, fetchingPO: false,
       packages: [], pageData: null, paymentMethods: [], selectedPackageId: null,
       pincode: '', state: '', district: '', fullAddress: '', postOffice: '',
       postOffices: [], showPOPicker: false, lat: '', lng: '', qty: '1',
@@ -239,8 +251,12 @@ class CreateSoilOrder extends Component {
   }
 
   componentDidMount() {
+    this._skelMinUntil = Date.now() + 400;
     this.fetchPackages();
     this.applyFarmerFromNav();
+    this._pinTask = InteractionManager.runAfterInteractions(() => {
+      if (!this._unmounted) this.prefillLocationFromGps({ silent: true });
+    });
     this._kbShow = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
       this.setState({ keyboardH: e.endCoordinates.height });
       if (this.state.focusedField) this.scrollToField(this.state.focusedField);
@@ -251,6 +267,15 @@ class CreateSoilOrder extends Component {
   }
 
   applyFarmerFromNav = () => {
+    const pending = consumePendingSelectedFarmer();
+    if (isValidFarmer(pending)) {
+      const curId = farmerId(this.state.selectedFarmer);
+      const nextId = farmerId(pending);
+      if (String(nextId || '') !== String(curId || '')) {
+        this.setState({ selectedFarmer: pending }, () => this.sectionRefs.farmer?.pulse?.(500));
+      }
+      return;
+    }
     const farmer = this.props.navigation.getParam('selectedFarmer');
     if (isValidFarmer(farmer)) {
       const curId = farmerId(this.state.selectedFarmer);
@@ -343,7 +368,20 @@ class CreateSoilOrder extends Component {
     this.setState({ focusedField: key }, () => this.scrollToField(key));
   };
 
-  goBack = () => this.props?.navigation?.goBack?.();
+  goBack = () => {
+    const nav = this.props?.navigation;
+    if (!nav?.getState) {
+      nav?.goBack?.();
+      return;
+    }
+    const { routes, index } = nav.getState();
+    const prev = routes[index - 1]?.name;
+    if (prev === 'SelectFarmer' && nav.pop) {
+      nav.pop(2);
+      return;
+    }
+    nav.goBack?.();
+  };
   authHeaders = () => ({
     Authorization: 'Bearer ' + global.token,
     Accept: 'application/json',
@@ -367,30 +405,107 @@ class CreateSoilOrder extends Component {
     Animated.spring(this.totalAnim, { toValue: target, friction: 8, tension: 40, useNativeDriver: false }).start();
   };
 
-  prefillLocation = async ({ silent = false, useCache = true } = {}) => {
-    if (this.state.locating) return;
-    this.setState({ locating: true });
+  applyLocationPincode = (data) => {
+    if (this._pinUserEdited) return false;
+    if (!data?.pincode || String(data.pincode).length !== 6) return false;
+    const nextPin = String(data.pincode);
+    const samePin = nextPin === this.state.pincode;
+    this.setState({
+      lat: data.lat || this.state.lat,
+      lng: data.lng || this.state.lng,
+      pincode: nextPin,
+      state: samePin ? this.state.state : '',
+      district: samePin ? this.state.district : '',
+      postOffice: samePin ? this.state.postOffice : '',
+      postOffices: samePin ? this.state.postOffices : [],
+    }, () => this.fetchPostOffice(nextPin, data.lat, data.lng));
+    return true;
+  };
+
+  queryPostOffice = (pincode, lat, lng) => {
+    const pin = String(pincode ?? '').trim();
+    return fetch(constants.getPostOffice, {
+      method: 'POST', headers: this.authHeaders(),
+      body: JSON.stringify({
+        pincode: pin,
+        lat: String(lat ?? this.state.lat ?? ''),
+        long: String(lng ?? this.state.lng ?? ''),
+      }),
+    })
+      .then((r) => r.json())
+      .then((json) => ({ ...parsePostOfficeResponse(json), raw: json?.data }));
+  };
+
+  validatePinWithPostOffice = async (pincode, lat, lng) => {
+    if (!pincode || String(pincode).length !== 6) return false;
+    const key = `${pincode}|${lat}|${lng}`;
+    if (this._pinValidateCache?.[key] !== undefined) return this._pinValidateCache[key];
     try {
-      const { lat, lng, pincode, error } = await getLocationPincode({
-        useCache,
-        maxWaitMs: silent ? 12000 : 15000,
-      });
-      if (error === 'permission_denied') {
+      const parsed = await this.queryPostOffice(pincode, lat, lng);
+      const ok = !!(parsed?.state || parsed?.district || parsed?.offices?.length);
+      if (!this._pinValidateCache) this._pinValidateCache = {};
+      this._pinValidateCache[key] = ok;
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  resolvePinForCoords = (lat, lng) => lookupPincodeFromCoords(lat, lng, this.validatePinWithPostOffice);
+
+  prefillLocationFromGps = ({ silent = false } = {}) => runSoilPinPrefill(async () => {
+    if (this._pinUserEdited || this._unmounted) return;
+    this._pinFetchInflight = true;
+    this.setState({ fetchingPin: true, locating: !silent });
+    try {
+      const cached = getCachedPrefetchedPincode();
+      if (cached?.pincode?.length === 6 && !this._pinUserEdited) {
+        const ok = await this.validatePinWithPostOffice(cached.pincode, cached.lat, cached.lng);
+        if (ok) {
+          this.applyLocationPincode(cached);
+          return;
+        }
+      }
+
+      const coords = await getFreshCoords({ maxWaitMs: silent ? 12000 : 15000 });
+      if (this._pinUserEdited || this._unmounted) return;
+      if (coords.error === 'permission_denied') {
         if (!silent) Toast.show('Location permission allow karein', Toast.SHORT);
         return;
       }
-      if (error === 'timeout' || error === 'location_unavailable') {
+      if (!coords.lat || !coords.lng) {
         if (!silent) Toast.show('PIN manually daalein', Toast.SHORT);
         return;
       }
-      this.setState({ lat, lng, pincode: pincode || this.state.pincode }, () => {
-        if (pincode?.length === 6) this.fetchPostOffice(pincode, lat, lng);
-        else if (!silent && !pincode) Toast.show('PIN manually daalein', Toast.SHORT);
-      });
+      const pincode = await this.resolvePinForCoords(coords.lat, coords.lng);
+      if (this._pinUserEdited || this._unmounted) return;
+      if (!pincode) {
+        if (!silent) Toast.show('PIN manually daalein', Toast.SHORT);
+        return;
+      }
+      this.applyLocationPincode({ lat: coords.lat, lng: coords.lng, pincode });
     } catch (e) {
       if (!silent) Toast.show('Location load nahi ho payi', Toast.SHORT);
     } finally {
-      this.setState({ locating: false });
+      this._pinFetchInflight = false;
+      if (!this._unmounted) this.setState({ fetchingPin: false, locating: false });
+    }
+  });
+
+  prefillLocationSilent = () => this.prefillLocationFromGps({ silent: true });
+
+  prefillLocation = async ({ silent = false } = {}) => {
+    if (!silent) this._pinUserEdited = false;
+    await this.prefillLocationFromGps({ silent });
+  };
+
+  finishLoading = (nextState, cb) => {
+    const delay = Math.max(0, (this._skelMinUntil || 0) - Date.now());
+    const apply = () => this.setState({ ...nextState, loading: false }, cb);
+    if (delay > 0) {
+      this._skelTimer = setTimeout(apply, delay);
+    } else {
+      apply();
     }
   };
 
@@ -400,46 +515,63 @@ class CreateSoilOrder extends Component {
       .then((json) => {
         const { packages, page } = parseSoilResponse(json);
         const payments = activePayments(page?.paymentMethods);
-        this.setState({
-          loading: false, packages, pageData: page, paymentMethods: payments,
+        this.finishLoading({
+          packages, pageData: page, paymentMethods: payments,
           selectedPackageId: packages[0]?.id ?? null,
           paymentMode: payments.find((p) => p.code === 'cash_on_delivery')?.code || payments[0]?.code || 'cash_on_delivery',
         }, () => {
           this.animateTotal();
-          this.prefillLocation({ silent: true });
         });
       })
-      .catch(() => { Toast.show('Packages load nahi ho paye', Toast.SHORT); this.setState({ loading: false }); });
+      .catch(() => {
+        Toast.show('Packages load nahi ho paye', Toast.SHORT);
+        this.finishLoading({});
+      });
   };
 
   fetchPostOffice = (pin, lat, lng) => {
     const pincode = String(pin || this.state.pincode).trim();
     if (pincode.length !== 6) return;
+    const reqKey = `${pincode}|${lat ?? this.state.lat}|${lng ?? this.state.lng}`;
+    if (this._poInflight === reqKey) return;
+    this._poInflight = reqKey;
     this.setState({ fetchingPO: true });
-    fetch(constants.getPostOffice, {
-      method: 'POST', headers: this.authHeaders(),
-      body: JSON.stringify({
-        pincode,
-        lat: String(lat ?? this.state.lat ?? ''),
-        long: String(lng ?? this.state.lng ?? ''),
-      }),
-    })
-      .then((r) => r.json())
-      .then((json) => {
-        const { state, district, offices } = parsePostOfficeResponse(json);
-        LayoutAnimation.configureNext(EASE);
-        this.setState({
-          fetchingPO: false,
-          state: state || this.state.state,
-          district: district || this.state.district,
-          postOffices: offices,
-          postOffice: offices.length === 1 ? offices[0].name : this.state.postOffice,
-        });
+    this.queryPostOffice(pincode, lat, lng)
+      .then((parsed) => {
+        if (!parsed || this._poInflight !== reqKey) return;
+        const { state, district, offices } = parsed;
+        if (Platform.OS === 'android') {
+          this.setState({
+            fetchingPO: false,
+            state: state || this.state.state,
+            district: district || this.state.district,
+            postOffices: offices,
+            postOffice: offices.length === 1 ? offices[0].name : this.state.postOffice,
+          });
+        } else {
+          LayoutAnimation.configureNext(EASE);
+          this.setState({
+            fetchingPO: false,
+            state: state || this.state.state,
+            district: district || this.state.district,
+            postOffices: offices,
+            postOffice: offices.length === 1 ? offices[0].name : this.state.postOffice,
+          });
+        }
       })
-      .catch(() => { this.setState({ fetchingPO: false }); Toast.show('Post office load nahi ho paya', Toast.SHORT); });
+      .catch(() => {
+        if (this._poInflight === reqKey) {
+          this.setState({ fetchingPO: false });
+          Toast.show('Post office load nahi ho paya', Toast.SHORT);
+        }
+      })
+      .finally(() => {
+        if (this._poInflight === reqKey) this._poInflight = null;
+      });
   };
 
   onPincodeChange = (v) => {
+    this._pinUserEdited = true;
     const pincode = v.replace(/\D/g, '').slice(0, 6);
     this.setState({ pincode, postOffice: '', postOffices: [], state: '', district: '' });
     if (pincode.length === 6) this.fetchPostOffice(pincode);
@@ -458,6 +590,9 @@ class CreateSoilOrder extends Component {
   canSubmit = () => !this.getMissingField() && !this.state.submitting;
 
   componentWillUnmount() {
+    if (this._skelTimer) clearTimeout(this._skelTimer);
+    this._unmounted = true;
+    this._pinTask?.cancel?.();
     if (this._totalListener) this.totalAnim.removeListener(this._totalListener);
     this._kbShow?.remove?.();
     this._kbHide?.remove?.();
@@ -485,14 +620,33 @@ class CreateSoilOrder extends Component {
     };
   };
 
+  buildOrderSummary = (order) => {
+    const pkg = this.selectedPkg();
+    const { selectedFarmer, dateObj, paymentMode, qty, displayTotal, paymentMethods } = this.state;
+    const payList = paymentMethods.length > 0
+      ? paymentMethods
+      : activePayments(this.state.pageData?.paymentMethods);
+    const selPay = payList.find((x) => x.code === paymentMode);
+    return {
+      farmer: farmerName(selectedFarmer) || order?.farmer_name || order?.farmer?.name || '',
+      package: pkg?.name || pkg?.title || order?.package_name || order?.package?.name || '',
+      pickupDate: moment(dateObj).format('DD MMM YYYY, hh:mm A'),
+      amount: displayTotal || this.totalAmount(),
+      qty: String(qty || '1'),
+      payment: payShortLabel(paymentMode, selPay?.name),
+      village: farmerVillage(selectedFarmer) || order?.village || '',
+    };
+  };
+
   navigateAfterPayment = (order, success) => {
     const orderId = order?.id;
-    this.setState({ paymentResult: { success, order, orderId } });
+    const summary = success ? this.buildOrderSummary(order) : null;
+    this.setState({ paymentResult: { success, order, orderId, summary } });
     if (this._payNavTimer) clearTimeout(this._payNavTimer);
     this._payNavTimer = setTimeout(() => {
       if (success) this.goToOrderDetail(true);
       else this.dismissPaymentResult();
-    }, success ? 1800 : 1600);
+    }, success ? 2400 : 1600);
   };
 
   dismissPaymentResult = () => {
@@ -973,6 +1127,7 @@ class CreateSoilOrder extends Component {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={$.farmerEmptyT}>Farmer chunein</Text>
+            <Text style={$.farmerEmptySub}>Soil test ke liye kisan select karein</Text>
           </View>
           <View style={$.chevPill}><Image source={I.arrow} style={$.chevPillIco} /></View>
         </Pressable>
@@ -980,19 +1135,32 @@ class CreateSoilOrder extends Component {
     }
     const name = farmerName(selectedFarmer);
     const phone = farmerPhone(selectedFarmer);
-    const village = farmerVillage(selectedFarmer);
+    const addr = farmerAddress(selectedFarmer);
     return (
-      <Pressable onPress={this.openSelectFarmer} style={({ pressed }) => [$.farmerCard, pressed && { opacity: 0.9 }]}>
-        <View style={$.avatar}><Text style={$.avatarT}>{initials(name)}</Text></View>
-        <View style={{ flex: 1 }}>
-          <Text style={$.farmerName} numberOfLines={1}>{name}</Text>
-          {!!phone && <Text style={$.farmerMeta}>📱 {phone}</Text>}
-          {!!village && <Text style={$.farmerMeta} numberOfLines={1}>{village}</Text>}
+      <Pressable onPress={this.openSelectFarmer} style={({ pressed }) => [$.farmerCard, pressed && { opacity: 0.92 }]}>
+        <View style={$.farmerCardTop}>
+          <View style={$.farmerAvtRing}>
+            <Image source={I.farmerNew} style={$.farmerAvtImg} resizeMode="contain" />
+          </View>
+          <View style={$.farmerCardBody}>
+            <Text style={$.farmerCardName}>{name}</Text>
+            {!!phone && (
+              <View style={$.farmerMetaRow}>
+                <Image source={I.call} style={$.farmerMetaIco} resizeMode="contain" />
+                <Text style={$.farmerMetaTxt}>{maskMobile(phone)}</Text>
+              </View>
+            )}
+          </View>
+          <View style={$.changePill}>
+            <Text style={$.changePillT}>Badlein</Text>
+          </View>
         </View>
-        <View style={$.changePill}>
-          <Image source={I.edit} style={$.changeIco} />
-          <Text style={$.changePillT}>Badlein</Text>
-        </View>
+        {!!addr && (
+          <View style={$.farmerAddrRow}>
+            <Image source={I.location} style={$.farmerAddrIco} resizeMode="contain" />
+            <Text style={$.farmerAddrTxt}>{addr}</Text>
+          </View>
+        )}
       </Pressable>
     );
   };
@@ -1008,7 +1176,8 @@ class CreateSoilOrder extends Component {
   };
 
   renderAddress = () => {
-    const { locating, fetchingPO, pincode, state, district, fullAddress, postOffice, postOffices, showPOPicker, focusedField, highlightField } = this.state;
+    const { locating, fetchingPin, fetchingPO, pincode, state, district, fullAddress, postOffice, postOffices, showPOPicker, focusedField, highlightField } = this.state;
+    const pinLoading = locating || fetchingPin;
     const inpStyle = (n) => {
       if (highlightField === n) return $.inpError;
       if (focusedField === n) return $.inpFocus;
@@ -1022,17 +1191,26 @@ class CreateSoilOrder extends Component {
             <Image source={I.pin} style={$.inpIco} />
             <TextInput style={$.inpTxt} value={pincode} onChangeText={this.onPincodeChange}
               onFocus={() => this.onFieldFocus('pin')} onBlur={() => this.setState({ focusedField: null })}
-              placeholder="6 digit PIN daalein" placeholderTextColor={S.MUTED} keyboardType="number-pad" maxLength={6} />
-            {locating || fetchingPO ? (
+              placeholder={pinLoading ? 'PIN load ho rahi hai...' : '6 digit PIN daalein'}
+              placeholderTextColor={S.MUTED} keyboardType="number-pad" maxLength={6}
+              editable={!pinLoading} />
+            {pinLoading ? (
               <View style={$.autoBtn}><ActivityIndicator color="#FFF" size="small" /></View>
             ) : (
-              <TouchableOpacity onPress={() => this.prefillLocation({ useCache: false })} hitSlop={HIT} style={$.autoBtn} activeOpacity={0.85}>
+              <TouchableOpacity onPress={() => this.prefillLocation({ silent: false })} hitSlop={HIT} style={$.autoBtn} activeOpacity={0.85}>
                 <Image source={I.gps} style={$.autoBtnIco} />
                 <Text style={$.autoBtnTxt}>Auto</Text>
               </TouchableOpacity>
             )}
           </View>
         ), 'pin')}
+
+        {fetchingPO && !detected && pincode.length === 6 && (
+          <Animatable.View animation="fadeIn" duration={180} useNativeDriver style={$.detectedRow}>
+            <ActivityIndicator size="small" color={S.ORANGE} />
+            <Text style={$.detectedTxt}>Area load ho rahi hai...</Text>
+          </Animatable.View>
+        )}
 
         {detected && (
           <Animatable.View animation="fadeIn" duration={220} useNativeDriver style={$.detectedRow}>
@@ -1554,53 +1732,114 @@ class CreateSoilOrder extends Component {
     );
   };
 
+  renderPayInfoRow = (label, value, icon = null) => {
+    if (!value) return null;
+    return (
+      <View style={$.payResultInfoRow} key={label}>
+        {icon ? (
+          <View style={$.payResultInfoIcoWrap}>
+            <Image source={icon} style={$.payResultInfoIco} />
+          </View>
+        ) : null}
+        <View style={$.payResultInfoBody}>
+          <Text style={$.payResultInfoLbl}>{label}</Text>
+          <Text style={$.payResultInfoVal} numberOfLines={3}>{value}</Text>
+        </View>
+      </View>
+    );
+  };
+
   renderPaymentResult = () => {
     const { paymentResult } = this.state;
     if (!paymentResult) return null;
     const ok = paymentResult.success;
     const orderId = paymentResult.orderId;
-    const accent = ok ? PAY_GREEN : S.RED;
-    const accentBg = ok ? S.GREEN_BG : S.RED_BG;
-    return (
-      <Modal visible animationType="fade" statusBarTranslucent transparent onRequestClose={this.onPaymentResultBack}>
-        <View style={$.payResultRoot}>
-          <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
-          <SafeAreaView edges={['top', 'bottom']} style={$.payResultSafe}>
-            <View style={$.payResultHdr}>
-              <TouchableOpacity style={$.payResultBack} onPress={this.onPaymentResultBack} hitSlop={HIT}>
-                <Image source={I.back} style={$.payResultBackIco} />
+    const summary = paymentResult.summary;
+    const amountStr = summary?.amount != null
+      ? `₹${Number(summary.amount).toLocaleString('en-IN')}`
+      : '';
+
+    if (!ok) {
+      return (
+        <Modal visible animationType="fade" statusBarTranslucent onRequestClose={this.onPaymentResultBack}>
+          <View style={[$.payResultRoot, $.payResultRootFail]}>
+            <StatusBar barStyle="dark-content" backgroundColor={S.BG} />
+            <SafeAreaView edges={['top']} style={$.payResultTopBarLight}>
+              <TouchableOpacity style={$.payResultCloseBtnLight} onPress={this.onPaymentResultBack} hitSlop={HIT} activeOpacity={0.75}>
+                <Image source={I.close} style={$.payResultCloseIcoDark} />
               </TouchableOpacity>
-              <Text style={$.payResultHdrT}>{ok ? 'Order confirm' : 'Payment failed'}</Text>
-              <View style={$.payResultHdrSp} />
+            </SafeAreaView>
+            <View style={$.payResultFailBody}>
+              <View style={$.payResultFailRing}>
+                <Image source={I.close} style={$.payResultFailIco} />
+              </View>
+              <Text style={$.payResultFailTitle}>Payment failed</Text>
+              <Text style={$.payResultFailSub}>Payment complete nahi hui. Dubara try kar sakte hain.</Text>
+              <View style={$.payResultRedirectPill}>
+                <ActivityIndicator size="small" color={S.RED} />
+                <Text style={$.payResultRedirectFail}>Wapas ja rahe hain...</Text>
+              </View>
+            </View>
+            <SafeAreaView edges={['bottom']} />
+          </View>
+        </Modal>
+      );
+    }
+
+    return (
+      <Modal visible animationType="fade" statusBarTranslucent onRequestClose={this.onPaymentResultBack}>
+        <View style={$.payResultRoot}>
+          <StatusBar barStyle="light-content" backgroundColor={S.GREEN_DARK} />
+          <View style={$.payResultHero}>
+            <View style={[$.payResultBlob, $.payResultBlobL]} />
+            <View style={[$.payResultBlob, $.payResultBlobR]} />
+            <SafeAreaView edges={['top']} style={$.payResultTopBarHero}>
+              <TouchableOpacity style={$.payResultCloseBtnHero} onPress={this.onPaymentResultBack} hitSlop={HIT} activeOpacity={0.75}>
+                <Image source={I.close} style={$.payResultCloseIco} />
+              </TouchableOpacity>
+            </SafeAreaView>
+            <Animatable.View animation="bounceIn" duration={700} useNativeDriver style={$.payResultTickWrap}>
+              <View style={$.payResultTickRing} />
+              <View style={$.payResultTickCircle}>
+                <Image source={I.check} style={$.payResultTickIco} />
+              </View>
+            </Animatable.View>
+            <Animatable.Text animation="fadeInUp" delay={180} duration={400} style={$.payResultHeroTitle}>
+              Order confirm ho gaya!
+            </Animatable.Text>
+            <Animatable.Text animation="fadeInUp" delay={260} duration={400} style={$.payResultHeroSub}>
+              Soil test sample pickup schedule ho chuki hai
+            </Animatable.Text>
+          </View>
+
+          <Animatable.View animation="fadeInUp" delay={320} duration={450} useNativeDriver style={$.payResultSheet}>
+            {orderId ? (
+              <View style={$.payResultOrderBadge}>
+                <Text style={$.payResultOrderBadgeLbl}>Order ID</Text>
+                <Text style={$.payResultOrderBadgeVal}>#{orderId}</Text>
+              </View>
+            ) : null}
+
+            <View style={$.payResultReceipt}>
+              {this.renderPayInfoRow('Farmer', summary?.farmer, I.farmer)}
+              {this.renderPayInfoRow('Package', summary?.package, I.package)}
+              {this.renderPayInfoRow('Pickup', summary?.pickupDate, I.calendar)}
+              {this.renderPayInfoRow('Payment', summary?.payment, I.pay)}
             </View>
 
-            <View style={$.payResultBody}>
-              <Animatable.View animation="zoomIn" duration={420} useNativeDriver style={[$.payResultCard, { borderColor: accent }]}>
-                <View style={[$.payResultRing, { backgroundColor: accentBg }]}>
-                  <View style={[$.payResultCircle, { backgroundColor: accent }]}>
-                    <Image source={ok ? I.tick : I.close} style={$.payResultIco} />
-                  </View>
-                </View>
-                <Text style={$.payResultTitle}>{ok ? 'Order placed!' : 'Payment failed'}</Text>
-                <Text style={$.payResultSub}>
-                  {ok
-                    ? 'Aapka soil test order confirm ho gaya. Order detail par le ja rahe hain...'
-                    : 'Payment complete nahi hui. Dubara try kar sakte hain.'}
-                </Text>
-                {!!orderId && (
-                  <View style={$.payResultIdPill}>
-                    <Text style={$.payResultId}>Order #{orderId}</Text>
-                  </View>
-                )}
-                <View style={$.payResultRedirect}>
-                  <ActivityIndicator size="small" color={accent} />
-                  <Text style={[$.payResultRedirectT, { color: accent }]}>
-                    {ok ? 'Order detail khul rahi hai...' : 'Wapas ja rahe hain...'}
-                  </Text>
-                </View>
-              </Animatable.View>
+            {amountStr ? (
+              <View style={$.payResultAmountRow}>
+                <Text style={$.payResultAmountLbl}>Total amount</Text>
+                <Text style={$.payResultAmountVal}>{amountStr}</Text>
+              </View>
+            ) : null}
+
+            <View style={$.payResultRedirectPill}>
+              <ActivityIndicator size="small" color={S.GREEN} />
+              <Text style={$.payResultRedirectOk}>Order detail khul rahi hai...</Text>
             </View>
-          </SafeAreaView>
+          </Animatable.View>
+          <SafeAreaView edges={['bottom']} style={$.payResultSheetSafe} />
         </View>
       </Modal>
     );
@@ -1673,10 +1912,7 @@ class CreateSoilOrder extends Component {
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
         {loading ? (
-          <View style={$.loadingWrap}>
-            <ActivityIndicator color={S.GREEN} size="large" />
-            <Text style={$.loadingTxt}>Mitti jaanch load ho rahi hai...</Text>
-          </View>
+          <SoilOrderSkeleton onBack={this.goBack} />
         ) : (
           <View style={{ flex: 1 }}>
             <KeyboardAvoidingView
@@ -1695,7 +1931,9 @@ class CreateSoilOrder extends Component {
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
-                scrollEventThrottle={1}
+                nestedScrollEnabled={Platform.OS === 'android'}
+                removeClippedSubviews={Platform.OS === 'android'}
+                scrollEventThrottle={16}
                 onScrollBeginDrag={this.onScrollBeginDrag}
                 onScrollEndDrag={this.onScrollEndDrag}
                 onMomentumScrollBegin={this.onMomentumScrollBegin}
@@ -1825,14 +2063,33 @@ const $ = StyleSheet.create({
   farmerAddIco: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', marginRight: 10, overflow: 'hidden' },
   farmerAddImg: { width: 38, height: 38, resizeMode: 'contain' },
   farmerEmptyT: { fontSize: 13.5, fontWeight: '600', color: S.P },
-  farmerCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D7CCF7', borderRadius: 12, padding: 11, backgroundColor: S.P_TINT },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: S.P, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  avatarT: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  farmerEmptySub: { fontSize: 11, color: S.SUB, marginTop: 2 },
+  farmerCard: {
+    borderWidth: 1, borderColor: '#D7CCF7', borderRadius: 14, padding: 12,
+    backgroundColor: '#FAFAFF',
+  },
+  farmerCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  farmerAvtRing: {
+    width: 44, height: 44, borderRadius: 12, backgroundColor: S.P_SOFT,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: S.P_GLOW,
+  },
+  farmerAvtImg: { width: 30, height: 30 },
+  farmerCardBody: { flex: 1, minWidth: 0, paddingTop: 1 },
+  farmerCardName: { fontSize: 14.5, fontWeight: '700', color: S.TXT, marginBottom: 4 },
+  farmerMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  farmerMetaIco: { width: 13, height: 13, tintColor: S.P },
+  farmerMetaTxt: { fontSize: 12.5, fontWeight: '600', color: S.SUB, letterSpacing: 0.2 },
+  farmerAddrRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7, marginTop: 10,
+    paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E9E4FC',
+  },
+  farmerAddrIco: { width: 14, height: 14, marginTop: 2, tintColor: S.ORANGE, flexShrink: 0 },
+  farmerAddrTxt: { flex: 1, fontSize: 12.5, fontWeight: '500', color: S.SUB, lineHeight: 18 },
+  changePill: {
+    backgroundColor: S.P, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexShrink: 0,
+  },
+  changePillT: { fontSize: 11, fontWeight: '700', color: '#FFF' },
   farmerName: { fontSize: 13.5, fontWeight: '600', color: S.TXT },
-  farmerMeta: { fontSize: 11, color: S.SUB, marginTop: 2 },
-  changePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, backgroundColor: S.P },
-  changeIco: { width: 10, height: 10, resizeMode: 'contain', tintColor: '#FFF', marginRight: 4 },
-  changePillT: { fontSize: 11, fontWeight: '600', color: '#FFF' },
 
   field: { marginBottom: 7 },
   fieldLbl: { fontSize: 11.5, fontWeight: '500', color: S.SUB, marginBottom: 5 },
@@ -2049,38 +2306,92 @@ const $ = StyleSheet.create({
   },
   payDiscBadgeT: { fontSize: 9, fontWeight: '700', color: '#FFF' },
 
-  payResultRoot: { flex: 1, backgroundColor: SCREEN_BG },
-  payResultSafe: { flex: 1 },
-  payResultHdr: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: PAD, paddingVertical: 10,
-    backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: CARD_BORDER,
+  payResultRoot: { flex: 1, backgroundColor: S.BG },
+  payResultRootFail: { backgroundColor: S.BG, justifyContent: 'center' },
+  payResultHero: {
+    backgroundColor: S.GREEN_DARK, paddingBottom: 36, overflow: 'hidden',
+    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
   },
-  payResultBack: {
-    width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9',
+  payResultBlob: {
+    position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  payResultBlobL: { width: 180, height: 180, top: -40, left: -50 },
+  payResultBlobR: { width: 120, height: 120, top: 20, right: -30 },
+  payResultTopBarHero: { alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 8 },
+  payResultTopBarLight: { alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 8 },
+  payResultCloseBtnHero: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
-  payResultBackIco: { width: 14, height: 14, tintColor: S.TXT, resizeMode: 'contain' },
-  payResultHdrT: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: S.TXT },
-  payResultHdrSp: { width: 38 },
-  payResultBody: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, paddingBottom: 40 },
-  payResultCard: {
-    width: '100%', backgroundColor: '#FFF', borderRadius: 20, padding: 24,
-    alignItems: 'center', borderWidth: 1, ...SHADOW,
+  payResultCloseBtnLight: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: S.WHITE,
+    alignItems: 'center', justifyContent: 'center', ...SHADOW,
   },
-  payResultRing: {
-    width: 108, height: 108, borderRadius: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+  payResultCloseIco: { width: 14, height: 14, tintColor: '#FFF', resizeMode: 'contain' },
+  payResultCloseIcoDark: { width: 14, height: 14, tintColor: S.SUB, resizeMode: 'contain' },
+  payResultTickWrap: { alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  payResultTickRing: {
+    position: 'absolute', width: 96, height: 96, borderRadius: 48,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
   },
-  payResultCircle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
-  payResultIco: { width: 32, height: 32, tintColor: '#FFF', resizeMode: 'contain' },
-  payResultTitle: { fontSize: 22, fontWeight: '700', color: S.TXT, marginBottom: 8, textAlign: 'center' },
-  payResultSub: { fontSize: 13.5, color: S.SUB, textAlign: 'center', lineHeight: 20 },
-  payResultIdPill: {
-    marginTop: 14, backgroundColor: '#F8FAFC', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
-    borderWidth: 1, borderColor: CARD_BORDER,
+  payResultTickCircle: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: '#FFF',
+    alignItems: 'center', justifyContent: 'center', ...SHADOW,
   },
-  payResultId: { fontSize: 12.5, fontWeight: '700', color: S.TXT },
-  payResultRedirect: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22 },
-  payResultRedirectT: { fontSize: 12.5, fontWeight: '600' },
+  payResultTickIco: { width: 34, height: 34, tintColor: S.GREEN, resizeMode: 'contain' },
+  payResultHeroTitle: {
+    fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center',
+    marginTop: 16, paddingHorizontal: 24,
+  },
+  payResultHeroSub: {
+    fontSize: 13, color: 'rgba(255,255,255,0.88)', textAlign: 'center',
+    marginTop: 6, paddingHorizontal: 28, lineHeight: 19,
+  },
+  payResultSheet: {
+    flex: 1, marginTop: -18, marginHorizontal: 16, backgroundColor: S.WHITE,
+    borderRadius: 20, paddingHorizontal: 18, paddingTop: 20, paddingBottom: 16, ...SHADOW,
+  },
+  payResultSheetSafe: { backgroundColor: S.BG },
+  payResultOrderBadge: {
+    alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: S.GREEN_TINT, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+    marginBottom: 16, borderWidth: 1, borderColor: S.GREEN_BG,
+  },
+  payResultOrderBadgeLbl: { fontSize: 11, fontWeight: '600', color: S.SUB, textTransform: 'uppercase', letterSpacing: 0.4 },
+  payResultOrderBadgeVal: { fontSize: 15, fontWeight: '800', color: S.GREEN_DARK },
+  payResultReceipt: { gap: 2 },
+  payResultInfoRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: S.BORDER,
+  },
+  payResultInfoIcoWrap: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: S.BG,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  payResultInfoIco: { width: 18, height: 18, tintColor: S.P, resizeMode: 'contain' },
+  payResultInfoBody: { flex: 1 },
+  payResultInfoLbl: { fontSize: 11, fontWeight: '600', color: S.MUTED, marginBottom: 2 },
+  payResultInfoVal: { fontSize: 14, fontWeight: '700', color: S.TXT, lineHeight: 20 },
+  payResultAmountRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: S.BORDER,
+  },
+  payResultAmountLbl: { fontSize: 13, fontWeight: '600', color: S.SUB },
+  payResultAmountVal: { fontSize: 22, fontWeight: '800', color: S.GREEN_DARK },
+  payResultRedirectPill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: 18, backgroundColor: S.GREEN_TINT, borderRadius: 12, paddingVertical: 12,
+  },
+  payResultRedirectOk: { fontSize: 12.5, fontWeight: '600', color: S.GREEN_DARK },
+  payResultRedirectFail: { fontSize: 12.5, fontWeight: '600', color: S.RED },
+  payResultFailBody: { alignItems: 'center', paddingHorizontal: 28 },
+  payResultFailRing: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: S.RED_BG,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  payResultFailIco: { width: 32, height: 32, tintColor: S.RED, resizeMode: 'contain' },
+  payResultFailTitle: { fontSize: 22, fontWeight: '800', color: S.TXT, textAlign: 'center' },
+  payResultFailSub: { fontSize: 13, color: S.SUB, textAlign: 'center', marginTop: 8, lineHeight: 19 },
 
   payList: { gap: 6 },
   payRowItem: {

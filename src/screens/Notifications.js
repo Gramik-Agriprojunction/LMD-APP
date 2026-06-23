@@ -17,6 +17,7 @@ import constants from '../utils/constants';
 import { applyNotificationNavigation } from '../utils/notificationNavigation';
 import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
+import { NotificationCountBadge } from '../components/NotificationBellButton';
 import { S, soilIcons as I } from '../utils/soilTheme';
 
 const P = S.P;
@@ -273,15 +274,7 @@ class Notifications extends Component {
     return null;
   };
 
-  renderHeaderBadge = () => {
-    const unread = this.state.notifications.filter((n) => !this.isRead(n)).length;
-    if (!unread) return <View style={styles.headerSpacer} />;
-    return (
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
-      </View>
-    );
-  };
+  renderHeaderBadge = () => <NotificationCountBadge large />;
 
   render() {
     const { isLoading, notifications, refreshing } = this.state;
@@ -328,22 +321,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: S.BG },
   body: { flex: 1 },
 
-  listContent: { flexGrow: 1, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 20 },
+  listContent: { flexGrow: 1, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 16 },
 
-  headerSpacer: { width: 40, height: 40 },
-  badge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
-    backgroundColor: S.ORANGE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 4,
-  },
-  badgeText: { color: S.WHITE, fontSize: 11, fontWeight: '800' },
-
-  cardWrap: { marginBottom: 6 },
+  cardWrap: { marginBottom: 5 },
   card: {
     flexDirection: 'row',
     alignItems: 'stretch',

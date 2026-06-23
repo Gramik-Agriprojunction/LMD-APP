@@ -15,13 +15,15 @@
  *   - Header row: height 56, paddingHorizontal 12
  *   - Back chip: 40 × 40 round, marginLeft 4, tinted from the bg
  *   - Title slot: flex 1 centered horizontally
- *   - Right slot: 40 × 40 spacer by default; pass a node to override
+ *   - Right slot: 44px mirror of left (40 + 4 inset), content aligned to inner edge
  */
 import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const BACK_ICON = require('../screens/assets/back.png');
+const SIDE_INSET = 4;
+const SIDE_SIZE = 40;
 
 const isLightHex = (hex) => {
   if (typeof hex !== 'string') return false;
@@ -65,7 +67,7 @@ export default function ScreenHeader({
             <Image source={BACK_ICON} style={[styles.ico, { tintColor: tint }]} />
           </TouchableOpacity>
 
-          <View style={styles.center}>
+          <View style={[styles.center, children && styles.centerFill]}>
             {children ? (
               children
             ) : (
@@ -76,7 +78,9 @@ export default function ScreenHeader({
             )}
           </View>
 
-          {right || <View style={styles.spacer} />}
+          <View style={styles.sideSlot}>
+            {right || <View style={styles.sidePlaceholder} />}
+          </View>
         </View>
       </SafeAreaView>
     </View>
@@ -86,16 +90,24 @@ export default function ScreenHeader({
 const styles = StyleSheet.create({
   row: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
   chip: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: SIDE_SIZE,
+    height: SIDE_SIZE,
+    borderRadius: SIDE_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
+    marginLeft: SIDE_INSET,
   },
   ico: { width: 17, height: 17, resizeMode: 'contain' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  centerFill: { alignItems: 'stretch' },
   kicker: { fontSize: 10, fontWeight: '600', letterSpacing: 1 },
   title: { fontSize: 14.5, fontWeight: '700', letterSpacing: 0.2 },
-  spacer: { width: 40, height: 40 },
+  sideSlot: {
+    width: SIDE_SIZE + SIDE_INSET,
+    height: SIDE_SIZE,
+    paddingRight: SIDE_INSET,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  sidePlaceholder: { width: SIDE_SIZE, height: SIDE_SIZE },
 });

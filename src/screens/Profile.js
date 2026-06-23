@@ -21,6 +21,8 @@ import LiveOrdersGrid from '../components/LiveOrdersGrid';
 import {NavigationEvents} from '../utils/v4Compat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Compat';
+import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import NotificationBellButton from '../components/NotificationBellButton';
 
 const resetAction = StackActions.reset({
   index: 0,                       
@@ -46,11 +48,12 @@ class Profile extends Component {
       refreshing: false,
       profile: null, // API only
       missingFields: [],
-      show_login : false
+      show_login : false,
     };
   }
 
   componentDidMount() {
+    prefetchSoilOrderPincode();
     this.profileApi();
   }
 
@@ -177,11 +180,11 @@ class Profile extends Component {
                 <Image style={styles.backImg} source={require('./assets/back.png')} />
               </TouchableOpacity>
 
-              {(!!name || !!avatar || !!phone || !!role) && (
-                <View style={styles.profileRow}>
-                  <View style={styles.avatar}>
-                    <Image source={require('./assets/logo.png')} style={styles.avatarFallbackImg} />
-                  </View>
+              <View style={styles.profileRow}>
+                <View style={styles.avatar}>
+                  <Image source={require('./assets/logo.png')} style={styles.avatarFallbackImg} />
+                </View>
+                {(!!name || !!phone) ? (
                   <View style={styles.nameCol}>
                     {!!name && (
                       <Text style={styles.name} numberOfLines={1}>{name}</Text>
@@ -190,8 +193,10 @@ class Profile extends Component {
                       <Text style={styles.phoneText} numberOfLines={1}>{phone}</Text>
                     )}
                   </View>
-                </View>
-              )}
+                ) : null}
+              </View>
+
+              <NotificationBellButton navigation={this.props.navigation} />
             </View>
           </SafeAreaView>
         </View>
@@ -251,6 +256,7 @@ class Profile extends Component {
           </View>
 
           {/* ✅ Finance buttons */}
+          <View style={styles.actionList}>
           <TouchableOpacity style={styles.actionCard} activeOpacity={0.92} onPress={this.goToSettlementHistory}>
             <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/flow.png')} />
             <View style={{ flex: 1 }}>
@@ -272,7 +278,10 @@ class Profile extends Component {
           <TouchableOpacity
             style={styles.actionCard}
             activeOpacity={0.92}
-            onPress={() => this.props?.navigation?.navigate('SoilOrders')}
+            onPress={() => {
+              prefetchSoilOrderPincode();
+              this.props?.navigation?.navigate('SoilOrders');
+            }}
           >
             <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/soil.png')} />
             <View style={{ flex: 1 }}>
@@ -285,7 +294,10 @@ class Profile extends Component {
           <TouchableOpacity
             style={styles.actionCard}
             activeOpacity={0.92}
-            onPress={() => this.props?.navigation?.navigate('CreateSoilOrder')}
+            onPress={() => {
+              prefetchSoilOrderPincode();
+              this.props?.navigation?.navigate('CreateSoilOrder');
+            }}
           >
             <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/fertilizer.png')} />
             <View style={{ flex: 1 }}>
@@ -303,6 +315,7 @@ class Profile extends Component {
             </View>
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
+          </View>
 
 
           <View style={{ height: 16 }} />
@@ -353,8 +366,8 @@ const styles = StyleSheet.create({
 
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
-  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', width: '100%' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
@@ -395,7 +408,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignSelf:'center'
   },
-  profileRow: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
+  profileRow: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10, minWidth: 0 },
   nameCol: { flex: 1, marginLeft: 12, justifyContent: 'center' },
 
   avatar: {
@@ -420,7 +433,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 14,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E6EAF0',
   },
@@ -433,6 +446,7 @@ const styles = StyleSheet.create({
 
   tilesGrid: { marginTop: 12 },
 
+  actionList: { gap: 6, marginTop: 2 },
   actionCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -441,7 +455,7 @@ const styles = StyleSheet.create({
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 0,
   },
   actionIcon: {
     width: 42,

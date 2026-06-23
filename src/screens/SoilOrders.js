@@ -11,6 +11,8 @@ import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
 import Toast from 'react-native-simple-toast';
 import { S, soilIcons as I } from '../utils/soilTheme';
+import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import NotificationBellButton from '../components/NotificationBellButton';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -131,11 +133,19 @@ class SoilOrders extends Component {
   tabX = new Animated.Value(0);
 
   componentDidMount() {
+    prefetchSoilOrderPincode();
     this.fetchOrders();
   }
 
+  onScreenFocus = () => {
+    prefetchSoilOrderPincode();
+  };
+
   goBack = () => this.props?.navigation?.goBack?.();
-  onBook = () => this.props.navigation.navigate('CreateSoilOrder');
+  onBook = () => {
+    prefetchSoilOrderPincode();
+    this.props.navigation.navigate('CreateSoilOrder');
+  };
 
   switchTab = (key) => {
     if (key === this.state.tab) return;
@@ -209,7 +219,9 @@ class SoilOrders extends Component {
     const pkg = getPkg(item);
     const stage = getStage(item);
     const sm = STAGE[stage] || STAGE.pending;
-    const pickup = item?.sample_pickup_date ? moment(item.sample_pickup_date).format('DD MMM') : '-';
+    const pickup = (item?.order_sample_pickup_date || item?.sample_pickup_date)
+      ? moment(item.order_sample_pickup_date || item.sample_pickup_date).format('DD MMM')
+      : '-';
     const report = item?.report_status || sm.label;
     const pay = payLbl(item?.payment_mode);
     const payIcon = payIconUri(item);
@@ -278,7 +290,7 @@ class SoilOrders extends Component {
     return (
       <View style={st.root}>
         <StatusBar barStyle="light-content" backgroundColor={S.P} />
-        <NavigationEvents onDidFocus={() => this.fetchOrders()} />
+        <NavigationEvents onDidFocus={() => { this.onScreenFocus(); this.fetchOrders(); }} />
 
         <View style={st.hdrWrap}>
           <ScreenHeader
@@ -287,13 +299,12 @@ class SoilOrders extends Component {
             title="Mitti Jaanch"
             onBack={this.goBack}
             right={(
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => this.props.navigation.navigate('Notifications')}
-                style={st.bellBtn}
-              >
-                <Image source={I.bell} style={st.bellIco} />
-              </TouchableOpacity>
+              <NotificationBellButton
+                navigation={this.props.navigation}
+                size={36}
+                iconSize={15}
+                style={{ backgroundColor: 'rgba(255,255,255,0.14)', marginLeft: 0 }}
+              />
             )}
           />
         </View>

@@ -1,4 +1,5 @@
 import { NativeModules, Platform, PermissionsAndroid } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let _geoApi = null;
 let _nativeLinked = null;
@@ -116,7 +117,7 @@ const readCachedCoords = (maxAgeMs = 120000) => {
   return { lat: String(_lastCoords.lat), lng: String(_lastCoords.lng) };
 };
 
-const getCurrentCoordsWithFallback = () => new Promise((resolve, reject) => {
+const getCurrentCoordsWithFallback = ({ fresh = false } = {}) => new Promise((resolve, reject) => {
   const Geo = getGeolocationApi();
   if (!Geo) {
     reject(new Error('Geolocation unavailable'));
@@ -144,6 +145,11 @@ const getCurrentCoordsWithFallback = () => new Promise((resolve, reject) => {
     }
   };
 
+  if (fresh) {
+    tryPosition({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }, null);
+    return;
+  }
+
   tryPosition(
     { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
     { enableHighAccuracy: false, timeout: 25000, maximumAge: 300000 },
@@ -164,6 +170,9 @@ export const getCurrentCoordsWithPermission = async (purpose = 'general', { useC
 
   const perm = await ensureLocationPermission(purpose);
   if (!perm.ok) {
+    if (!useCache) {
+      return { lat: '', lng: '', error: perm.error || 'permission_denied' };
+    }
     const cached = readCachedCoords(600000);
     if (cached) return cached;
     return { lat: '', lng: '', error: perm.error || 'permission_denied' };
@@ -173,9 +182,12 @@ export const getCurrentCoordsWithPermission = async (purpose = 'general', { useC
     if (Platform.OS === 'ios') {
       await new Promise((r) => setTimeout(r, 400));
     }
-    const { lat, lng } = await getCurrentCoordsWithFallback();
+    const { lat, lng } = await getCurrentCoordsWithFallback({ fresh: !useCache });
     return { lat: String(lat), lng: String(lng) };
   } catch (e) {
+    if (!useCache) {
+      return { lat: '', lng: '', error: 'location_unavailable' };
+    }
     const cached = readCachedCoords(600000);
     if (cached) return cached;
     return { lat: '', lng: '', error: 'location_unavailable' };
@@ -279,6 +291,7 @@ const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
       ...options,
       ...(controller ? { signal: controller.signal } : {}),
     });
+    if (res.status === 429) return { __rateLimited: true };
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
@@ -288,31 +301,164 @@ const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
   }
 };
 
-const reverseGeocodeNominatim = async (lat, lng) => {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json&addressdetails=1`;
-  const json = await fetchJsonWithTimeout(url, {
-    headers: { 'User-Agent': 'GramikLMD/1.0 (React Native)' },
-  });
-  return normalizePincode(json?.address?.postcode);
+const PIN_DISK_PREFIX = '@lmd_pin_coords:';
+const NOMINATIM_ZOOM = 14;
+const NOMINATIM_MIN_GAP_MS = 2000;
+const PIN_LOOKUP_CACHE_TTL = 86400000;
+const PIN_DISK_TTL = 604800000;
+let _pinLookupCache = new Map();
+let _pinLookupInflight = new Map();
+let _lastNominatimAt = 0;
+let _nominatimGlobalLock = Promise.resolve();
+
+const coordCacheKey = (lat, lng) => `${Number(lat).toFixed(3)},${Number(lng).toFixed(3)}`;
+
+const withNominatimLock = async (fn) => {
+  const prev = _nominatimGlobalLock;
+  let release;
+  _nominatimGlobalLock = new Promise((r) => { release = r; });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
 };
 
-const reverseGeocodeBigDataCloud = async (lat, lng) => {
-  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
-  const json = await fetchJsonWithTimeout(url);
-  return normalizePincode(json?.postcode);
+const waitForNominatimSlot = async () => {
+  const wait = NOMINATIM_MIN_GAP_MS - (Date.now() - _lastNominatimAt);
+  if (wait > 0) await new Promise((r) => { setTimeout(r, wait); });
 };
 
-export const reverseGeocodePincode = async (lat, lng) => {
+const readPinDiskCache = async (key) => {
+  try {
+    const raw = await AsyncStorage.getItem(`${PIN_DISK_PREFIX}${key}`);
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    if (!data?.pin || Date.now() - (data.at || 0) > PIN_DISK_TTL) return '';
+    return String(data.pin);
+  } catch (e) {
+    return '';
+  }
+};
+
+const writePinDiskCache = async (key, pin) => {
+  try {
+    await AsyncStorage.setItem(`${PIN_DISK_PREFIX}${key}`, JSON.stringify({ pin, at: Date.now() }));
+  } catch (e) { /* ignore */ }
+};
+
+const reverseGeocodeNominatimOnce = async (lat, lng) => withNominatimLock(async () => {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => { setTimeout(r, 3500); });
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await waitForNominatimSlot();
+    _lastNominatimAt = Date.now();
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&format=json&addressdetails=1&zoom=${NOMINATIM_ZOOM}`;
+    // eslint-disable-next-line no-await-in-loop
+    const json = await fetchJsonWithTimeout(url, {
+      headers: { 'User-Agent': 'GramikLMD/1.0 (React Native)' },
+    }, 9000);
+    if (json?.__rateLimited) continue;
+    if (!json?.address) return '';
+    return normalizePincode(json.address.postcode);
+  }
+  return '';
+});
+
+const reverseGeocodeGeocodeXyz = async (lat, lng) => {
+  const url = `https://geocode.xyz/${encodeURIComponent(lat)},${encodeURIComponent(lng)}?geoit=json`;
+  const json = await fetchJsonWithTimeout(url, {}, 7000);
+  if (!json || typeof json !== 'object' || json.__rateLimited) return '';
+  const err = String(json.error || json.err || '').toLowerCase();
+  if (err.includes('throttled') || err.includes('payment')) return '';
+  const postal = json?.standard?.postal ?? json?.postal;
+  if (String(postal || '').toLowerCase().includes('throttled')) return '';
+  return normalizePincode(postal);
+};
+
+const gatherPinCandidates = async (lat, lng) => {
+  const pins = [];
+  const add = (raw) => {
+    const pin = normalizePincode(raw);
+    if (pin && !pins.includes(pin)) pins.push(pin);
+  };
+  add(await reverseGeocodeNominatimOnce(lat, lng));
+  if (!pins.length) add(await reverseGeocodeGeocodeXyz(lat, lng));
+  return pins;
+};
+
+const validatePinWithRetry = async (validatePin, pin, lat, lng, attempts = 2) => {
+  if (!validatePin) return true;
+  for (let i = 0; i < attempts; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await validatePin(pin, lat, lng)) return true;
+    if (i < attempts - 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => { setTimeout(r, 500); });
+    }
+  }
+  return false;
+};
+
+const cacheResolvedPin = async (key, lat, lng, pin) => {
+  _pinLookupCache.set(key, { pin, at: Date.now() });
+  await writePinDiskCache(key, pin);
+  storePinPrefetch({ lat, lng, pincode: pin });
+};
+
+/**
+ * Resolve PIN from GPS coords — one Nominatim call, deduped, disk-cached.
+ */
+export const lookupPincodeFromCoords = async (lat, lng, validatePin) => {
   const latN = Number(lat);
   const lngN = Number(lng);
   if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return '';
 
-  // Nominatim returns Indian pincodes reliably; BigDataCloud often leaves postcode empty.
-  const fromNominatim = await reverseGeocodeNominatim(latN, lngN);
-  if (fromNominatim) return fromNominatim;
+  const key = coordCacheKey(latN, lngN);
 
-  const fromBdc = await reverseGeocodeBigDataCloud(latN, lngN);
-  return fromBdc || '';
+  const diskPin = await readPinDiskCache(key);
+  if (diskPin.length === 6) {
+    if (await validatePinWithRetry(validatePin, diskPin, latN, lngN)) {
+      await cacheResolvedPin(key, latN, lngN, diskPin);
+      return diskPin;
+    }
+  }
+
+  const mem = _pinLookupCache.get(key);
+  if (mem?.pin && Date.now() - mem.at < PIN_LOOKUP_CACHE_TTL) {
+    if (await validatePinWithRetry(validatePin, mem.pin, latN, lngN)) return mem.pin;
+  }
+
+  if (_pinLookupInflight.has(key)) return _pinLookupInflight.get(key);
+
+  const task = (async () => {
+    const candidates = await gatherPinCandidates(latN, lngN);
+    for (const candidate of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await validatePinWithRetry(validatePin, candidate, latN, lngN)) {
+        await cacheResolvedPin(key, latN, lngN, candidate);
+        return candidate;
+      }
+    }
+    return '';
+  })()
+    .catch(() => '')
+    .finally(() => { _pinLookupInflight.delete(key); });
+
+  _pinLookupInflight.set(key, task);
+  return task;
+};
+
+/** @deprecated use lookupPincodeFromCoords */
+export const getPincodeCandidates = async (lat, lng) => gatherPinCandidates(lat, lng);
+
+export const reverseGeocodePincode = async (lat, lng) => {
+  const pins = await gatherPinCandidates(lat, lng);
+  return pins[0] || '';
 };
 
 export const getLocationPincode = async ({ maxWaitMs = 15000, useCache = true } = {}) => {
@@ -328,6 +474,9 @@ export const getLocationPincode = async ({ maxWaitMs = 15000, useCache = true } 
     return { lat: '', lng: '', pincode: '', error: 'permission_denied' };
   }
   if (result.error === 'timeout') {
+    if (!useCache) {
+      return { lat: '', lng: '', pincode: '', error: 'timeout' };
+    }
     const cached = readCachedCoords(600000);
     if (cached?.lat && cached?.lng) {
       const pincode = await reverseGeocodePincode(cached.lat, cached.lng);
@@ -342,7 +491,91 @@ export const getLocationPincode = async ({ maxWaitMs = 15000, useCache = true } 
   return { lat: result.lat, lng: result.lng, pincode, error: pincode ? undefined : 'location_unavailable' };
 };
 
+const PIN_PREFETCH_TTL = 120000; // in-memory only, short-lived session cache
+let _pinPrefetch = null;
+let _pinPrefetchAt = 0;
+let _pinPrefetchPromise = null;
+const _pinPrefetchListeners = new Set();
+
+const storePinPrefetch = (payload) => {
+  if (!payload?.pincode || String(payload.pincode).length !== 6) return;
+  _pinPrefetch = {
+    lat: String(payload.lat || ''),
+    lng: String(payload.lng || ''),
+    pincode: String(payload.pincode),
+  };
+  _pinPrefetchAt = Date.now();
+  _pinPrefetchListeners.forEach((fn) => {
+    try { fn(_pinPrefetch); } catch (e) { /* ignore */ }
+  });
+};
+
+export const getCachedPrefetchedPincode = () => {
+  if (!_pinPrefetch?.pincode || Date.now() - _pinPrefetchAt > PIN_PREFETCH_TTL) return null;
+  return { ..._pinPrefetch };
+};
+
+/** Fetch fresh GPS coords (no PIN). */
+export const getFreshCoords = async ({ maxWaitMs = 15000 } = {}) => {
+  const result = await Promise.race([
+    getCurrentCoordsWithPermission('general', { useCache: false }),
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ lat: '', lng: '', error: 'timeout' }), maxWaitMs);
+    }),
+  ]);
+  if (result.error === 'permission_denied') {
+    return { lat: '', lng: '', error: 'permission_denied' };
+  }
+  if (result.error === 'timeout' || !result.lat || !result.lng) {
+    return { lat: '', lng: '', error: result.error || 'timeout' };
+  }
+  return { lat: result.lat, lng: result.lng };
+};
+
+/** Fetch fresh GPS + reverse-geocode PIN. Never reads stored/static PIN. */
+export const fetchFreshSoilOrderPincode = ({ maxWaitMs = 15000, validatePin } = {}) => {
+  if (_pinPrefetchPromise) return _pinPrefetchPromise;
+
+  _pinPrefetchPromise = (async () => {
+    const coords = await getFreshCoords({ maxWaitMs });
+    if (!coords.lat || !coords.lng) {
+      return { lat: '', lng: '', pincode: '', error: coords.error || 'location_unavailable' };
+    }
+
+    const pincode = await lookupPincodeFromCoords(coords.lat, coords.lng, validatePin);
+
+    if (pincode.length === 6) {
+      return { lat: coords.lat, lng: coords.lng, pincode };
+    }
+    return { lat: coords.lat, lng: coords.lng, pincode: '', error: 'location_unavailable' };
+  })()
+    .catch(() => ({ lat: '', lng: '', pincode: '', error: 'location_unavailable' }))
+    .finally(() => { _pinPrefetchPromise = null; });
+
+  return _pinPrefetchPromise;
+};
+
+/** Warm GPS only — geocoding runs once on CreateSoilOrder to avoid Nominatim 429. */
+export const prefetchSoilOrderPincode = () => {
+  getFreshCoords({ maxWaitMs: 12000 }).catch(() => {});
+};
+
+let _soilPrefillInflight = null;
+
+/** Ensures only one soil PIN prefill runs app-wide (React Strict Mode safe). */
+export const runSoilPinPrefill = (fn) => {
+  if (_soilPrefillInflight) return _soilPrefillInflight;
+  _soilPrefillInflight = Promise.resolve()
+    .then(fn)
+    .finally(() => { _soilPrefillInflight = null; });
+  return _soilPrefillInflight;
+};
+
+export const unsubscribeSoilOrderPincode = (onReady) => {
+  if (typeof onReady === 'function') _pinPrefetchListeners.delete(onReady);
+};
+
 export const warmUpLocation = (purpose = 'delivery') => {
   if (!isNativeGeolocationLinked()) return;
-  getCurrentCoordsWithPermission(purpose, { useCache: true }).catch(() => {});
+  getCurrentCoordsWithPermission(purpose, { useCache: false }).catch(() => {});
 };
