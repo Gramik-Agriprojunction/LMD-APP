@@ -23,6 +23,7 @@ import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 import * as STATUS_COLORS from '../utils/statusColors';
 import OrderCard from '../components/OrderCard';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import ScreenHeader from '../components/ScreenHeader';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -152,17 +153,8 @@ class PenaltyOrders extends Component {
     return s.slice(0, 2) + '****' + s.slice(-2);
   };
 
-  dial = async (phone) => {
-    if (!phone) return;
-    const url = `tel:${String(phone).replace(/\s+/g, '')}`;
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (can) Linking.openURL(url);
-      else Alert.alert('Call', String(phone));
-    } catch (e) {
-      Alert.alert('Call', String(phone));
-    }
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = async (phone) => dialDirect(phone);
 
   wa = async (phone) => {
     if (!phone) return;
@@ -317,7 +309,7 @@ class PenaltyOrders extends Component {
           order={item}
           compactChips
           onPress={() => this.props.navigation.navigate('DeliveryDetails', { order: item })}
-          onCall={(p) => this.dial(p)}
+          onCall={(p, id) => this.callFarmer(p, id)}
           onWhatsApp={(p) => this.wa(p)}
           onCallStore={(p) => this.dial(p)}
           extraHeaderRight={

@@ -13,6 +13,7 @@ import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
 import BottomSheet from '../components/BottomSheet';
 import { S, soilIcons as I } from '../utils/soilTheme';
+import { callFarmerExotel } from '../utils/exotelCall';
 
 const PAD = 8;
 const FOOTER_PAD = 16;
@@ -293,6 +294,12 @@ class SoilOrderDetail extends Component {
 
   goBack = () => this.props?.navigation?.goBack?.();
 
+  onCallFarmer = (phone) => callFarmerExotel({
+    orderId: this.orderId(),
+    toPhone: phone,
+    context: 'soil',
+  });
+
   dial = (phone) => {
     if (!phone) return;
     Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
@@ -570,7 +577,7 @@ class SoilOrderDetail extends Component {
               <TouchableOpacity
                 style={st.farmerActBtn}
                 activeOpacity={0.75}
-                onPress={() => this.dial(phone)}
+                onPress={() => this.onCallFarmer(phone)}
                 hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
               >
                 <Image source={ICO.call} style={st.farmerActIco} resizeMode="contain" />

@@ -11,6 +11,7 @@ import Toast from 'react-native-simple-toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import { getFcmToken, refreshFcmToken } from '../utils/pushNotifications';
+import { startBackgroundLocationTracker } from '../utils/locationTracker';
 
 const BG = '#5D3FD3';
 const ACCENT = '#FF8A3D';
@@ -330,6 +331,7 @@ class Login extends React.Component {
             this.setState({ show_otp: true }, () => this.animateOtpIn());
           } else {
             setTimeout(() => this.props.navigation.dispatch(DashboardResetAction), 150);
+            startBackgroundLocationTracker();
           }
         }
       })
@@ -365,7 +367,11 @@ class Login extends React.Component {
           this.setState({ show_otp: false }, () => {
             global.token = json.token; global.userType = json.user_type;
             this._storeData(json);
-            if (this.state.is_registered) { Keyboard.dismiss(); this.props.navigation.dispatch(DashboardResetAction); }
+            if (this.state.is_registered) {
+              Keyboard.dismiss();
+              this.props.navigation.dispatch(DashboardResetAction);
+              startBackgroundLocationTracker();
+            }
             else { this.setState({ show_name: true }); }
           });
         }

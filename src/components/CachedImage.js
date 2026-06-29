@@ -85,11 +85,12 @@ export default function CachedImage({
 
 // Public helpers so callers can warm the cache when a list of URLs is known
 // (e.g. right after the orders API resolves).
-export const preloadImages = (urls = []) => {
+export const preloadImages = (urls = [], { priority = 'normal' } = {}) => {
   if (!_fastImageReady) return;
+  const pri = priority === 'high' ? FastImage.priority.high : FastImage.priority.normal;
   const list = (Array.isArray(urls) ? urls : [])
     .filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u))
-    .map((uri) => ({ uri, priority: FastImage.priority.normal, cache: FastImage.cacheControl.immutable }));
+    .map((uri) => ({ uri, priority: pri, cache: FastImage.cacheControl.immutable }));
   if (list.length) FastImage.preload(list);
 };
 

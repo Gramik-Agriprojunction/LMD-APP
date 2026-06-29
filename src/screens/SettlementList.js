@@ -33,6 +33,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import OrderCard from '../components/OrderCard';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
 const P = '#5D3FD3';
 
@@ -325,10 +326,8 @@ class SettlementList extends Component {
   // ------------------------
   // Row
   // ------------------------
-  onCall = (phone) => {
-    if (!phone) return;
-    Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
-  };
+  onCall = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  onCallStore = (phone) => dialDirect(phone);
 
   onWhatsApp = (phone) => {
     if (!phone) return;
@@ -355,9 +354,9 @@ class SettlementList extends Component {
           onToggleSelect={() => this.toggleSelect(orderId)}
           onHeaderPress={canSelect ? () => this.toggleSelect(orderId) : undefined}
           onBodyPress={() => this.openDetail(item)}
-          onCall={(p) => this.onCall(p)}
+          onCall={(p, id) => this.onCall(p, id)}
           onWhatsApp={(p) => this.onWhatsApp(p)}
-          onCallStore={(p) => this.onCall(p)}
+          onCallStore={(p) => this.onCallStore(p)}
           extraHeaderRight={
             <View style={[styles.settlePill, { backgroundColor: badge.bg, marginLeft: 6 }]}>
               <Text style={[styles.settlePillT, { color: badge.c }]}>{badge.label}</Text>

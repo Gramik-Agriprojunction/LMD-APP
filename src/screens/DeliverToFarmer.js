@@ -29,6 +29,7 @@ import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
+import { initiateExotelCall } from '../utils/exotelCall';
 
 const BG = '#5D3FD3';
 const QR_SAFE_TOP = (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
@@ -202,22 +203,21 @@ class DeliverToFarmer extends Component {
     if (nav?.goBack) nav.goBack();
   };
 
-  // ✅ Call Farmer
+  // Call farmer via Exotel (backend click-to-call)
   onCall = async () => {
     const o = this.state.details || this.getOrder();
     const phoneRaw = o?.farmer_data?.phone;
-    if (!phoneRaw) return console.log('DeliverToFarmer: farmer_data.phone missing');
-
-    const phone = String(phoneRaw).replace(/\s+/g, '');
-    const url = `tel:${phone}`;
-
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (can) return Linking.openURL(url);
-      console.log('Cannot open dialer:', url);
-    } catch (e) {
-      console.log('Call error:', e);
+    if (!phoneRaw) {
+      Toast.show('Farmer phone nahi mila', Toast.SHORT);
+      return;
     }
+    const orderId = o?.order_id || o?.id;
+    await initiateExotelCall({
+      orderId,
+      toPhone: phoneRaw,
+      callType: 'farmer',
+      context: 'delivery',
+    });
   };
 
   // ✅ WhatsApp Farmer

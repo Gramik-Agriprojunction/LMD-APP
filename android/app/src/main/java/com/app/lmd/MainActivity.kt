@@ -10,7 +10,8 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    WindowCompat.setDecorFitsSystemWindows(window, false)
+    // Let system windows handle insets so third-party checkout modals (Razorpay) fill edge-to-edge correctly.
+    WindowCompat.setDecorFitsSystemWindows(window, true)
     super.onCreate(savedInstanceState)
   }
 

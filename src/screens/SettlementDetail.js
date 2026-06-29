@@ -11,6 +11,7 @@ import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
 import ProofImageViewer from '../components/ProofImageViewer';
 import OrderCard from '../components/OrderCard';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import { S } from '../utils/soilTheme';
 
 const P = S.P;
@@ -312,10 +313,8 @@ class SettlementDetail extends Component {
 
   fmtAmt = (v) => (hasVal(v) ? `₹${this.money(v)}` : '');
 
-  dial = (phone) => {
-    if (!hasVal(phone)) return;
-    Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = (phone) => dialDirect(phone);
 
   whatsapp = (phone) => {
     if (!hasVal(phone)) return;
@@ -323,7 +322,7 @@ class SettlementDetail extends Component {
   };
 
   toOrderCardData = (order) => ({
-    order_id: order.orderCode || order.orderId,
+    order_id: order.orderId ?? order.id,
     order_code: order.orderCode,
     farmer_name: order.farmerName,
     farmer_mobile: order.farmerPhone,
@@ -515,7 +514,7 @@ class SettlementDetail extends Component {
                       compactChips
                       useFarmerNew
                       onPress={() => this.openOrder(order)}
-                      onCall={(p) => this.dial(p)}
+                      onCall={(p, id) => this.callFarmer(p, id)}
                       onWhatsApp={(p) => this.whatsapp(p)}
                       onCallStore={(p) => this.dial(p)}
                     />

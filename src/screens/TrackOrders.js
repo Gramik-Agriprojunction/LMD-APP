@@ -56,6 +56,7 @@ import {
   parseOrderListPayload,
   buildGroupedRows,
 } from '../utils/orderGrouping';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
 // Best-effort: walk an order tree and yank any http(s) image URLs we'd render.
 const extractImageUrls = (orders) => {
@@ -372,12 +373,8 @@ class TrackOrders extends Component {
   };
   n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
   mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0,2) + '****' + s.slice(-2); };
-  dial = async (p) => {
-    if (!p) return;
-    const url = `tel:${String(p).replace(/\s+/g, '')}`;
-    const can = await Linking.canOpenURL(url);
-    if (can) { Linking.openURL(url); } else { Alert.alert('Call', `${p}`); }
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = async (p) => dialDirect(p);
   wa = async (p) => {
     if (!p) return;
     const c = String(p).replace(/[^\d]/g, '');
@@ -518,7 +515,7 @@ class TrackOrders extends Component {
               <Text style={s.dlvName}>{item?.farmer_name || '-'}</Text>
               <Text style={s.dlvPhone}>{this.mask(item?.farmer_mobile)}</Text>
             </View>
-            <TouchableOpacity onPress={() => this.dial(item?.farmer_mobile)} activeOpacity={0.7} style={s.actBtn}>
+            <TouchableOpacity onPress={() => this.callFarmer(item?.farmer_mobile, item?.order_id)} activeOpacity={0.7} style={s.actBtn}>
               <Image source={require('./assets/call.png')} style={s.actIco} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => this.wa(item?.farmer_mobile)} activeOpacity={0.7} style={[s.actBtn, { marginLeft: 6 }]}>

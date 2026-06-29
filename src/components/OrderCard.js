@@ -6,7 +6,7 @@
  *   <OrderCard
  *     order={item}              // raw order object from API (any shape)
  *     onPress={() => ...}       // optional — wraps the card in a TouchableOpacity
- *     onCall={(phone) => ...}   // farmer call
+ *     onCall={(phone, orderId) => ...}   // farmer call (orderId = API order_id)
  *     onWhatsApp={(phone) => .} // farmer WhatsApp
  *     onCallStore={(phone)=>..} // pickup darkstore call
  *     onCopyOrderId={(id)=>.}   // header copy icon
@@ -48,7 +48,13 @@ const resolve = (o = {}) => {
   const farmerName = o.farmer_name || o.farmer_data?.name || '';
   const farmerPhone = o.farmer_mobile || o.farmer_data?.phone || '';
   const orderCode = o.order_code ? String(o.order_code).split(/\s+/)[0] : '';
-  const orderId = orderCode || (o.order_id != null && o.order_id !== '' ? String(o.order_id) : '');
+  const apiOrderId =
+    o.order_id != null && o.order_id !== ''
+      ? String(o.order_id)
+      : o.id != null && o.id !== ''
+        ? String(o.id)
+        : '';
+  const orderId = orderCode || apiOrderId;
   const status = String(o.status || o.order_status || '').toLowerCase();
   const amount = toNum(o.amount ?? o.grand_total ?? o.cod_amount);
   const ds = o.dark_store || {};
@@ -60,7 +66,7 @@ const resolve = (o = {}) => {
   const paymentMode = o.payment_mode || '';
   const paymentStatus = String(o.payment_status || '').toLowerCase();
   const priority = String(o.priority || 'low').toLowerCase();
-  return { orderId, status, farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority };
+  return { orderId, apiOrderId, status, farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority };
 };
 
 export default function OrderCard({
@@ -163,7 +169,7 @@ export default function OrderCard({
             )}
           </View>
           {!!onCall && (
-            <TouchableOpacity onPress={() => onCall(o.farmerPhone)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={s.actBtn}>
+            <TouchableOpacity onPress={() => onCall(o.farmerPhone, o.apiOrderId || o.orderId)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={s.actBtn}>
               <Image source={CALL_PURPLE} style={s.actIco} />
             </TouchableOpacity>
           )}

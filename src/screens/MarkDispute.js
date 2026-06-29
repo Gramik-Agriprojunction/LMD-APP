@@ -23,6 +23,7 @@ import { withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import ScreenHeader from '../components/ScreenHeader';
 
 const OVERLAY_BOTTOM = overlayBottomPadding();
@@ -243,10 +244,8 @@ class MarkDispute extends Component {
     if (nav?.goBack) nav.goBack();
   };
 
-  dial = (phone) => {
-    if (!phone) return;
-    Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = (phone) => dialDirect(phone);
 
   wa = (phone) => {
     if (!phone) return;
@@ -402,7 +401,7 @@ class MarkDispute extends Component {
           <Animated.View style={{ opacity: this.cardFade, transform: [{ translateY: this.cardY }] }}>
             <OrderCard
               order={order.raw || order}
-              onCall={(p) => this.dial(p)}
+              onCall={(p, id) => this.callFarmer(p, id)}
               onWhatsApp={(p) => this.wa(p)}
               onCallStore={(p) => this.dial(p)}
             />

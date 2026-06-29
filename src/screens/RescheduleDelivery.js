@@ -12,6 +12,7 @@ import moment from 'moment';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
 const P = '#5D3FD3';
 
@@ -64,12 +65,15 @@ class RescheduleDelivery extends Component {
     return !!details?.id && !!dateObj && !!slot && !submitting;
   };
 
-  dial = async (p) => {
-    if (!p) return;
-    const url = `tel:${String(p).replace(/\s+/g, '')}`;
-    const can = await Linking.canOpenURL(url);
-    if (can) Linking.openURL(url); else Alert.alert('Call', `${p}`);
+  callFarmer = () => {
+    const { details } = this.state;
+    callFarmerExotel({
+      orderId: details?.id,
+      toPhone: details?.farmer_data?.phone,
+      context: 'delivery',
+    });
   };
+  dial = async (p) => dialDirect(p);
 
   wa = async (p) => {
     if (!p) return;
@@ -198,7 +202,7 @@ class RescheduleDelivery extends Component {
                     <Text style={$.personName}>{farmerName || '-'}</Text>
                     <Text style={$.personPhone}>{this.mask(farmerPhone)}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => this.dial(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+                  <TouchableOpacity onPress={this.callFarmer} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
                     <Image source={require('./assets/call.png')} style={$.personIco} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => this.wa(farmerPhone)} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 10 }}>

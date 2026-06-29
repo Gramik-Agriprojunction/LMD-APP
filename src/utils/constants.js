@@ -1,8 +1,8 @@
 // Live Base URL
-// const baseurl = 'https://lens-api.gramik.in/api/v1/';
+const baseurl = 'https://lens-api.gramik.in/api/v1/';
 
 // UAT Base URL
-const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
+// const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
 
 const strings = {
   login: baseurl + 'auth/lmd/login',
@@ -38,5 +38,6 @@ const strings = {
   getPostOffice : baseurl + 'user/get-post-office',
   allFarmers : baseurl + 'user/all-farmer',
   exotelCall : baseurl + 'lmd/exotel/call',
+  locationUpdate : baseurl + 'user/location-update',
 };
 export default strings;

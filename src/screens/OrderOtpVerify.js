@@ -20,6 +20,7 @@ import ProofImageViewer from '../components/ProofImageViewer';
 
 import { STATUS } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
 let ImageCropPicker = null;
 try {
@@ -82,19 +83,12 @@ class OrderOtpVerify extends Component {
     return s.slice(0, 2) + '****' + s.slice(-2);
   };
 
-  // Robust dialler — works across iOS and Android (some Android skins return
-  // false from canOpenURL even when openURL succeeds).
-  dial = async (phoneRaw) => {
-    const phone = String(phoneRaw || '').replace(/[^\d+]/g, '');
-    if (!phone) return Toast.show('No phone number available', Toast.SHORT);
-    const url = `tel:${phone}`;
-    try {
-      await Linking.openURL(url);
-    } catch (e) {
-      try { await Linking.openURL(`telprompt:${phone}`); }
-      catch (e2) { Toast.show('Could not open dialer', Toast.SHORT); }
-    }
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({
+    orderId: orderId || this.getOrderId(),
+    toPhone: phone,
+    context: 'delivery',
+  });
+  dial = async (phoneRaw) => dialDirect(phoneRaw);
 
   // Robust WhatsApp — try native scheme first, then wa.me, then api.whatsapp.com.
   whatsapp = async (phoneRaw) => {
@@ -567,7 +561,7 @@ class OrderOtpVerify extends Component {
                 order={order}
                 theme="dark"
                 hideFooter
-                onCall={(p) => this.dial(p)}
+                onCall={(p, id) => this.callFarmer(p, id)}
                 onWhatsApp={(p) => this.whatsapp(p)}
                 onCallStore={(p) => this.dial(p)}
               />

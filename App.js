@@ -9,6 +9,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import UpdateModal from './src/components/UpdateModal';
 import AndroidInsetBridge from './src/components/AndroidInsetBridge';
 import { initPushNotifications } from './src/utils/pushNotifications';
+import { startBackgroundLocationTracker, stopBackgroundLocationTracker } from './src/utils/locationTracker';
 
 function AppShell({ children }) {
   if (Platform.OS !== 'android') return children;
@@ -22,6 +23,8 @@ function AppShell({ children }) {
 export default function App() {
   useEffect(() => {
     initPushNotifications();
+    startBackgroundLocationTracker();
+    return () => stopBackgroundLocationTracker();
   }, []);
 
   return (

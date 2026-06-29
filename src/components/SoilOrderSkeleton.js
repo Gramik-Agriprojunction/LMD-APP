@@ -1,16 +1,20 @@
 import React, { Component } from 'react';
 import {
-  View, Animated, StyleSheet, Dimensions, ScrollView, StatusBar, TouchableOpacity, Image,
+  View, Animated, StyleSheet, Dimensions, ScrollView, StatusBar, TouchableOpacity, Image, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { screenFooterPadding } from '../utils/safeAreaInsets';
 
 const W = Dimensions.get('window').width;
 const PAD = 10;
 const BANNER_RATIO = 665 / 1024;
-const BANNER_FULL = Math.round(W * Math.max(BANNER_RATIO, 0.74));
-const BANNER_OVERLAP = 56;
+const BANNER_TOP_INSET = Math.round(
+  initialWindowMetrics?.insets?.top ?? (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 24),
+);
+const BANNER_DISPLAY_H = Math.round(W * Math.max(BANNER_RATIO, 0.82));
+const BANNER_FULL = BANNER_TOP_INSET + BANNER_DISPLAY_H;
+const BANNER_OVERLAP = 64;
 const PKG_TOP_GAP = 20;
 const FOOTER_H = 52;
 const SCREEN_BG = '#edf1f7';
@@ -64,6 +68,7 @@ export default class SoilOrderSkeleton extends Component {
 
         <View style={[st.banner, { height: BANNER_FULL }]}>
           <ShimmerBlock style={StyleSheet.absoluteFill} />
+          <View style={st.bannerFade} pointerEvents="none" />
         </View>
 
         <SafeAreaView edges={['top']} style={st.backWrap} pointerEvents="box-none">
@@ -154,7 +159,11 @@ export default class SoilOrderSkeleton extends Component {
 
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: SCREEN_BG },
-  banner: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#CBD5E1', overflow: 'hidden' },
+  banner: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: '#174A30', overflow: 'hidden' },
+  bannerFade: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: 72,
+    backgroundColor: 'rgba(237,241,247,0.22)',
+  },
   backWrap: { position: 'absolute', top: 0, left: PAD, zIndex: 10, elevation: 10 },
   backBtn: {
     width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.92)',

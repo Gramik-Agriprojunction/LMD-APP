@@ -14,6 +14,7 @@ import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import { flushPendingNotificationNavigation } from '../utils/notificationNavigation';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
 import NotificationBellButton from '../components/NotificationBellButton';
@@ -172,12 +173,8 @@ class LMDDashboard extends Component {
       this.load(true);
     });
   };
-  dial = async (p) => {
-    if (!p) return;
-    const url = `tel:${String(p).replace(/\s+/g, '')}`;
-    const can = await Linking.canOpenURL(url);
-    if (can) { Linking.openURL(url); } else { Alert.alert('Call', `${p}`); }
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = async (p) => dialDirect(p);
   wa = async (p) => {
     if (!p) return;
     const c = String(p).replace(/[^\d]/g, '');
@@ -198,7 +195,7 @@ class LMDDashboard extends Component {
     <OrderCard
       order={item}
       onPress={() => this.props.navigation.navigate('DeliveryDetails', { order: item })}
-      onCall={(p) => this.dial(p)}
+      onCall={(p, id) => this.callFarmer(p, id)}
       onWhatsApp={(p) => this.wa(p)}
       onCallStore={(p) => this.dial(p)}
     />

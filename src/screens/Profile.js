@@ -22,6 +22,7 @@ import {NavigationEvents} from '../utils/v4Compat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Compat';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import { stopBackgroundLocationTracker } from '../utils/locationTracker';
 import NotificationBellButton from '../components/NotificationBellButton';
 
 const resetAction = StackActions.reset({
@@ -143,6 +144,7 @@ class Profile extends Component {
 
     async onLogout() {
       try {
+        stopBackgroundLocationTracker();
         global.token = '';
         await AsyncStorage.multiRemove(['accessToken', 'userType', 'language', 'referral_code']);
       } catch (e) {

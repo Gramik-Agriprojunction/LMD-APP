@@ -41,6 +41,7 @@ const FRIENDLY_NAMES = {
   getPostOffice: 'Get Post Office',
   allFarmers: 'All Farmers',
   exotelCall: 'Exotel Call',
+  locationUpdate: 'Location Update',
 };
 
 const METHOD_OVERRIDES = [

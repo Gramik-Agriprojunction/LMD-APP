@@ -23,6 +23,7 @@ import { invalidateOrderRelated } from '../utils/dataCache';
 import ScreenHeader from '../components/ScreenHeader';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
+import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
@@ -178,10 +179,8 @@ class RejectDelivery extends Component {
     if (nav?.goBack) nav.goBack();
   };
 
-  dial = (phone) => {
-    if (!phone) return;
-    Linking.openURL(`tel:${String(phone).replace(/\s+/g, '')}`).catch(() => {});
-  };
+  callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
+  dial = (phone) => dialDirect(phone);
 
   wa = (phone) => {
     if (!phone) return;
@@ -331,7 +330,7 @@ class RejectDelivery extends Component {
           <Animated.View style={{ opacity: this.cardFade, transform: [{ translateY: this.cardY }] }}>
             <OrderCard
               order={order.raw || order}
-              onCall={(p) => this.dial(p)}
+              onCall={(p, id) => this.callFarmer(p, id)}
               onWhatsApp={(p) => this.wa(p)}
               onCallStore={(p) => this.dial(p)}
             />

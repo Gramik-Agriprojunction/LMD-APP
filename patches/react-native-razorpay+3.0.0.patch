@@ -1,0 +1,26 @@
+diff --git a/node_modules/react-native-razorpay/ios/RazorpayCheckout.mm b/node_modules/react-native-razorpay/ios/RazorpayCheckout.mm
+index 1111111..2222222 100644
+--- a/node_modules/react-native-razorpay/ios/RazorpayCheckout.mm
++++ b/node_modules/react-native-razorpay/ios/RazorpayCheckout.mm
+@@ -35,16 +35,13 @@ RCT_EXPORT_METHOD(open : (NSDictionary *)options) {
+         tempOptions[@"integration"] = @"react_native";
+         tempOptions[@"FRAMEWORK"] = @"react_native";
+ 
+-        //get root view to present razorpay vc
++        // Present from the top-most controller so checkout fills the screen correctly.
+         id<UIApplicationDelegate> app = [[UIApplication sharedApplication] delegate];
+-        UINavigationController *rootViewController = ((UINavigationController*) app.window.rootViewController);
+-
+-        if (rootViewController.presentedViewController) {
+-            [razorpay open:tempOptions displayController:rootViewController.presentedViewController];
+-            return;
++        UIViewController *presenter = app.window.rootViewController;
++        while (presenter.presentedViewController != nil) {
++            presenter = presenter.presentedViewController;
+         }
+ 
+-        //Use 'open' method with displayController parameter
+-        [razorpay open:tempOptions displayController:rootViewController];
++        [razorpay open:tempOptions displayController:presenter];
+     });
+ }
