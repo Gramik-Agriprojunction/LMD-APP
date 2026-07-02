@@ -231,6 +231,18 @@ const buildBankRows = (selectedBank) => {
   ];
 };
 
+const isDisputedSettlement = (status) => {
+  const s = String(status || '').toLowerCase();
+  return s === 'disputed' || s === 'dispute' || s === 'rejected';
+};
+
+const numericOrderId = (value) => {
+  if (value == null || String(value).trim() === '') return '';
+  const s = String(value).trim();
+  if (/^AGRI/i.test(s)) return '';
+  return s;
+};
+
 function Card({ children, bar, style }) {
   return (
     <View style={[st.card, bar ? { borderLeftColor: bar } : null, style]}>
@@ -346,6 +358,70 @@ class SettlementDetail extends Component {
     }
   };
 
+  buildResettlePayload = (r) => {
+    const preview = this.props?.navigation?.getParam('preview');
+    const previewOrderId = numericOrderId(preview?.order_id);
+
+    const fromOrders = (r?.orders || []).map((o) => {
+      const oid = numericOrderId(o.orderId);
+      if (!oid) return null;
+      return {
+        order_id: oid,
+        order_code: o.orderCode,
+        farmer_name: o.farmerName,
+        farmer_mobile: o.farmerPhone,
+        shipping_address: o.dropAddress,
+        amount: o.amount,
+        payment_mode: o.paymentMode,
+        payment_status: o.paymentStatus,
+      };
+    }).filter(Boolean);
+
+    if (fromOrders.length) {
+      return {
+        selectedOrders: fromOrders.map((o) => String(o.order_id)),
+        selectedOrderItems: fromOrders,
+      };
+    }
+
+    const fallbackId = numericOrderId(r?.orderId) || previewOrderId;
+    if (!fallbackId) {
+      return { selectedOrders: [], selectedOrderItems: [] };
+    }
+
+    const item = {
+      order_id: fallbackId,
+      order_code: r?.orderCode,
+      farmer_name: r?.farmerName,
+      farmer_mobile: r?.farmerPhone,
+      shipping_address: r?.dropAddress,
+      amount: r?.totalAmount || r?.amount,
+      payment_mode: r?.paymentMode,
+      payment_status: r?.paymentStatus,
+    };
+
+    return {
+      selectedOrders: [String(fallbackId)],
+      selectedOrderItems: [item],
+    };
+  };
+
+  settleAgain = () => {
+    const r = resolveDetail(this.state.detail);
+    if (!r) return;
+
+    const { selectedOrders, selectedOrderItems } = this.buildResettlePayload(r);
+    if (!selectedOrders.length) {
+      Toast.show('Order ID nahi mila', Toast.SHORT);
+      return;
+    }
+
+    this.props?.navigation?.navigate('CashSettlement', {
+      selectedOrders,
+      selectedOrderItems,
+    });
+  };
+
   renderProductItem = (item, idx, total) => {
     const img = item?.image ? String(item.image).trim() : '';
     const sub = [
@@ -391,6 +467,7 @@ class SettlementDetail extends Component {
     const displayAmount = r.totalAmount || r.amount;
     const NA = '- Not Available';
     const bankRows = buildBankRows(r.selectedBank);
+    const showSettleAgain = isDisputedSettlement(r.settlementStatus);
     const extraSettlementRows = [
       r.settlementSubmitted && { label: 'Submitted', value: r.settlementSubmitted },
       r.settlementType && { label: 'Type', value: r.settlementType },
@@ -410,7 +487,7 @@ class SettlementDetail extends Component {
 
         <SafeAreaView edges={safeBottomEdges()} style={{ flex: 1 }}>
           <ScrollView
-            contentContainerStyle={st.scroll}
+            contentContainerStyle={[st.scroll, showSettleAgain && st.scrollWithFooter]}
             showsVerticalScrollIndicator={false}
             refreshControl={(
               <RefreshControl
@@ -568,6 +645,17 @@ class SettlementDetail extends Component {
               </Card>
             )}
           </ScrollView>
+
+          {showSettleAgain ? (
+            <View style={st.footerWrap}>
+              <TouchableOpacity style={st.settleAgainBtn} activeOpacity={0.9} onPress={this.settleAgain}>
+                <Text style={st.settleAgainBtnT}>Dobara Settle Karein</Text>
+                {hasVal(displayAmount) ? (
+                  <Text style={st.settleAgainBtnSub}>₹{this.money(displayAmount)}</Text>
+                ) : null}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </SafeAreaView>
 
         <ProofImageViewer visible={!!imagePreview} uri={imagePreview} title={previewTitle} onClose={this.closeImagePreview} />
@@ -580,6 +668,7 @@ const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: SCREEN_BG },
   loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: 6, paddingBottom: 16, gap: 5 },
+  scrollWithFooter: { paddingBottom: 88 },
 
   card: {
     backgroundColor: S.CARD,
@@ -666,6 +755,27 @@ const st = StyleSheet.create({
   proofItem: { width: 72 },
   proofThumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: S.BG },
   proofWhen: { fontSize: 9, color: S.SUB, marginTop: 4, textAlign: 'center', lineHeight: 12 },
+
+  footerWrap: {
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 10,
+    backgroundColor: SCREEN_BG,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+  },
+  settleAgainBtn: {
+    backgroundColor: P,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  settleAgainBtnT: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  settleAgainBtnSub: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '700' },
 });
 
 export default withV4Navigation(SettlementDetail);

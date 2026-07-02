@@ -1208,7 +1208,7 @@ class DeliveryDetails extends Component {
               style={[styles.bottomPanel, { backgroundColor: panelBg }]}
             >
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, onDark && { color: '#FFF' }]}>Kul Amount</Text>
+                <Text style={[styles.totalLabel, onDark && { color: '#FFF' }]}>Total Amount</Text>
                 <Text style={[styles.codValue, onDark && { color: '#FFF' }]}>{`₹ ${this.toNum(details?.grand_total)}`}</Text>
               </View>
               <View style={styles.totalWordsRow}>

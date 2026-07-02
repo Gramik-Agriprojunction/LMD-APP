@@ -25,16 +25,43 @@ const PRIORITY_GROUP_ORDER = { High: 0, Medium: 1, Low: 2 };
 export const isApiGroupedData = (raw) =>
   Array.isArray(raw) && raw.length > 0 && Array.isArray(raw[0]?.data);
 
+const PRIORITY_TITLES = new Set(['low', 'medium', 'high']);
+
+const inferPriorityFromTitle = (title) => {
+  const t = String(title || '').trim().toLowerCase();
+  return PRIORITY_TITLES.has(t) ? t : '';
+};
+
+export const enrichGroupedOrder = (order, groupTitle = '', groupBy = '') => {
+  const next = {
+    ...order,
+    group_title: groupTitle || order?.group_title || '',
+  };
+  if (!next.priority) {
+    const inferred = groupBy === 'priority'
+      ? inferPriorityFromTitle(groupTitle)
+      : inferPriorityFromTitle(groupTitle);
+    if (inferred) next.priority = inferred;
+  }
+  return next;
+};
+
 export const flattenFromApiGroups = (raw) => {
   if (!Array.isArray(raw)) return [];
   if (isApiGroupedData(raw)) {
-    return raw.flatMap((group) =>
-      (Array.isArray(group.data) ? group.data : []).map((order) => ({
-        ...order,
-        group_title: group.title || group.pincode || '',
-        group_pincode: group.pincode || order.pincode,
-      })),
-    );
+    return raw.flatMap((group) => {
+      const title = group.title || group.pincode || '';
+      return (Array.isArray(group.data) ? group.data : []).map((order) =>
+        enrichGroupedOrder(
+          {
+            ...order,
+            group_pincode: group.pincode || order.pincode,
+          },
+          title,
+          'priority',
+        ),
+      );
+    });
   }
   return raw;
 };
@@ -116,7 +143,11 @@ export const buildRowsFromApiGroups = (groups, groupBy) => {
     const items = Array.isArray(group.data) ? group.data : [];
     if (!items.length) return;
     rows.push({ type: 'header', title, count: items.length, key: `h-${groupBy}-${title}` });
-    items.forEach((item) => rows.push({ type: 'order', item, key: `o-${item?.id || item?.order_id}` }));
+    items.forEach((item) => rows.push({
+      type: 'order',
+      item: enrichGroupedOrder(item, title, groupBy),
+      key: `o-${item?.id || item?.order_id}`,
+    }));
   });
   return rows.length ? rows : null;
 };

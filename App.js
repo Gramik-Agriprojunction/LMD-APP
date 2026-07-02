@@ -1,5 +1,3 @@
-import 'react-native-gesture-handler';
-import 'react-native-reanimated';
 import React, { useEffect } from 'react';
 import { Platform, StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';

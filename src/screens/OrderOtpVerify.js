@@ -21,6 +21,7 @@ import ProofImageViewer from '../components/ProofImageViewer';
 import { STATUS } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { requestCameraOrPrompt } from '../utils/cameraHelper';
 
 let ImageCropPicker = null;
 try {
@@ -185,6 +186,9 @@ class OrderOtpVerify extends Component {
     this.pickLock = true;
 
     try {
+      const allowed = await requestCameraOrPrompt();
+      if (!allowed) return;
+
       try { if (ImageCropPicker.clean) await ImageCropPicker.clean(); } catch (e) { /* ignore */ }
 
       const img = await ImageCropPicker.openCamera({

@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList,
   StatusBar, Image, Animated, RefreshControl, Linking, Alert, ActivityIndicator,
-  LayoutAnimation, Platform, UIManager, Easing, Pressable,
+  LayoutAnimation, Platform, UIManager, Easing,
 } from 'react-native';
 
 // Fade + slide-up wrapper so paged-in rows animate when they appear.
@@ -48,7 +48,8 @@ import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSu
 import LiveOrdersGrid from '../components/LiveOrdersGrid';
 import GroupOrdersFilterSheet from '../components/GroupOrdersFilterSheet';
 import OrderGroupHeader from '../components/OrderGroupHeader';
-import { STATUS, STATUS_SEQUENCE, getStatus, getPriority } from '../utils/statusColors';
+import OrderCard from '../components/OrderCard';
+import { STATUS, STATUS_SEQUENCE, getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import {
   DEFAULT_GROUP_BY,
@@ -372,7 +373,6 @@ class TrackOrders extends Component {
       });
   };
   n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
-  mask = (p) => { if (!p) return ''; const s = String(p); if (s.length < 6) return s; return s.slice(0,2) + '****' + s.slice(-2); };
   callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
   dial = async (p) => dialDirect(p);
   wa = async (p) => {
@@ -383,11 +383,6 @@ class TrackOrders extends Component {
       if (can) { await Linking.openURL(`whatsapp://send?phone=${c}`); return; }
     } catch (e) {}
     Linking.openURL(`https://wa.me/${c}`).catch(() => Alert.alert('WhatsApp', `${p}`));
-  };
-
-  badge = (s) => {
-    const st = getStatus(s);
-    return { bg: st.bg };
   };
 
   onQueryChange = (text) => {
@@ -444,15 +439,6 @@ class TrackOrders extends Component {
 
   filteredOrderCount = () => this.state.totalCount || this.state.orders.length;
 
-  renderPriorityBadge = (priority) => {
-    const pri = getPriority(priority);
-    return (
-      <View style={[s.chip, s.priorityChip, { backgroundColor: pri.bg }]}>
-        <Text style={s.chipT}>{pri.label}</Text>
-      </View>
-    );
-  };
-
   renderItem = ({ item: row, index }) => {
     if (row.type === 'header') {
       return <OrderGroupHeader title={row.title} count={row.count} groupBy={this.state.groupBy} />;
@@ -472,132 +458,25 @@ class TrackOrders extends Component {
   };
 
   renderOrderCard = ({ item }) => {
-    const st = (item?.status || '').toUpperCase();
-    const b = this.badge(st);
-    const ds = item?.dark_store;
-    const statusLabel = getStatus(st).label;
-
     const canSelect = isPendingOrder(item);
     const orderKey = this.getOrderKey(item);
     const isChecked = this.state.selectedIds.has(orderKey);
     const goToDetails = () => this.props.navigation.navigate('DeliveryDetails', { order: item });
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.75}
+      <OrderCard
+        order={item}
         onPress={goToDetails}
         onLongPress={canSelect ? () => this.toggleSelect(orderKey) : undefined}
-        delayLongPress={250}
-        style={[s.dlv, isChecked && s.dlvSelected]}
-      >
-        {/* Light-grey header (order id + status + farmer) */}
-        <View style={[s.dlvTop, isChecked && s.dlvTopSelected]}>
-          <View style={s.dlvHead}>
-            <TouchableOpacity
-              activeOpacity={0.6}
-              onPress={() => this.copyOrderId(item?.order_id)}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-              style={s.oidWrap}
-            >
-              <Text style={s.dlvOid}>#{item?.order_id}</Text>
-              <Text style={s.oidCopy}>⎘</Text>
-            </TouchableOpacity>
-            <View style={{ flex: 1 }} />
-            {this.renderPriorityBadge(item?.priority)}
-            <View style={[s.chip, { backgroundColor: b.bg, marginLeft: 6 }]}>
-              <Text style={s.chipT}>{statusLabel}</Text>
-            </View>
-          </View>
-
-          <View style={s.dlvPerson}>
-            <Image source={require('./assets/farmer.png')} style={s.dlvAvt} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.dlvName}>{item?.farmer_name || '-'}</Text>
-              <Text style={s.dlvPhone}>{this.mask(item?.farmer_mobile)}</Text>
-            </View>
-            <TouchableOpacity onPress={() => this.callFarmer(item?.farmer_mobile, item?.order_id)} activeOpacity={0.7} style={s.actBtn}>
-              <Image source={require('./assets/call.png')} style={s.actIco} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => this.wa(item?.farmer_mobile)} activeOpacity={0.7} style={[s.actBtn, { marginLeft: 6 }]}>
-              <Image source={require('./assets/whatsapp.png')} style={s.actIco} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Route */}
-        <View style={s.routeWrap}>
-          <View style={s.routeRow}>
-            <View style={s.routeTl}><View style={[s.dot, { backgroundColor: '#0DA60D' }]} /><View style={s.routeLine} /></View>
-            <View style={s.routeBody}>
-              <Text style={[s.routeLbl, { color: '#0DA60D' }]}>PICKUP</Text>
-              <Text style={s.routeTitle}>{ds?.name || '-'}</Text>
-              {ds?.mobile ? <Text style={s.routePhone}>{ds.mobile}</Text> : null}
-              <Text style={s.routeAddr} numberOfLines={2}>{ds?.location || `${ds?.city || ''}${ds?.pincode ? `, ${ds.pincode}` : ''}`}</Text>
-            </View>
-            {ds?.mobile ? (
-              <TouchableOpacity onPress={() => this.dial(ds.mobile)} activeOpacity={0.7} style={s.dsCall}>
-                <Image source={require('./assets/call.png')} style={s.dsCallIco} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <View style={s.routeRow}>
-            <View style={s.routeTl}><View style={[s.dot, { backgroundColor: '#EF4444' }]} /></View>
-            <View style={[s.routeBody, { paddingBottom: 0 }]}>
-              <Text style={[s.routeLbl, { color: '#EF4444' }]}>DROP</Text>
-              <Text style={s.routeAddr} numberOfLines={2}>{item?.shipping_address || '-'}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Footer — the ENTIRE white bottom row is the tap-to-select target
-            when we're on the Pending tab. Pills and amount Text are
-            non-interactive Views, so the Pressable receives every tap inside
-            the row and toggles selection. The visible checkbox on the left
-            is just a status indicator (pointerEvents="none"). The inner
-            Pressable wins the responder over the parent card's onPress so
-            navigation never accidentally fires from here. */}
-        {canSelect ? (
-          <Pressable
-            onPress={() => this.toggleSelect(orderKey)}
-            hitSlop={{ top: 12, bottom: 8, left: 12, right: 12 }}
-            style={({ pressed }) => [s.dlvFoot, pressed && { backgroundColor: '#EEF2FF' }]}
-          >
-            {/* Dedicated inner Pressable around the visible checkbox with a
-                very generous hitSlop — extends UP into the route area (60 px),
-                DOWN past the footer (32 px) and 60 px out to either side. So
-                the actual tap region is roughly 146 × 118 around the small
-                26 × 26 chip on the left of the footer. */}
-            <Pressable
-              onPress={() => this.toggleSelect(orderKey)}
-              hitSlop={{ top: 60, bottom: 32, left: 60, right: 60 }}
-              style={({ pressed }) => [{ marginRight: 10 }, pressed && { opacity: 0.65 }]}
-            >
-              <View style={[s.checkBoxFoot, isChecked && s.checkBoxOn]} pointerEvents="none">
-                {isChecked ? <Text style={s.checkTick}>✓</Text> : null}
-              </View>
-            </Pressable>
-            <View style={[s.pill, { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' }]}>
-              <Text style={[s.pillT, { color: '#475569' }]}>{(item?.payment_mode || '-').toUpperCase()}</Text>
-            </View>
-            <View style={[s.pill, { backgroundColor: item?.payment_status === 'paid' ? '#DCFCE7' : '#FEF3C7', borderWidth: 1, borderColor: item?.payment_status === 'paid' ? '#86EFAC' : '#FCD34D' }]}>
-              <Text style={[s.pillT, { color: item?.payment_status === 'paid' ? '#15803D' : '#B45309' }]}>{item?.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</Text>
-            </View>
-            <View style={{ flex: 1 }} />
-            <Text style={s.dlvAmt}>₹{this.n(item?.amount)}</Text>
-          </Pressable>
-        ) : (
-          <View style={s.dlvFoot}>
-            <View style={[s.pill, { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' }]}>
-              <Text style={[s.pillT, { color: '#475569' }]}>{(item?.payment_mode || '-').toUpperCase()}</Text>
-            </View>
-            <View style={[s.pill, { backgroundColor: item?.payment_status === 'paid' ? '#DCFCE7' : '#FEF3C7', borderWidth: 1, borderColor: item?.payment_status === 'paid' ? '#86EFAC' : '#FCD34D' }]}>
-              <Text style={[s.pillT, { color: item?.payment_status === 'paid' ? '#15803D' : '#B45309' }]}>{item?.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</Text>
-            </View>
-            <View style={{ flex: 1 }} />
-            <Text style={s.dlvAmt}>₹{this.n(item?.amount)}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+        selected={isChecked}
+        showCheckbox={canSelect}
+        isChecked={isChecked}
+        onToggleSelect={() => this.toggleSelect(orderKey)}
+        onCall={(p, id) => this.callFarmer(p, id)}
+        onWhatsApp={(p) => this.wa(p)}
+        onCallStore={(p) => this.dial(p)}
+        onCopyOrderId={(id) => this.copyOrderId(id)}
+      />
     );
   };
 

@@ -23,7 +23,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Toast from 'react-native-simple-toast';
-import { getStatus, getPriority } from '../utils/statusColors';
+import { getStatus, getPriority, normalizeStatus } from '../utils/statusColors';
+import moment from 'moment';
 
 const P = '#5D3FD3';
 
@@ -40,6 +41,15 @@ const mask = (p) => {
 const toNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+};
+
+const fmtRescheduleDate = (raw) => {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const m = moment(s, ['MMM DD YYYY hh:mm A', 'MMM D YYYY hh:mm A', 'MMM DD YYYY', 'MMM D YYYY', 'YYYY-MM-DD', moment.ISO_8601], true);
+  if (m.isValid()) return m.format('DD MMM, YYYY');
+  const loose = moment(s);
+  return loose.isValid() ? loose.format('DD MMM, YYYY') : s;
 };
 
 // Field-resolver: orders come back in two shapes (`farmer_name`/`farmer_mobile`
@@ -65,8 +75,16 @@ const resolve = (o = {}) => {
     '';
   const paymentMode = o.payment_mode || '';
   const paymentStatus = String(o.payment_status || '').toLowerCase();
-  const priority = String(o.priority || 'low').toLowerCase();
-  return { orderId, apiOrderId, status, farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority };
+  const priorityRaw = o.priority ?? o.group_title;
+  const priority = priorityRaw ? String(priorityRaw).trim().toLowerCase() : '';
+  const markStatus = String(o.mark_status ?? o.markStatus ?? '').trim().toLowerCase();
+  const rescheduleRaw = o.reschedule_date ?? o.rescheduleDate;
+  const rescheduleDate = fmtRescheduleDate(rescheduleRaw);
+  const rescheduleSlot = String(o.reschedule_slot || o.slot || '').trim();
+  return {
+    orderId, apiOrderId, status, markStatus, rescheduleDate, rescheduleSlot,
+    farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority,
+  };
 };
 
 export default function OrderCard({
@@ -98,6 +116,13 @@ export default function OrderCard({
   const dark = theme === 'dark';
   const chipBox = compactChips ? s.chipSm : s.chip;
   const chipText = compactChips ? s.chipTSm : s.chipT;
+  const markStatusMeta = o.markStatus && o.markStatus !== o.status && !o.markStatus.includes('reschedule')
+    ? getStatus(o.markStatus)
+    : null;
+  const markStatusLabel = markStatusMeta
+    ? (normalizeStatus(o.markStatus) !== 'ALL' ? markStatusMeta.label : String(o.markStatus).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+    : '';
+  const showScheduleBanner = !!o.rescheduleDate;
   const Wrap = onPress && !onBodyPress ? TouchableOpacity : View;
   const wrapProps = onPress && !onBodyPress ? { activeOpacity: 0.75, onPress, onLongPress, delayLongPress } : {};
   const farmerImg = useFarmerNew
@@ -128,32 +153,52 @@ export default function OrderCard({
       {/* Greyish header — order id (with copy) + status chip + farmer + call/wa */}
       <HeaderWrap {...headerWrapProps} style={[s.top, dark && s.topDark, selected && s.topSelected]}>
         <View style={s.head}>
-          <TouchableOpacity
-            activeOpacity={0.6}
-            onPress={copyOrderId}
-            hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-            style={s.oidWrap}
-            disabled={!o.orderId}
-          >
-            <Text style={[s.oid, dark && { color: '#FFF' }]}>#{o.orderId || '-'}</Text>
-            {!!o.orderId && (
-              <Text style={[s.oidCopy, dark && { color: 'rgba(255,255,255,0.75)' }]}>⎘</Text>
-            )}
-          </TouchableOpacity>
-          <View style={{ flex: 1 }} />
-          {!!o.priority && (() => {
-            const pri = getPriority(o.priority);
-            return (
-              <View style={[chipBox, s.priChip, { backgroundColor: pri.bg }]}>
-                <Text style={chipText}>{pri.label}</Text>
-              </View>
-            );
-          })()}
-          <View style={[chipBox, { backgroundColor: stColor.bg }]}>
-            <Text style={chipText}>{stColor.label}</Text>
+          <View style={s.headLeft}>
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={copyOrderId}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+              style={s.oidWrap}
+              disabled={!o.orderId}
+            >
+              <Text style={[s.oid, dark && { color: '#FFF' }]}>#{o.orderId || '-'}</Text>
+              {!!o.orderId && (
+                <Text style={[s.oidCopy, dark && { color: 'rgba(255,255,255,0.75)' }]}>⎘</Text>
+              )}
+            </TouchableOpacity>
           </View>
-          {extraHeaderRight}
+          <View style={s.headChips}>
+            {!!o.priority && (() => {
+              const pri = getPriority(o.priority);
+              return (
+                <View style={[chipBox, s.priChip, { backgroundColor: pri.bg }]}>
+                  <Text style={chipText}>{pri.label}</Text>
+                </View>
+              );
+            })()}
+            {!!markStatusMeta && (
+              <View style={[chipBox, s.markChip, { backgroundColor: markStatusMeta.tint }]}>
+                <Text style={[chipText, { color: markStatusMeta.accent }]}>{markStatusLabel}</Text>
+              </View>
+            )}
+            <View style={[chipBox, { backgroundColor: stColor.bg }]}>
+              <Text style={chipText}>{stColor.label}</Text>
+            </View>
+            {extraHeaderRight}
+          </View>
         </View>
+
+        {showScheduleBanner && (
+          <View style={[s.scheduleStrip, dark && s.scheduleStripDark]}>
+            <Text style={[s.scheduleLine, dark && s.scheduleLineDark]} numberOfLines={2}>
+              <Text style={[s.schedulePrefix, dark && s.scheduleLineDark]}>Order scheduled for </Text>
+              <Text style={[s.scheduleHighlight, dark && s.scheduleHighlightDark]}>{o.rescheduleDate}</Text>
+              {!!o.rescheduleSlot && (
+                <Text style={[s.schedulePrefix, dark && s.scheduleLineDark]}> · {o.rescheduleSlot}</Text>
+              )}
+            </Text>
+          </View>
+        )}
 
         <View style={s.person}>
           {showCheckbox && checkboxInHeader && (
@@ -290,7 +335,25 @@ const s = StyleSheet.create({
   topDark: { backgroundColor: 'rgba(255,255,255,0.07)' },
   topSelected: { backgroundColor: '#E0E7FF' },
 
-  head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6 },
+  head: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    rowGap: 4,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  headLeft: { flexShrink: 1, marginRight: 8 },
+  headChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexShrink: 0,
+    maxWidth: '100%',
+  },
   oidWrap: { flexDirection: 'row', alignItems: 'center' },
   oid: { fontSize: 10.5, fontWeight: '600', color: P, letterSpacing: 0.2, includeFontPadding: false },
   oidCopy: { fontSize: 18, fontWeight: '500', color: P, marginLeft: 6, opacity: 0.75, includeFontPadding: false, lineHeight: 20 },
@@ -300,6 +363,34 @@ const s = StyleSheet.create({
   chipSm: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   chipTSm: { fontSize: 7.5, fontWeight: '700', color: '#FFF', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 10 },
   priChip: { marginRight: 6 },
+  markChip: { marginRight: 6 },
+
+  scheduleStrip: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    borderLeftWidth: 3,
+    borderLeftColor: '#9333EA',
+  },
+  scheduleStripDark: {
+    backgroundColor: 'rgba(147,51,234,0.12)',
+    borderColor: 'rgba(196,181,253,0.35)',
+  },
+  scheduleLine: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748B',
+    lineHeight: 17,
+  },
+  scheduleLineDark: { color: 'rgba(255,255,255,0.8)' },
+  schedulePrefix: { fontSize: 12, fontWeight: '500', color: '#64748B' },
+  scheduleHighlight: { fontSize: 12, fontWeight: '800', color: '#7E22CE' },
+  scheduleHighlightDark: { color: '#F3E8FF' },
 
   // Selection checkbox lives in the FOOTER on the left, alongside the payment
   // pills and the amount. Visual size is still 26 × 26; hitSlop on the

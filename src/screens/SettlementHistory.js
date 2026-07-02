@@ -22,6 +22,7 @@ import { safeBottomEdges } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import ImageCropPicker from 'react-native-image-crop-picker';
+import { requestCameraOrPrompt } from '../utils/cameraHelper';
 import moment from 'moment';
 import { S } from '../utils/soilTheme';
 import ProofImageViewer from '../components/ProofImageViewer';
@@ -176,6 +177,9 @@ class SettlementHistory extends Component {
   pickFromCamera = () => {
     this.presentImagePicker(async () => {
       try {
+        const allowed = await requestCameraOrPrompt();
+        if (!allowed) return;
+
         const img = await ImageCropPicker.openCamera({
           mediaType: 'photo',
           cropping: false,
@@ -349,6 +353,22 @@ class SettlementHistory extends Component {
     return s;
   };
 
+  toNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  displayAmount = (item) => {
+    const settlementAmt = this.toNum(item?.amount);
+    if (settlementAmt > 0) return settlementAmt;
+
+    const fromOrders = this.getOrders(item).reduce(
+      (sum, o) => sum + this.toNum(o?.amount ?? o?.collected_amount ?? o?.order_amount),
+      0,
+    );
+    return fromOrders > 0 ? fromOrders : settlementAmt;
+  };
+
   // Tab filter kept client-side; text search now hits the API.
   filterList = () => {
     const { list, activeTab } = this.state;
@@ -398,7 +418,7 @@ class SettlementHistory extends Component {
     const settlementId = item?.settlement_id || '';
     const status = this.getSettlementStatus(item);
     const meta = this.statusMeta(status);
-    const amountStr = this.money(item?.amount);
+    const amountStr = this.money(this.displayAmount(item));
     const { date: dateStr, time: timeStr } = this.parseSubmittedDate(item?.submitted_date || item?.created_at);
     const type = this.typeLabel(item?.type, item?.selected_bank);
     const receipt = String(item?.reciept || item?.receipt || '').trim();

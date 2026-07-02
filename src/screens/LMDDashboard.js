@@ -46,7 +46,9 @@ const QUICK_ACTIONS = [
     bg: '#DCFCE7',
     border: '#86EFAC',
     accent: '#059669',
+    countBg: '#EF4444',
     nav: 'SoilOrders',
+    countKey: 'soilOrderCount',
   },
   {
     l: 'Madad',
@@ -357,7 +359,7 @@ class LMDDashboard extends Component {
                     keyExtractor={(row) => row.key || `${row?.item?.order_id}`}
                     renderItem={this.renderTodayItem}
                     scrollEnabled={false}
-                    extraData={effectiveGroupBy}
+                    extraData={todayRows}
                   />
                 ) : (
                   <View style={$.emptyWrap}>
@@ -370,7 +372,9 @@ class LMDDashboard extends Component {
               <Animated.View style={[$.card, this.a(4), { paddingBottom: 14 }]}>
                 <Text style={$.cardT}>Quick Actions</Text>
                 <View style={$.actRow}>
-                  {QUICK_ACTIONS.map((q) => (
+                  {QUICK_ACTIONS.map((q) => {
+                    const count = q.countKey ? Number(this.state.data?.[q.countKey] || 0) : 0;
+                    return (
                     <TouchableOpacity
                       key={q.l}
                       style={[$.qa, { backgroundColor: q.bg, borderColor: q.border }]}
@@ -381,10 +385,16 @@ class LMDDashboard extends Component {
                           : this.props.navigation.navigate(q.nav)
                       )}
                     >
+                      {count > 0 ? (
+                        <View style={[$.qaBadge, { backgroundColor: q.countBg || q.accent }]}>
+                          <Text style={$.qaBadgeT}>{count}</Text>
+                        </View>
+                      ) : null}
                       <Image source={q.ico} style={$.qaImg} resizeMode="contain" />
                       <Text style={[$.qaL, { color: q.accent }]}>{q.l}</Text>
                     </TouchableOpacity>
-                  ))}
+                    );
+                  })}
                 </View>
               </Animated.View>
               <View style={{ height: 8 }} />
@@ -511,12 +521,26 @@ const $ = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 6,
     borderWidth: 1,
+    position: 'relative',
     shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 1,
   },
+  qaBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  qaBadgeT: { fontSize: 10, fontWeight: '800', color: '#FFF' },
   qaImg: { width: 48, height: 48, marginBottom: 8 },
   qaL: { fontSize: 11.5, fontWeight: '700', textAlign: 'center', letterSpacing: 0.1 },
 });

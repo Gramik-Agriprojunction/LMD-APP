@@ -30,6 +30,7 @@ import { invalidateSettlementRelated } from '../utils/dataCache';
 let ImageCropPicker = null;
 try { ImageCropPicker = require('react-native-image-crop-picker').default || require('react-native-image-crop-picker'); } catch(e) { console.log('ImageCropPicker not available'); }
 import moment from 'moment';
+import { requestCameraOrPrompt } from '../utils/cameraHelper';
 
 
 const THEME = {
@@ -201,6 +202,11 @@ pickLock = false;
       await this.wait(Platform.OS === 'ios' ? 700 : 300);
 
       try { if (ImageCropPicker.clean) await ImageCropPicker.clean(); } catch (e) {}
+
+      if (source === 'camera') {
+        const allowed = await requestCameraOrPrompt();
+        if (!allowed) return;
+      }
 
       const opts = { mediaType: 'photo', cropping: false, compressImageQuality: 0.85, forceJpg: true };
       let img = null;
