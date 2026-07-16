@@ -2,6 +2,14 @@ import { getPriority } from './statusColors';
 
 const P = '#5D3FD3';
 
+export const parsePickReady = (order) => {
+  const v = order?.pick_ready ?? order?.pickReady;
+  if (typeof v === 'boolean') return v;
+  if (v === 1 || v === '1' || String(v).toLowerCase() === 'true') return true;
+  if (v === 0 || v === '0' || String(v).toLowerCase() === 'false') return false;
+  return null;
+};
+
 export const GROUP_FILTERS = [
   { id: 'farmer', label: 'Farmer wise', sub: 'Farmer ke naam se group karein', icon: require('../screens/assets/farmer.png'), tint: '#EDE9FE', accent: P },
   { id: 'darkstore', label: 'Darkstore wise', sub: 'Darkstore ke naam se group karein', icon: require('../screens/assets/shop2.png'), iconTint: '#0284C7', tint: '#E0F2FE', accent: '#0284C7' },
@@ -10,6 +18,15 @@ export const GROUP_FILTERS = [
   { id: 'pincode', label: 'Pin Code wise', sub: 'PIN code se group karein', icon: require('../screens/assets/pin.png'), iconTint: '#CA8A04', tint: '#FEF9C3', accent: '#CA8A04' },
   { id: 'priority', label: 'Priority wise', sub: 'Priority ke hisaab se group karein', icon: require('../screens/assets/star.png'), iconTint: '#DC2626', tint: '#FEE2E2', accent: '#DC2626' },
 ];
+
+export const PICK_READY_FILTER = {
+  label: 'Ready to pick',
+  sub: 'Sirf dark store se taiyar orders dikhayein',
+  icon: require('../screens/assets/box.png'),
+  iconTint: '#16A34A',
+  tint: '#DCFCE7',
+  accent: '#16A34A',
+};
 
 export const DEFAULT_GROUP_BY = 'priority';
 
@@ -64,6 +81,11 @@ export const flattenFromApiGroups = (raw) => {
     });
   }
   return raw;
+};
+
+export const filterOrdersByPickReady = (orders, pickReadyFilter) => {
+  if (pickReadyFilter !== true) return orders || [];
+  return (orders || []).filter((order) => parsePickReady(order) === true);
 };
 
 export const mergeApiGroups = (prev, next) => {
@@ -129,63 +151,59 @@ export const buildGroupedRows = (orders, groupBy) => {
   });
   const rows = [];
   [...sortGroupEntries([...map.entries()], groupBy)].forEach(([title, items]) => {
+    if (!items.length) return;
     rows.push({ type: 'header', title, count: items.length, key: `h-${groupBy}-${title}` });
     items.forEach((item) => rows.push({ type: 'order', item, key: `o-${item?.id || item?.order_id}` }));
   });
   return rows;
 };
 
-export const buildRowsFromApiGroups = (groups, groupBy) => {
-  if (!isApiGroupedData(groups)) return null;
-  const rows = [];
-  groups.forEach((group) => {
-    const title = String(group.title || group.pincode || '').trim() || 'Other';
-    const items = Array.isArray(group.data) ? group.data : [];
-    if (!items.length) return;
-    rows.push({ type: 'header', title, count: items.length, key: `h-${groupBy}-${title}` });
-    items.forEach((item) => rows.push({
-      type: 'order',
-      item: enrichGroupedOrder(item, title, groupBy),
-      key: `o-${item?.id || item?.order_id}`,
-    }));
-  });
-  return rows.length ? rows : null;
-};
-
-export const parseOrderListPayload = (rawData, groupBy, { append, prevApiGroups, prevOrders }) => {
+export const parseOrderListPayload = (rawData, groupBy, { append, prevApiGroups, prevOrders, pickReadyFilter = null }) => {
   let apiGroups = null;
   let freshOrders = [];
-  let listRows = null;
 
   if (groupBy && isApiGroupedData(rawData)) {
     apiGroups = append ? mergeApiGroups(prevApiGroups, rawData) : rawData;
     freshOrders = flattenFromApiGroups(apiGroups);
-    listRows = buildRowsFromApiGroups(apiGroups, groupBy);
   } else {
     freshOrders = flattenFromApiGroups(rawData);
     apiGroups = null;
   }
 
-  const orders = append ? [...(prevOrders || []), ...freshOrders] : freshOrders;
-  if (groupBy && !listRows) {
-    listRows = buildGroupedRows(orders, groupBy);
-  }
+  const merged = append ? [...(prevOrders || []), ...freshOrders] : freshOrders;
+  const orders = merged;
+  const filtered = filterOrdersByPickReady(orders, pickReadyFilter);
+  const listRows = groupBy ? buildGroupedRows(filtered, groupBy) : buildGroupedRows(filtered, null);
 
   return { orders, apiGroups, listRows };
 };
 
-export const buildListRows = (rawData, groupBy) => {
-  const parsed = parseOrderListPayload(rawData, groupBy, {
+export const buildListRows = (rawData, groupBy, pickReadyFilter = null) => {
+  const effectiveGroupBy = groupBy || DEFAULT_GROUP_BY;
+  const parsed = parseOrderListPayload(rawData, effectiveGroupBy, {
     append: false,
     prevApiGroups: null,
     prevOrders: [],
+    pickReadyFilter,
   });
-  if (groupBy) return parsed.listRows || buildGroupedRows(parsed.orders, groupBy);
-  return buildGroupedRows(parsed.orders, null);
+  return parsed.listRows || buildGroupedRows(parsed.orders, effectiveGroupBy);
 };
 
+export const hasActiveFilters = (groupBy, pickReadyFilter) =>
+  (groupBy && groupBy !== DEFAULT_GROUP_BY) || pickReadyFilter === true;
+
+export const formatActiveFilterLabel = (groupBy, pickReadyFilter) => {
+  const group = GROUP_FILTERS.find((g) => g.id === (groupBy || DEFAULT_GROUP_BY));
+  const parts = [group?.label || 'Priority wise'];
+  if (pickReadyFilter === true) parts.push(PICK_READY_FILTER.label);
+  return parts.join(' · ');
+};
+
+export const apiGroupByParam = (groupBy) => groupBy || DEFAULT_GROUP_BY;
+
 export const homescreenUrl = (baseUrl, groupBy) => {
-  if (!groupBy) return baseUrl;
+  const param = apiGroupByParam(groupBy);
+  if (!param) return baseUrl;
   const sep = baseUrl.includes('?') ? '&' : '?';
-  return `${baseUrl}${sep}group_by=${encodeURIComponent(groupBy)}`;
+  return `${baseUrl}${sep}group_by=${encodeURIComponent(param)}`;
 };

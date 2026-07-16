@@ -100,6 +100,14 @@ class DeliveryDetails extends Component {
     if (!prev || !next) return false;
     return (
       String(prev.order_status || '') === String(next.order_status || '')
+      && String(prev.mark_status || '') === String(next.mark_status || '')
+      && String(prev.reschedule_date || '') === String(next.reschedule_date || '')
+      && String(prev.reschedule_slot || '') === String(next.reschedule_slot || '')
+      && String(prev.dispute_date || '') === String(next.dispute_date || '')
+      && String(prev.penalty_text || '') === String(next.penalty_text || '')
+      && String(prev.delivery_date || '') === String(next.delivery_date || '')
+      && String(prev.deliveryTime || '') === String(next.deliveryTime || '')
+      && String(prev.pick_ready ?? '') === String(next.pick_ready ?? '')
       && String(prev.payment_status || '') === String(next.payment_status || '')
       && String(prev.payment_mode || '') === String(next.payment_mode || '')
       && String(prev.grand_total ?? '') === String(next.grand_total ?? '')
@@ -715,6 +723,67 @@ class DeliveryDetails extends Component {
     if (this._focusRefreshTimer) clearTimeout(this._focusRefreshTimer);
   }
 
+  parsePickReady = (order) => {
+    const pickReadyRaw = order?.pick_ready ?? order?.pickReady;
+    if (typeof pickReadyRaw === 'boolean') return pickReadyRaw;
+    if (pickReadyRaw === 1 || pickReadyRaw === '1' || String(pickReadyRaw).toLowerCase() === 'true') return true;
+    if (pickReadyRaw === 0 || pickReadyRaw === '0' || String(pickReadyRaw).toLowerCase() === 'false') return false;
+    return null;
+  };
+
+  renderTopStatusCards = (order) => {
+    if (!order) return null;
+
+    const showReschedule =
+      !!order.reschedule_date || String(order.mark_status || '').toLowerCase().includes('reschedule');
+    const pickReady = this.parsePickReady(order);
+    if (!showReschedule && pickReady === null) return null;
+
+    return (
+      <View style={styles.topStatusCards}>
+        {showReschedule ? (
+          <View style={styles.rescheduleBanner}>
+            <View style={styles.rescheduleBannerBar} />
+            <View style={styles.rescheduleBannerIconWrap}>
+              <Text style={styles.rescheduleBannerIconChar}>↻</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rescheduleBannerTitle}>Delivery Rescheduled</Text>
+              {order.reschedule_date ? (
+                <Text style={styles.rescheduleBannerText}>{order.reschedule_date}</Text>
+              ) : null}
+              {order.reschedule_slot ? (
+                <Text style={styles.rescheduleBannerSub}>{order.reschedule_slot}</Text>
+              ) : null}
+              {!order.reschedule_slot && order.deliveryTime ? (
+                <Text style={styles.rescheduleBannerSub}>{order.deliveryTime}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {pickReady !== null ? (
+          <View style={pickReady ? styles.pickReadyBanner : styles.pickNotReadyBanner}>
+            <View style={pickReady ? styles.pickReadyBannerBar : styles.pickNotReadyBannerBar} />
+            <View style={[styles.pickReadyBannerIconWrap, pickReady ? styles.pickReadyBannerIconOn : styles.pickReadyBannerIconOff]}>
+              <Text style={styles.pickReadyBannerIconChar}>{pickReady ? '✓' : '○'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pickReadyBannerTitle, pickReady ? styles.pickReadyBannerTitleOn : styles.pickReadyBannerTitleOff]}>
+                {pickReady ? 'Ready to Pick from Dark Store' : 'Not Ready to Pick from Dark Store'}
+              </Text>
+              <Text style={[styles.pickReadyBannerSub, pickReady ? styles.pickReadyBannerSubOn : styles.pickReadyBannerSubOff]}>
+                {pickReady
+                  ? 'Dark store ne order pickup ke liye taiyar kar diya hai'
+                  : 'Dark store mein order abhi pickup ke liye taiyar nahi hai'}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   render() {
     const { isLoading, details, hasError } = this.state;
 
@@ -772,10 +841,14 @@ class DeliveryDetails extends Component {
               {/* Hero — same OrderCard used in Dashboard, TrackOrders, PenaltyOrders */}
               <OrderCard
                 order={details}
+                hidePickReadyPill
+                style={styles.ddOrderCard}
                 onCall={this.onCall ? () => this.onCall() : undefined}
                 onWhatsApp={this.onWhatsApp ? () => this.onWhatsApp() : undefined}
                 onCallStore={(p) => p && Linking.openURL(`tel:${p}`).catch(() => {})}
               />
+
+              {this.renderTopStatusCards(details)}
 
               {/* Items */}
               <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>₹ {total}</Text></Text>
@@ -1391,7 +1464,7 @@ class DeliveryDetails extends Component {
           const st = String(d?.order_status || '').toLowerCase();
           const isPending = st === 'pending';
           const isReschedule = st === 'reschedule';
-          const isPickedUp = st === 'pickup';
+          const isPickedUp = st === 'pickup' || st === 'picked_up' || st === 'in_transit';
           const closeAnd = (fn) => {
             this.moreSheetRef?.close();
             // give the close animation a beat before triggering navigation/popup
@@ -1399,7 +1472,7 @@ class DeliveryDetails extends Component {
           };
           const actionCount =
             ((isPending || isReschedule) ? 1 : 0) +
-            (isPending ? 1 : 0) +
+            ((isPending || isPickedUp) ? 1 : 0) +
             (st !== 'disputed' ? 1 : 0);
           const safeBottom = overlayBottomPadding();
           const sheetMax = Math.min(
@@ -1447,7 +1520,7 @@ class DeliveryDetails extends Component {
                     </TouchableOpacity>
                   ) : null}
 
-                  {isPending ? (
+                  {(isPending || isPickedUp) ? (
                     <TouchableOpacity
                       activeOpacity={0.85}
                       style={[styles.moreSheetTile, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
@@ -1565,6 +1638,14 @@ const styles = StyleSheet.create({
   ddSlotT: { fontSize: 11, fontWeight: '500', color: '#475569' },
 
   ddSecTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8, marginTop: 6 },
+
+  topStatusCards: {
+    marginTop: 2,
+    marginBottom: 4,
+    gap: 8,
+  },
+
+  ddOrderCard: { marginBottom: 2 },
 
   // Items card — single rounded container holding all line items, separated by an inner divider
   itemsCard: {
@@ -1941,6 +2022,104 @@ const styles = StyleSheet.create({
   alertBannerIconChar: { color: '#FFF', fontSize: 14, fontWeight: '900', lineHeight: 16 },
   alertBannerTitle: { fontSize: 12, fontWeight: '800', color: '#991B1B', marginBottom: 2 },
   alertBannerText: { fontSize: 12, fontWeight: '500', color: '#B91C1C', lineHeight: 17 },
+
+  rescheduleBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F5F3FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingLeft: 14,
+    marginBottom: 0,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  rescheduleBannerBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#7C3AED',
+  },
+  rescheduleBannerIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  rescheduleBannerIconChar: { color: '#FFF', fontSize: 13, fontWeight: '900', lineHeight: 15 },
+  rescheduleBannerTitle: { fontSize: 12, fontWeight: '800', color: '#5B21B6', marginBottom: 2 },
+  rescheduleBannerText: { fontSize: 12, fontWeight: '600', color: '#6D28D9', lineHeight: 17 },
+  rescheduleBannerSub: { fontSize: 11, fontWeight: '500', color: '#7C3AED', lineHeight: 16, marginTop: 1 },
+
+  pickReadyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingLeft: 14,
+    marginBottom: 0,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  pickNotReadyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingLeft: 14,
+    marginBottom: 0,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  pickReadyBannerBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#16A34A',
+  },
+  pickNotReadyBannerBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#EA580C',
+  },
+  pickReadyBannerIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  pickReadyBannerIconOn: { backgroundColor: '#16A34A' },
+  pickReadyBannerIconOff: { backgroundColor: '#EA580C' },
+  pickReadyBannerIconChar: { color: '#FFF', fontSize: 13, fontWeight: '900', lineHeight: 15 },
+  pickReadyBannerTitle: { fontSize: 12, fontWeight: '800', marginBottom: 2 },
+  pickReadyBannerTitleOn: { color: '#166534' },
+  pickReadyBannerTitleOff: { color: '#9A3412' },
+  pickReadyBannerSub: { fontSize: 11, fontWeight: '500', lineHeight: 16 },
+  pickReadyBannerSubOn: { color: '#15803D' },
+  pickReadyBannerSubOff: { color: '#C2410C' },
 
   // Delivery Slots — compact chip row card
   slotsCard: {

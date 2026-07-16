@@ -22,10 +22,11 @@ import GroupOrdersFilterSheet from '../components/GroupOrdersFilterSheet';
 import OrderGroupHeader from '../components/OrderGroupHeader';
 import {
   DEFAULT_GROUP_BY,
-  GROUP_FILTERS,
   buildListRows,
   homescreenUrl,
   flattenFromApiGroups,
+  hasActiveFilters,
+  formatActiveFilterLabel,
 } from '../utils/orderGrouping';
 
 const P = '#5D3FD3';
@@ -71,6 +72,8 @@ class LMDDashboard extends Component {
       data: cached || null,
       groupBy,
       filterDraft: groupBy,
+      pickReadyFilter: null,
+      pickReadyFilterDraft: false,
       showFilterSheet: false,
     };
     this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
@@ -135,6 +138,7 @@ class LMDDashboard extends Component {
     this.setState({
       showFilterSheet: true,
       filterDraft: this.state.groupBy || DEFAULT_GROUP_BY,
+      pickReadyFilterDraft: this.state.pickReadyFilter === true,
     });
   };
 
@@ -147,13 +151,23 @@ class LMDDashboard extends Component {
   };
 
   selectFilterDraft = (id) => {
-    this.setState({ filterDraft: this.state.filterDraft === id ? null : id });
+    this.setState({ filterDraft: id });
+  };
+
+  togglePickReadyFilterDraft = () => {
+    this.setState({ pickReadyFilterDraft: !this.state.pickReadyFilterDraft });
   };
 
   applyFilters = () => {
     const nextGroup = this.state.filterDraft || DEFAULT_GROUP_BY;
+    const nextPickReady = this.state.pickReadyFilterDraft ? true : null;
     if (this.unsubscribe) this.unsubscribe();
-    this.setState({ groupBy: nextGroup, filterDraft: nextGroup, showFilterSheet: false }, () => {
+    this.setState({
+      groupBy: nextGroup,
+      filterDraft: nextGroup,
+      pickReadyFilter: nextPickReady,
+      showFilterSheet: false,
+    }, () => {
       this.closeFilterSheet();
       this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
         if (!data) return;
@@ -166,7 +180,13 @@ class LMDDashboard extends Component {
   clearFilters = () => {
     const nextGroup = DEFAULT_GROUP_BY;
     if (this.unsubscribe) this.unsubscribe();
-    this.setState({ groupBy: nextGroup, filterDraft: nextGroup, showFilterSheet: false }, () => {
+    this.setState({
+      groupBy: nextGroup,
+      filterDraft: nextGroup,
+      pickReadyFilter: null,
+      pickReadyFilterDraft: false,
+      showFilterSheet: false,
+    }, () => {
       this.closeFilterSheet();
       this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
         if (!data) return;
@@ -234,15 +254,15 @@ class LMDDashboard extends Component {
 
   render() {
     const d = this.state.data;
-    const { groupBy } = this.state;
+    const { groupBy, pickReadyFilter } = this.state;
     const effectiveGroupBy = groupBy || DEFAULT_GROUP_BY;
     const name = d?.partner?.name || '';
     const rule = d?.partner?.rule;
     const live = d?.live_orders || {};
     const todayRaw = d?.today_deliveries || [];
-    const todayRows = buildListRows(todayRaw, effectiveGroupBy);
+    const todayRows = buildListRows(todayRaw, effectiveGroupBy, pickReadyFilter);
     const hasToday = todayRows.some((r) => r.type === 'order');
-    const activeFilter = GROUP_FILTERS.find((g) => g.id === effectiveGroupBy);
+    const filtersActive = hasActiveFilters(effectiveGroupBy, pickReadyFilter);
     const pendingSettlements = d?.pending_settlements || [];
     const pendingAmount = d?.pending_settlement_amount;
     const pendingCount = d?.pending_settlement_orders_count;
@@ -342,15 +362,15 @@ class LMDDashboard extends Component {
                   <TouchableOpacity
                     onPress={this.openFilterSheet}
                     activeOpacity={0.85}
-                    style={[$.filterBtn, $.filterBtnOn]}
+                    style={[$.filterBtn, filtersActive && $.filterBtnOn]}
                   >
                     <Image source={require('./assets/filter.png')} style={$.filterIco} />
-                    <View style={$.filterDot} />
+                    {filtersActive ? <View style={$.filterDot} /> : null}
                   </TouchableOpacity>
                 </View>
-                {hasToday && (
-                  <Text style={$.groupNote} numberOfLines={1}>
-                    Grouped: {(activeFilter || GROUP_FILTERS.find((g) => g.id === DEFAULT_GROUP_BY)).label}
+                {hasToday && filtersActive && (
+                  <Text style={$.groupNote} numberOfLines={2}>
+                    {formatActiveFilterLabel(effectiveGroupBy, pickReadyFilter)}
                   </Text>
                 )}
                 {hasToday ? (
@@ -405,11 +425,14 @@ class LMDDashboard extends Component {
         <GroupOrdersFilterSheet
           visible={this.state.showFilterSheet}
           filterDraft={this.state.filterDraft || DEFAULT_GROUP_BY}
+          pickReadyFilterDraft={this.state.pickReadyFilterDraft}
           groupBy={effectiveGroupBy}
+          pickReadyFilter={pickReadyFilter}
           sheetRef={(r) => { this.filterSheetRef = r; }}
           onClose={this.closeFilterSheet}
           onSheetClosed={this.onFilterSheetClosed}
           onSelectDraft={this.selectFilterDraft}
+          onTogglePickReadyDraft={this.togglePickReadyFilterDraft}
           onApply={this.applyFilters}
           onReset={this.clearFilters}
         />

@@ -81,8 +81,15 @@ const resolve = (o = {}) => {
   const rescheduleRaw = o.reschedule_date ?? o.rescheduleDate;
   const rescheduleDate = fmtRescheduleDate(rescheduleRaw);
   const rescheduleSlot = String(o.reschedule_slot || o.slot || '').trim();
+  const pickReadyRaw = o.pick_ready ?? o.pickReady;
+  const pickReady = (() => {
+    if (typeof pickReadyRaw === 'boolean') return pickReadyRaw;
+    if (pickReadyRaw === 1 || pickReadyRaw === '1' || String(pickReadyRaw).toLowerCase() === 'true') return true;
+    if (pickReadyRaw === 0 || pickReadyRaw === '0' || String(pickReadyRaw).toLowerCase() === 'false') return false;
+    return null;
+  })();
   return {
-    orderId, apiOrderId, status, markStatus, rescheduleDate, rescheduleSlot,
+    orderId, apiOrderId, status, markStatus, rescheduleDate, rescheduleSlot, pickReady,
     farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority,
   };
 };
@@ -103,6 +110,8 @@ export default function OrderCard({
   theme = 'light',
   hideFooter = false,
   hideRoute = false,
+  hidePickReadyPill = false,
+  style = null,
   extraHeaderRight = null,
   compactChips = false,
   children = null,
@@ -149,7 +158,7 @@ export default function OrderCard({
   };
 
   return (
-    <Wrap {...wrapProps} style={[s.card, dark && s.cardDark, selected && s.cardSelected]}>
+    <Wrap {...wrapProps} style={[s.card, dark && s.cardDark, selected && s.cardSelected, style]}>
       {/* Greyish header — order id (with copy) + status chip + farmer + call/wa */}
       <HeaderWrap {...headerWrapProps} style={[s.top, dark && s.topDark, selected && s.topSelected]}>
         <View style={s.head}>
@@ -295,6 +304,19 @@ export default function OrderCard({
               </Text>
             </View>
           )}
+          {o.pickReady !== null && !hidePickReadyPill ? (
+            <View style={[s.pill, dark
+              ? { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }
+              : {
+                backgroundColor: o.pickReady ? '#DCFCE7' : '#FFEDD5',
+                borderWidth: 1,
+                borderColor: o.pickReady ? '#86EFAC' : '#FDBA74',
+              }]}>
+              <Text style={[s.pillT, { color: dark ? '#FFF' : (o.pickReady ? '#15803D' : '#C2410C') }]}>
+                {o.pickReady ? (compactChips ? 'READY' : 'PICK READY') : (compactChips ? 'WAITING' : 'NOT READY')}
+              </Text>
+            </View>
+          ) : null}
           <View style={{ flex: 1 }} />
           <Text style={[s.amt, dark && { color: '#FCD34D' }]}>₹{o.amount}</Text>
         </View>

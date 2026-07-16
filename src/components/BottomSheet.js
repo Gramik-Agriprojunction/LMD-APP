@@ -2,6 +2,7 @@ import React, {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef,
 } from 'react';
 import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
@@ -10,6 +11,7 @@ import {
 } from '@gorhom/bottom-sheet';
 
 const BottomSheet = forwardRef(function BottomSheet(props, ref) {
+  const insets = useSafeAreaInsets();
   const {
     visible = true,
     children,
@@ -21,7 +23,10 @@ const BottomSheet = forwardRef(function BottomSheet(props, ref) {
     snapPoint = '92%',
     dynamicSize = false,
     maxDynamicContentSize,
+    bottomInset: bottomInsetProp,
   } = props;
+
+  const bottomInset = bottomInsetProp ?? insets.bottom;
 
   const modalRef = useRef(null);
   const snapPoints = useMemo(() => [snapPoint], [snapPoint]);
@@ -87,6 +92,7 @@ const BottomSheet = forwardRef(function BottomSheet(props, ref) {
       onDismiss={handleDismiss}
       handleIndicatorStyle={$.handle}
       backgroundStyle={$.sheetBg}
+      bottomInset={bottomInset}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
     >

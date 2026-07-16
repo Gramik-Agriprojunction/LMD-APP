@@ -4,18 +4,43 @@ import { getPriority } from '../utils/statusColors';
 
 const P = '#5D3FD3';
 
+const PICK_READY_HEADER = {
+  'Ready to Pick': { tint: '#DCFCE7', accent: '#166534', dot: '#16A34A' },
+  'Not Ready to Pick': { tint: '#FFEDD5', accent: '#9A3412', dot: '#EA580C' },
+  Unknown: { tint: '#F1F5F9', accent: '#475569', dot: '#94A3B8' },
+};
+
 export default function OrderGroupHeader({ title, count, groupBy, compact = false }) {
   const isPriority = groupBy === 'priority';
+  const isPickReady = groupBy === 'pick_ready';
   const pri = isPriority ? getPriority(title) : null;
+  const pickReady = isPickReady ? (PICK_READY_HEADER[title] || PICK_READY_HEADER.Unknown) : null;
+  const accentStyle = isPriority
+    ? { backgroundColor: pri.tint, borderLeftColor: pri.bg }
+    : isPickReady
+      ? { backgroundColor: pickReady.tint, borderLeftColor: pickReady.dot }
+      : null;
 
   return (
     <View style={[
       compact ? st.compact : st.hdr,
-      isPriority && { backgroundColor: pri.tint, borderLeftColor: pri.bg },
+      accentStyle,
     ]}>
-      <View style={[st.dot, isPriority && { backgroundColor: pri.bg }]} />
-      <Text style={[st.title, isPriority && { color: pri.accent }]} numberOfLines={2}>{title}</Text>
-      <View style={[st.count, isPriority && { backgroundColor: pri.bg }]}>
+      <View style={[
+        st.dot,
+        isPriority && { backgroundColor: pri.bg },
+        isPickReady && { backgroundColor: pickReady.dot },
+      ]} />
+      <Text style={[
+        st.title,
+        isPriority && { color: pri.accent },
+        isPickReady && { color: pickReady.accent },
+      ]} numberOfLines={2}>{title}</Text>
+      <View style={[
+        st.count,
+        isPriority && { backgroundColor: pri.bg },
+        isPickReady && { backgroundColor: pickReady.dot },
+      ]}>
         <Text style={st.countT}>{count}</Text>
       </View>
     </View>
