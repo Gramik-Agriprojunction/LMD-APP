@@ -81,6 +81,7 @@ const resolve = (o = {}) => {
   const rescheduleRaw = o.reschedule_date ?? o.rescheduleDate;
   const rescheduleDate = fmtRescheduleDate(rescheduleRaw);
   const rescheduleSlot = String(o.reschedule_slot || o.slot || '').trim();
+  const deliveryTimeText = String(o.delivery_time ?? o.deliveryTime ?? '').trim();
   const pickReadyRaw = o.pick_ready ?? o.pickReady;
   const pickReady = (() => {
     if (typeof pickReadyRaw === 'boolean') return pickReadyRaw;
@@ -89,7 +90,7 @@ const resolve = (o = {}) => {
     return null;
   })();
   return {
-    orderId, apiOrderId, status, markStatus, rescheduleDate, rescheduleSlot, pickReady,
+    orderId, apiOrderId, status, markStatus, rescheduleDate, rescheduleSlot, deliveryTimeText, pickReady,
     farmerName, farmerPhone, amount, ds, dropAddress, paymentMode, paymentStatus, priority,
   };
 };
@@ -208,6 +209,14 @@ export default function OrderCard({
             </Text>
           </View>
         )}
+
+        {!showScheduleBanner && !!o.deliveryTimeText ? (
+          <View style={[s.deliveryTimeStrip, dark && s.deliveryTimeStripDark]}>
+            <Text style={[s.deliveryTimeLine, dark && s.deliveryTimeLineDark]} numberOfLines={2}>
+              {o.deliveryTimeText}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={s.person}>
           {showCheckbox && checkboxInHeader && (
@@ -413,6 +422,23 @@ const s = StyleSheet.create({
   schedulePrefix: { fontSize: 12, fontWeight: '500', color: '#64748B' },
   scheduleHighlight: { fontSize: 12, fontWeight: '800', color: '#7E22CE' },
   scheduleHighlightDark: { color: '#F3E8FF' },
+
+  deliveryTimeStrip: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  deliveryTimeStripDark: {
+    backgroundColor: 'rgba(22,163,74,0.15)',
+    borderColor: 'rgba(134,239,172,0.4)',
+  },
+  deliveryTimeLine: { fontSize: 12, fontWeight: '700', color: '#16A34A', lineHeight: 17 },
+  deliveryTimeLineDark: { color: '#86EFAC' },
 
   // Selection checkbox lives in the FOOTER on the left, alongside the payment
   // pills and the amount. Visual size is still 26 × 26; hitSlop on the

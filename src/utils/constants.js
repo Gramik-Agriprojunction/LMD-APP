@@ -6,7 +6,7 @@ const baseurl = 'https://lens-api.gramik.in/api/v1/';
 
 const strings = {
   login: baseurl + 'auth/lmd/login',
-  verifyOtp : baseurl + 'auth/lmd/verify-otp',
+  verifyOtp : baseurl + 'auth/lmd/verify-otp', 
   homescreen : baseurl + 'lmd/home',
   orderList : baseurl + 'lmd/orderList',
   orderDetails : baseurl + 'lmd/orderDetails',
@@ -20,6 +20,8 @@ const strings = {
   settleList : baseurl + 'lmd/cash-settlement-list',
   settleDetail : baseurl + 'lmd/cash-settlement-detail/',
   submitSettlement : baseurl + 'lmd/submit-settlement',
+  settlementQr : baseurl + 'lmd/generate-settlement-qr',
+  settlementQrPaymentSuccess : baseurl + 'lmd/settlement-qr-payment-success',
   rejectReasons : baseurl + 'lmd/reject-list',
   disputeReasons : baseurl + 'lmd/dispute-reason',
   notification : baseurl + 'notification',

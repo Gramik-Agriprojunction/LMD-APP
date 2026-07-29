@@ -18,15 +18,21 @@ import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
 import NotificationBellButton from '../components/NotificationBellButton';
-import GroupOrdersFilterSheet from '../components/GroupOrdersFilterSheet';
 import OrderGroupHeader from '../components/OrderGroupHeader';
+import ActiveFiltersSummary from '../components/ActiveFiltersSummary';
 import {
   DEFAULT_GROUP_BY,
   buildListRows,
   homescreenUrl,
   flattenFromApiGroups,
   hasActiveFilters,
-  formatActiveFilterLabel,
+  groupCacheSuffix,
+  pickReadyCacheSuffix,
+  priorityCacheSuffix,
+  rescheduleCacheSuffix,
+  entityFilterCacheSuffix,
+  dedupeGroupStack,
+  listRowsWithoutGroupHeaders,
 } from '../utils/orderGrouping';
 
 const P = '#5D3FD3';
@@ -64,32 +70,33 @@ const QUICK_ACTIONS = [
 class LMDDashboard extends Component {
   constructor() {
     super();
-    const groupBy = DEFAULT_GROUP_BY;
-    const cached = cacheGet(this.dashboardCacheKey(groupBy));
+    const groupStack = [DEFAULT_GROUP_BY];
+    const cached = cacheGet(this.dashboardCacheKey(groupStack, null, null, null, null));
     this.state = {
       loading: !cached,
       refreshing: false,
       data: cached || null,
-      groupBy,
-      filterDraft: groupBy,
+      groupStack,
       pickReadyFilter: null,
-      pickReadyFilterDraft: false,
-      showFilterSheet: false,
+      rescheduleDateFilter: null,
+      priorityFilter: null,
+      entityFilters: null,
     };
     this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
-    this.filterSheetRef = null;
   }
 
-  dashboardCacheKey = (groupBy) => `${KEYS.DASHBOARD}_${groupBy || ''}`;
+  dashboardCacheKey = (groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters) =>
+    `${KEYS.DASHBOARD}${groupCacheSuffix(null, null, groupStack)}${pickReadyCacheSuffix(pickReadyFilter)}${rescheduleCacheSuffix(rescheduleDateFilter)}${priorityCacheSuffix(priorityFilter)}${entityFilterCacheSuffix(entityFilters)}`;
 
   componentDidMount() {
     prefetchSoilOrderPincode();
-    const { groupBy } = this.state;
-    this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(groupBy), (data) => {
+    const { groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters } = this.state;
+    const cacheKey = this.dashboardCacheKey(groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters);
+    this.unsubscribe = cacheSubscribe(cacheKey, (data) => {
       if (!data) return;
       this.setState({ data });
     });
-    this.load(cacheHas(this.dashboardCacheKey(groupBy)));
+    this.load(cacheHas(cacheKey));
     flushPendingNotificationNavigation();
   }
 
@@ -101,10 +108,10 @@ class LMDDashboard extends Component {
 
   // silent=true → background refresh, no shimmer flicker
   load = (silent = false) => {
-    const groupBy = this.state.groupBy || DEFAULT_GROUP_BY;
-    const cacheKey = this.dashboardCacheKey(groupBy);
+    const { groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters } = this.state;
+    const cacheKey = this.dashboardCacheKey(groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters);
     if (!silent && !this.state.refreshing) this.setState({ loading: true });
-    fetch(homescreenUrl(constants.homescreen, groupBy), {
+    fetch(homescreenUrl(constants.homescreen, { groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters }), {
       headers: { 'X-localization': 'en', Authorization: 'Bearer ' + global.token }, method: 'GET',
     })
       .then(r => r.json())
@@ -131,64 +138,38 @@ class LMDDashboard extends Component {
 
   go = (s) => this.props.navigation.navigate('TrackOrders', {
     selectedStatus: s || 'ALL',
-    groupBy: this.state.groupBy || DEFAULT_GROUP_BY,
+    groupStack: this.state.groupStack,
   });
 
-  openFilterSheet = () => {
-    this.setState({
-      showFilterSheet: true,
-      filterDraft: this.state.groupBy || DEFAULT_GROUP_BY,
-      pickReadyFilterDraft: this.state.pickReadyFilter === true,
+  openFilters = () => {
+    this.props.navigation.navigate('OrderFilters', {
+      groupStack: this.state.groupStack,
+      pickReadyFilter: this.state.pickReadyFilter,
+      rescheduleDateFilter: this.state.rescheduleDateFilter,
+      priorityFilter: this.state.priorityFilter,
+      entityFilters: this.state.entityFilters,
+      onApply: this.handleFiltersApplied,
     });
   };
 
-  closeFilterSheet = () => {
-    this.filterSheetRef?.close?.();
-  };
-
-  onFilterSheetClosed = () => {
-    this.setState({ showFilterSheet: false });
-  };
-
-  selectFilterDraft = (id) => {
-    this.setState({ filterDraft: id });
-  };
-
-  togglePickReadyFilterDraft = () => {
-    this.setState({ pickReadyFilterDraft: !this.state.pickReadyFilterDraft });
-  };
-
-  applyFilters = () => {
-    const nextGroup = this.state.filterDraft || DEFAULT_GROUP_BY;
-    const nextPickReady = this.state.pickReadyFilterDraft ? true : null;
+  handleFiltersApplied = ({
+    groupStack,
+    pickReadyFilter,
+    rescheduleDateFilter,
+    priorityFilter,
+    entityFilters,
+  }) => {
+    const nextStack = dedupeGroupStack(groupStack);
     if (this.unsubscribe) this.unsubscribe();
     this.setState({
-      groupBy: nextGroup,
-      filterDraft: nextGroup,
-      pickReadyFilter: nextPickReady,
-      showFilterSheet: false,
+      groupStack: nextStack,
+      pickReadyFilter,
+      rescheduleDateFilter: rescheduleDateFilter || null,
+      priorityFilter: priorityFilter || null,
+      entityFilters: entityFilters || null,
     }, () => {
-      this.closeFilterSheet();
-      this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
-        if (!data) return;
-        this.setState({ data });
-      });
-      this.load(true);
-    });
-  };
-
-  clearFilters = () => {
-    const nextGroup = DEFAULT_GROUP_BY;
-    if (this.unsubscribe) this.unsubscribe();
-    this.setState({
-      groupBy: nextGroup,
-      filterDraft: nextGroup,
-      pickReadyFilter: null,
-      pickReadyFilterDraft: false,
-      showFilterSheet: false,
-    }, () => {
-      this.closeFilterSheet();
-      this.unsubscribe = cacheSubscribe(this.dashboardCacheKey(nextGroup), (data) => {
+      const cacheKey = this.dashboardCacheKey(nextStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters);
+      this.unsubscribe = cacheSubscribe(cacheKey, (data) => {
         if (!data) return;
         this.setState({ data });
       });
@@ -229,7 +210,9 @@ class LMDDashboard extends Component {
         <OrderGroupHeader
           title={row.title}
           count={row.count}
-          groupBy={this.state.groupBy || DEFAULT_GROUP_BY}
+          groupBy={row.groupBy || this.state.groupStack?.[0] || DEFAULT_GROUP_BY}
+          level={row.level || 'primary'}
+          depth={row.depth || 0}
           compact
         />
       );
@@ -254,15 +237,16 @@ class LMDDashboard extends Component {
 
   render() {
     const d = this.state.data;
-    const { groupBy, pickReadyFilter } = this.state;
-    const effectiveGroupBy = groupBy || DEFAULT_GROUP_BY;
+    const { groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters } = this.state;
+    const levels = dedupeGroupStack(groupStack);
     const name = d?.partner?.name || '';
     const rule = d?.partner?.rule;
     const live = d?.live_orders || {};
     const todayRaw = d?.today_deliveries || [];
-    const todayRows = buildListRows(todayRaw, effectiveGroupBy, pickReadyFilter);
+    const filtersActive = hasActiveFilters(levels[0], pickReadyFilter, rescheduleDateFilter, levels[1], levels, priorityFilter, entityFilters);
+    const todayRowsRaw = buildListRows(todayRaw, levels[0], pickReadyFilter, levels[1], levels);
+    const todayRows = listRowsWithoutGroupHeaders(todayRowsRaw, filtersActive);
     const hasToday = todayRows.some((r) => r.type === 'order');
-    const filtersActive = hasActiveFilters(effectiveGroupBy, pickReadyFilter);
     const pendingSettlements = d?.pending_settlements || [];
     const pendingAmount = d?.pending_settlement_amount;
     const pendingCount = d?.pending_settlement_orders_count;
@@ -360,7 +344,7 @@ class LMDDashboard extends Component {
                     'Aaj Ki Deliveries',
                   )}
                   <TouchableOpacity
-                    onPress={this.openFilterSheet}
+                    onPress={this.openFilters}
                     activeOpacity={0.85}
                     style={[$.filterBtn, filtersActive && $.filterBtnOn]}
                   >
@@ -369,9 +353,15 @@ class LMDDashboard extends Component {
                   </TouchableOpacity>
                 </View>
                 {hasToday && filtersActive && (
-                  <Text style={$.groupNote} numberOfLines={2}>
-                    {formatActiveFilterLabel(effectiveGroupBy, pickReadyFilter)}
-                  </Text>
+                  <ActiveFiltersSummary
+                    groupBy={levels[0]}
+                    subGroupBy={levels[1]}
+                    groupStack={levels}
+                    pickReadyFilter={pickReadyFilter}
+                    rescheduleDateFilter={rescheduleDateFilter}
+                    priorityFilter={priorityFilter}
+                    entityFilters={entityFilters}
+                  />
                 )}
                 {hasToday ? (
                   <FlatList
@@ -422,20 +412,6 @@ class LMDDashboard extends Component {
           )}
         </View>
         <NetBanner />
-        <GroupOrdersFilterSheet
-          visible={this.state.showFilterSheet}
-          filterDraft={this.state.filterDraft || DEFAULT_GROUP_BY}
-          pickReadyFilterDraft={this.state.pickReadyFilterDraft}
-          groupBy={effectiveGroupBy}
-          pickReadyFilter={pickReadyFilter}
-          sheetRef={(r) => { this.filterSheetRef = r; }}
-          onClose={this.closeFilterSheet}
-          onSheetClosed={this.onFilterSheetClosed}
-          onSelectDraft={this.selectFilterDraft}
-          onTogglePickReadyDraft={this.togglePickReadyFilterDraft}
-          onApply={this.applyFilters}
-          onReset={this.clearFilters}
-        />
       </View>
     );
   }

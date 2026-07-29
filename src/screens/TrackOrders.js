@@ -46,19 +46,24 @@ import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSubscribe, KEYS, invalidateOrderRelated } from '../utils/dataCache';
 import LiveOrdersGrid from '../components/LiveOrdersGrid';
-import GroupOrdersFilterSheet from '../components/GroupOrdersFilterSheet';
 import OrderGroupHeader from '../components/OrderGroupHeader';
+import ActiveFiltersSummary from '../components/ActiveFiltersSummary';
 import OrderCard from '../components/OrderCard';
 import { STATUS, STATUS_SEQUENCE, getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import {
   DEFAULT_GROUP_BY,
   parseOrderListPayload,
-  buildGroupedRows,
-  filterOrdersByPickReady,
+  buildNestedGroupedRows,
+  buildOrderListBody,
   hasActiveFilters,
-  formatActiveFilterLabel,
-  apiGroupByParam,
+  groupCacheSuffix,
+  priorityCacheSuffix,
+  rescheduleCacheSuffix,
+  entityFilterCacheSuffix,
+  dedupeGroupStack,
+  stackFromLegacy,
+  listRowsWithoutGroupHeaders,
 } from '../utils/orderGrouping';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
@@ -88,8 +93,13 @@ class TrackOrders extends Component {
     super(props);
     const init = this.props?.navigation?.getParam('selectedStatus', 'ALL');
     const selected = STATUSES.includes(init) ? init : 'ALL';
-    const initGroup = this.props?.navigation?.getParam('groupBy', DEFAULT_GROUP_BY) || DEFAULT_GROUP_BY;
-    const cacheKey = `${KEYS.ORDERS}_${selected}_${initGroup}_`;
+    const initGroupStack = this.props?.navigation?.getParam('groupStack')
+      || stackFromLegacy(
+        this.props?.navigation?.getParam('groupBy', DEFAULT_GROUP_BY),
+        this.props?.navigation?.getParam('subGroupBy', null),
+      );
+    const levels = dedupeGroupStack(initGroupStack);
+    const cacheKey = `${KEYS.ORDERS}_${selected}${groupCacheSuffix(null, null, levels)}_`;
     const cached = cacheGet(cacheKey);
     this.state = {
       loading: !cached,
@@ -109,16 +119,15 @@ class TrackOrders extends Component {
       page: 1,
       totalPages: 1,
       hasMore: false,
-      groupBy: initGroup,
-      filterDraft: initGroup,
+      groupStack: levels,
       pickReadyFilter: null,
-      pickReadyFilterDraft: false,
-      showFilterSheet: false,
+      rescheduleDateFilter: null,
+      priorityFilter: null,
+      entityFilters: null,
     };
     this.fetchSeq = 0;
     this._searchTimer = null;
     this._skipNextFocusReload = true;
-    this.filterSheetRef = null;
     this.anims = [0,1,2].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
     this.ctaArrowX = new Animated.Value(0);
     this._ctaArrowLoop = null;
@@ -138,14 +147,17 @@ class TrackOrders extends Component {
     }
   };
 
-  cacheKeyFor = (selected, groupBy, query, pickReadyFilter) =>
-    `${KEYS.ORDERS}_${selected}_${groupBy || DEFAULT_GROUP_BY}_${pickReadyFilter ? 'ready' : ''}_${normalizeSearchText(query || '')}`;
+  cacheKeyFor = (selected, groupStack, query, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters) =>
+    `${KEYS.ORDERS}_${selected}${groupCacheSuffix(null, null, groupStack)}_${pickReadyFilter ? 'ready' : ''}${rescheduleCacheSuffix(rescheduleDateFilter)}${priorityCacheSuffix(priorityFilter)}${entityFilterCacheSuffix(entityFilters)}_${normalizeSearchText(query || '')}`;
 
   cacheKey = () => this.cacheKeyFor(
     this.state.selected,
-    this.state.groupBy,
+    this.state.groupStack,
     this.state.query,
     this.state.pickReadyFilter,
+    this.state.rescheduleDateFilter,
+    this.state.priorityFilter,
+    this.state.entityFilters,
   );
 
   resubscribeCache = () => {
@@ -192,16 +204,23 @@ class TrackOrders extends Component {
     // Snapshot the tab the request was issued for, so a stale response can't
     // overwrite the rows of a tab the user has since switched away from.
     const requestedFor = this.state.selected;
-    const requestedGroup = this.state.groupBy || DEFAULT_GROUP_BY;
+    const requestedStack = dedupeGroupStack(this.state.groupStack);
     const requestedPickReady = this.state.pickReadyFilter;
+    const requestedRescheduleDate = this.state.rescheduleDateFilter;
+    const requestedPriority = this.state.priorityFilter;
+    const requestedEntity = this.state.entityFilters;
     const seq = ++this.fetchSeq;
-    const body = {
+    const body = buildOrderListBody({
       status: requestedFor === 'ALL' ? '' : requestedFor.toLowerCase(),
       page,
       limit: 20,
-      group_by: apiGroupByParam(requestedGroup),
+      groupStack: requestedStack,
       search: requestedQuery,
-    };
+      pickReadyFilter: requestedPickReady,
+      rescheduleDateFilter: requestedRescheduleDate,
+      priorityFilter: requestedPriority,
+      entityFilters: requestedEntity,
+    });
     fetch(constants.orderList, {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + global.token, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -211,11 +230,13 @@ class TrackOrders extends Component {
       .then(j => {
         if (seq !== this.fetchSeq) return;
         const rawData = j?.status ? j.data : [];
-        const parsed = parseOrderListPayload(rawData, requestedGroup, {
+        const parsed = parseOrderListPayload(rawData, requestedStack[0], {
           append,
           prevApiGroups: this.state.apiGroups,
           prevOrders: this.state.orders,
           pickReadyFilter: requestedPickReady,
+          subGroupBy: requestedStack[1],
+          groupStack: requestedStack,
         });
         const live = j?.live || this.state.live;
         const pg = j?.pagination || j?.meta || {};
@@ -226,7 +247,7 @@ class TrackOrders extends Component {
           : currentPage < totalPages;
         const totalCount = Number(pg?.total ?? j?.meta?.total ?? parsed.orders.length) || parsed.orders.length;
 
-        cacheSet(this.cacheKeyFor(requestedFor, requestedGroup, requestedQuery, requestedPickReady), {
+        cacheSet(this.cacheKeyFor(requestedFor, requestedStack, requestedQuery, requestedPickReady, requestedRescheduleDate, requestedPriority, requestedEntity), {
           orders: parsed.orders,
           live,
           listRows: parsed.listRows,
@@ -235,8 +256,11 @@ class TrackOrders extends Component {
         preloadImages(extractImageUrls(parsed.orders));
         const doneFlags = { loading: false, refreshing: false, loadingMore: false, searchLoading: false };
         const canApply = this.state.selected === requestedFor
-          && (this.state.groupBy || DEFAULT_GROUP_BY) === requestedGroup
+          && JSON.stringify(dedupeGroupStack(this.state.groupStack)) === JSON.stringify(requestedStack)
           && this.state.pickReadyFilter === requestedPickReady
+          && JSON.stringify(this.state.rescheduleDateFilter || null) === JSON.stringify(requestedRescheduleDate || null)
+          && JSON.stringify(this.state.priorityFilter || null) === JSON.stringify(requestedPriority || null)
+          && JSON.stringify(this.state.entityFilters || null) === JSON.stringify(requestedEntity || null)
           && normalizeSearchText(this.state.query) === requestedQuery;
         if (!canApply) {
           this.setState(doneFlags);
@@ -276,7 +300,7 @@ class TrackOrders extends Component {
   pick = (s) => {
     if (s === this.state.selected) return;
     if (this.unsubscribe) this.unsubscribe();
-    const newKey = this.cacheKeyFor(s, this.state.groupBy, this.state.query, this.state.pickReadyFilter);
+    const newKey = this.cacheKeyFor(s, this.state.groupStack, this.state.query, this.state.pickReadyFilter, this.state.rescheduleDateFilter, this.state.priorityFilter, this.state.entityFilters);
     const cached = cacheGet(newKey);
 
     // Keep the FlatList mounted (no shimmer swap) and animate the row replacement
@@ -410,69 +434,68 @@ class TrackOrders extends Component {
     this.setState({ query: '', searchLoading: false }, () => this.reloadOrders());
   };
 
-  openFilterSheet = () => {
-    this.setState({
-      showFilterSheet: true,
-      filterDraft: this.state.groupBy || DEFAULT_GROUP_BY,
-      pickReadyFilterDraft: this.state.pickReadyFilter === true,
+  openFilters = () => {
+    this.props.navigation.navigate('OrderFilters', {
+      groupStack: this.state.groupStack,
+      pickReadyFilter: this.state.pickReadyFilter,
+      rescheduleDateFilter: this.state.rescheduleDateFilter,
+      priorityFilter: this.state.priorityFilter,
+      entityFilters: this.state.entityFilters,
+      onApply: this.handleFiltersApplied,
     });
   };
 
-  closeFilterSheet = () => {
-    this.filterSheetRef?.close?.();
-  };
-
-  onFilterSheetClosed = () => {
-    this.setState({ showFilterSheet: false });
-  };
-
-  selectFilterDraft = (id) => {
-    this.setState({ filterDraft: id });
-  };
-
-  togglePickReadyFilterDraft = () => {
-    this.setState({ pickReadyFilterDraft: !this.state.pickReadyFilterDraft });
-  };
-
-  applyFilters = () => {
-    LayoutAnimation.configureNext(SWAP_ANIM);
-    const nextGroup = this.state.filterDraft || DEFAULT_GROUP_BY;
-    const nextPickReady = this.state.pickReadyFilterDraft ? true : null;
-    this.setState({ groupBy: nextGroup, pickReadyFilter: nextPickReady }, () => {
-      this.closeFilterSheet();
-      this.reloadOrders();
-    });
-  };
-
-  clearFilters = () => {
+  handleFiltersApplied = ({
+    groupStack,
+    pickReadyFilter,
+    rescheduleDateFilter,
+    priorityFilter,
+    entityFilters,
+  }) => {
     LayoutAnimation.configureNext(SWAP_ANIM);
     this.setState({
-      groupBy: DEFAULT_GROUP_BY,
-      filterDraft: DEFAULT_GROUP_BY,
-      pickReadyFilter: null,
-      pickReadyFilterDraft: false,
-    }, () => {
-      this.closeFilterSheet();
-      this.reloadOrders();
-    });
+      groupStack: dedupeGroupStack(groupStack),
+      pickReadyFilter,
+      rescheduleDateFilter: rescheduleDateFilter || null,
+      priorityFilter: priorityFilter || null,
+      entityFilters: entityFilters || null,
+    }, () => this.reloadOrders());
   };
 
   groupedRows = () => {
-    if (this.state.listRows) return this.state.listRows;
-    const filtered = filterOrdersByPickReady(this.state.orders, this.state.pickReadyFilter);
-    return buildGroupedRows(filtered, this.state.groupBy || DEFAULT_GROUP_BY);
+    let rows;
+    if (this.state.listRows) rows = this.state.listRows;
+    else {
+      const levels = dedupeGroupStack(this.state.groupStack);
+      rows = buildNestedGroupedRows(this.state.orders, levels[0], levels[1], levels);
+    }
+    const levels = dedupeGroupStack(this.state.groupStack);
+    const filtersActive = hasActiveFilters(
+      levels[0],
+      this.state.pickReadyFilter,
+      this.state.rescheduleDateFilter,
+      levels[1],
+      levels,
+      this.state.priorityFilter,
+      this.state.entityFilters,
+    );
+    return listRowsWithoutGroupHeaders(rows, filtersActive);
   };
 
-  filteredOrderCount = () => {
-    const filtered = filterOrdersByPickReady(this.state.orders, this.state.pickReadyFilter);
-    return this.state.pickReadyFilter === true
-      ? filtered.length
-      : (this.state.totalCount || this.state.orders.length);
-  };
+  filteredOrderCount = () => this.state.totalCount || this.state.orders.length;
 
   renderItem = ({ item: row, index }) => {
     if (row.type === 'header') {
-      return <OrderGroupHeader title={row.title} count={row.count} groupBy={this.state.groupBy} />;
+      return (
+        <OrderGroupHeader
+          title={row.title}
+          count={row.count}
+          groupBy={row.groupBy || dedupeGroupStack(this.state.groupStack)[0]}
+          level={row.level || 'primary'}
+          depth={row.depth || 0}
+          compact={row.level !== 'primary'}
+        />
+      );
     }
     const inner = this.renderOrderCard({ item: row.item, index });
     return <FadeInItem delay={index < 6 ? index : 0}>{inner}</FadeInItem>;
@@ -514,14 +537,15 @@ class TrackOrders extends Component {
   a = (i) => ({ opacity: this.anims[Math.min(i,2)].o, transform: [{ translateY: this.anims[Math.min(i,2)].y }] });
 
   render() {
-    const { loading, refreshing, query, searchLoading, selected, live, selectedIds, groupBy, pickReadyFilter } = this.state;
+    const { loading, refreshing, query, searchLoading, selected, live, selectedIds, groupStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters } = this.state;
+    const levels = dedupeGroupStack(groupStack);
     const rows = this.groupedRows();
     const orderCount = this.filteredOrderCount();
     const selectedCount = selectedIds.size;
     const pendingInView = (this.state.orders || []).filter(isPendingOrder).length;
     const showCta = selectedCount > 0;
     const showSelectHint = pendingInView > 0;
-    const filtersActive = hasActiveFilters(groupBy, pickReadyFilter);
+    const filtersActive = hasActiveFilters(levels[0], pickReadyFilter, rescheduleDateFilter, levels[1], levels, priorityFilter, entityFilters);
 
     return (
       <View style={s.root}>
@@ -562,7 +586,7 @@ class TrackOrders extends Component {
                   </TouchableOpacity>
                 ) : null}
               </View>
-              <TouchableOpacity onPress={this.openFilterSheet} activeOpacity={0.85} style={[s.filterBtn, filtersActive && s.filterBtnOn]}>
+              <TouchableOpacity onPress={this.openFilters} activeOpacity={0.85} style={[s.filterBtn, filtersActive && s.filterBtnOn]}>
                 <Image source={require('./assets/filter.png')} style={s.filterBtnIco} />
                 {filtersActive ? <View style={s.filterDot} /> : null}
               </TouchableOpacity>
@@ -574,7 +598,7 @@ class TrackOrders extends Component {
           {loading && !refreshing ? <ShimmerLoader /> : (
             <FlatList
               data={rows}
-              extraData={`${selected}-${selectedCount}-${groupBy}-${pickReadyFilter}-${query}`}
+              extraData={`${selected}-${selectedCount}-${JSON.stringify(levels)}-${pickReadyFilter}-${JSON.stringify(rescheduleDateFilter || null)}-${JSON.stringify(priorityFilter || null)}-${JSON.stringify(entityFilters || null)}-${query}`}
               keyExtractor={(row) => row.key || `${selected}-${row?.item?.id || row?.item?.order_id}`}
               renderItem={this.renderItem}
               contentContainerStyle={[s.scroll, showCta && { paddingBottom: 120 }]}
@@ -594,11 +618,6 @@ class TrackOrders extends Component {
                   <Animated.View style={[this.a(1), s.secRow]}>
                     <View style={{ flex: 1 }}>
                       <Text style={s.secTitle}>{selected === 'ALL' ? 'All Orders' : getStatus(selected).label} ({orderCount})</Text>
-                      {filtersActive && (
-                        <Text style={s.secFilterNote} numberOfLines={2}>
-                          {formatActiveFilterLabel(groupBy, pickReadyFilter)}
-                        </Text>
-                      )}
                     </View>
                     {selectedCount > 0 && (
                       <View style={s.selCountChip}>
@@ -606,6 +625,19 @@ class TrackOrders extends Component {
                       </View>
                     )}
                   </Animated.View>
+
+                  {filtersActive && (
+                    <ActiveFiltersSummary
+                      compact
+                      groupBy={levels[0]}
+                      subGroupBy={levels[1]}
+                      groupStack={levels}
+                      pickReadyFilter={pickReadyFilter}
+                      rescheduleDateFilter={rescheduleDateFilter}
+                      priorityFilter={priorityFilter}
+                      entityFilters={entityFilters}
+                    />
+                  )}
 
                   {showSelectHint && (
                     <View style={s.selHint}>
@@ -657,20 +689,6 @@ class TrackOrders extends Component {
               )}
             </SafeAreaInsetsContext.Consumer>
           )}
-          <GroupOrdersFilterSheet
-            visible={this.state.showFilterSheet}
-            filterDraft={this.state.filterDraft || DEFAULT_GROUP_BY}
-            pickReadyFilterDraft={this.state.pickReadyFilterDraft}
-            groupBy={this.state.groupBy || DEFAULT_GROUP_BY}
-            pickReadyFilter={this.state.pickReadyFilter}
-            sheetRef={(r) => { this.filterSheetRef = r; }}
-            onClose={this.closeFilterSheet}
-            onSheetClosed={this.onFilterSheetClosed}
-            onSelectDraft={this.selectFilterDraft}
-            onTogglePickReadyDraft={this.togglePickReadyFilterDraft}
-            onApply={this.applyFilters}
-            onReset={this.clearFilters}
-          />
         </View>
       </View>
     );

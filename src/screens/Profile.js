@@ -9,9 +9,10 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { overlayBottomPadding } from '../utils/safeAreaInsets';
+import { overlayBottomPadding, sheetBottomInset } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import BottomSheet from '../components/BottomSheet';
@@ -330,11 +331,19 @@ class Profile extends Component {
           <BottomSheet
             visible={this.state.show_login}
             dynamicSize
+            bottomInset={Platform.OS === 'ios' ? 0 : undefined}
             onSheetClose={() => this.setState({ show_login: false })}
             enablePanDownToClose={true}
             onChange={(status) => status === -1 ? this.setState({ show_login: false }) : null}
           >
-            <View style={{ padding: 24, paddingTop: 8, paddingBottom: 16 + SAFE_BOTTOM, alignItems: 'center' }}>
+            <View style={{
+              padding: 24,
+              paddingTop: 8,
+              paddingBottom: Platform.OS === 'ios'
+                ? 16 + sheetBottomInset(global.__SAFE_BOTTOM_INSET__ ?? 0)
+                : 16 + SAFE_BOTTOM,
+              alignItems: 'center',
+            }}>
               <Image style={{ width: 50, height: 50, resizeMode: 'contain', marginBottom: 16 }} source={require('./assets/exit.png')} />
               <Text style={{ fontSize: 20, fontWeight: '800', color: '#E35335', marginBottom: 8 }}>Logout</Text>
               <Text style={{ fontSize: 14, fontWeight: '400', color: '#6B7280', textAlign: 'center', marginBottom: 24 }}>Kya aap waqai logout karna chahte hain?</Text>

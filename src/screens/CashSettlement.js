@@ -18,7 +18,6 @@ import {
   Platform,
   Modal,
   ActivityIndicator,
-  InteractionManager,
   Linking,
   Dimensions,
 } from 'react-native';
@@ -31,6 +30,8 @@ let ImageCropPicker = null;
 try { ImageCropPicker = require('react-native-image-crop-picker').default || require('react-native-image-crop-picker'); } catch(e) { console.log('ImageCropPicker not available'); }
 import moment from 'moment';
 import { requestCameraOrPrompt } from '../utils/cameraHelper';
+import SettlementQrModal from '../components/SettlementQrModal';
+import SettlementPaymentSuccessModal from '../components/SettlementPaymentSuccessModal';
 
 
 const THEME = {
@@ -65,7 +66,8 @@ class CashSettlement extends Component {
       selectedBankId: null,
 
       // ✅ type selection
-      selectedType: 'bank', // 'bank' | 'upi'
+      selectedType: 'upi', // 'upi' | 'bank'
+      proofMethod: 'upi_screenshot', // 'upi_screenshot' | 'qr'
 
       // upload flow
       pickerVisible: false,
@@ -73,6 +75,20 @@ class CashSettlement extends Component {
       pickingFor: null, // 'upi' | 'bank'
       upiImage: null, // { uri, type, name }
       bankImage: null, // { uri, type, name }
+
+      settlementQrUrl: '',
+      settlementQrLoading: false,
+      settlementQrFailed: false,
+      settlementQrModalVisible: false,
+      settlementQrTotal: null,
+      settlementQrGenerating: false,
+      settlementQrId: null,
+      settlementRecordId: null,
+      settlementQrReceivingPayment: false,
+      settlementPaymentSuccessVisible: false,
+      settlementPaymentSuccessAmount: '',
+      settlementPaymentSuccessOrders: [],
+      settlementPaymentSuccessTitle: 'Payment Received',
     };
   }
 
@@ -103,6 +119,11 @@ pickLock = false;
     if (v === undefined || v === null || v === '') return '';
     const s = String(v);
     return s.endsWith('.00') ? s.replace('.00', '') : s;
+  };
+
+  isPaymentSettled = () => {
+    const ps = String(this.state.checkData?.payment_status || '').toLowerCase();
+    return ps === 'success' || ps === 'paid' || ps === 'settled';
   };
 
   formatDate = (iso) => {
@@ -145,7 +166,7 @@ pickLock = false;
         .then((json) => {
             console.log("Check Settle API response== ", JSON.stringify(json))
           const dataObj = json?.data && typeof json.data === 'object' ? json.data : null;
-          const bankList = Array.isArray(dataObj?.['bank-list']) ? dataObj['bank-list'] : [];
+          const bankList = this.normalizeBankList(dataObj);
           const apiOrders = Array.isArray(dataObj?.orders)
             ? dataObj.orders
             : Array.isArray(dataObj?.order_list)
@@ -161,12 +182,357 @@ pickLock = false;
             apiOrders,
             selectedBankId: bankList?.[0]?.id ?? null,
           });
+
+          const settled = String(dataObj?.payment_status || '').toLowerCase();
+          if (settled === 'success' && json?.message) {
+            Toast.show(String(json.message), Toast.SHORT);
+          }
         })
         .catch((e) => {
           this.setState({ loading: false });
           Toast.show(e?.message || String(e), Toast.SHORT);
         });
     });
+  };
+
+  getOrderIdsForApi = () => {
+    const fromNav = Array.isArray(this.getSelectedOrders()) ? this.getSelectedOrders() : [];
+    const fromItems = (this.getSelectedOrderItems() || [])
+      .map((it) => it?.order_id ?? it?.id)
+      .filter((v) => v !== undefined && v !== null && v !== '');
+
+    const raw = fromItems.length ? fromItems : fromNav;
+    const ids = raw
+      .map((id) => Number(id))
+      .filter((n) => Number.isFinite(n));
+
+    if (ids.length) return ids;
+    return fromNav.map((id) => Number(id)).filter((n) => Number.isFinite(n));
+  };
+
+  extractSettlementQrUrl = (json) => {
+    const d = json?.data;
+    if (typeof d === 'string' && /^https?:\/\//i.test(d.trim())) return d.trim();
+    if (typeof json?.qr_image_url === 'string') return json.qr_image_url.trim();
+    if (d && typeof d === 'object') {
+      const u =
+        d.qr_image_url ||
+        d.qr_url ||
+        d.qr ||
+        d.image_url ||
+        d.url ||
+        '';
+      if (u) return String(u).trim();
+    }
+    return '';
+  };
+
+  toDisplayImageUri = (pathOrUrl) => {
+    if (!pathOrUrl) return '';
+    if (/^https?:\/\//i.test(String(pathOrUrl))) return String(pathOrUrl).trim();
+    const s = String(pathOrUrl).trim();
+    if (s.startsWith('file://')) return s;
+    return `file://${s}`;
+  };
+
+  prefetchSettlementQrImage = (remoteUrl) => {
+    let BlobUtil = null;
+    try {
+      BlobUtil = require('react-native-blob-util').default || require('react-native-blob-util');
+    } catch (e) {
+      BlobUtil = null;
+    }
+
+    if (BlobUtil) {
+      const ext = /\.jpe?g/i.test(remoteUrl) ? 'jpg' : 'png';
+      const path = `${BlobUtil.fs.dirs.CacheDir}/settlement-qr-${Date.now()}.${ext}`;
+      return BlobUtil.config({ fileCache: true, path })
+        .fetch('GET', remoteUrl)
+        .then((res) => this.toDisplayImageUri(res.path()));
+    }
+
+    return Image.prefetch(remoteUrl).then(() => String(remoteUrl).trim());
+  };
+
+  showSettlementPaymentSuccess = ({ amount, orders, title, toastMessage } = {}) => {
+    const list = Array.isArray(orders) && orders.length ? orders : this.getDisplayOrders();
+    const amountStr =
+      this.money(amount) ||
+      this.money(this.state.settlementQrTotal) ||
+      this.money(this.state.checkData?.total_amount);
+
+    invalidateSettlementRelated();
+
+    this.setState({
+      settlementQrModalVisible: false,
+      settlementQrLoading: false,
+      settlementQrFailed: false,
+      settlementQrUrl: '',
+      settlementQrTotal: null,
+      settlementQrId: null,
+      settlementRecordId: null,
+      settlementQrReceivingPayment: false,
+      settlementPaymentSuccessVisible: true,
+      settlementPaymentSuccessAmount: amountStr,
+      settlementPaymentSuccessOrders: list,
+      settlementPaymentSuccessTitle: title || 'Payment Received',
+    });
+
+    if (toastMessage) Toast.show(String(toastMessage), Toast.SHORT);
+  };
+
+  generateSettlementQr = () => {
+    if (this._settlementQrInFlight) return;
+
+    const orderIds = this.getOrderIdsForApi();
+    if (!orderIds.length) {
+      Toast.show('Order IDs nahi mile', Toast.SHORT);
+      return;
+    }
+
+    this._settlementQrInFlight = true;
+
+    this.setState({
+      settlementQrLoading: true,
+      settlementQrFailed: false,
+      settlementQrUrl: '',
+      settlementQrTotal: null,
+      settlementQrModalVisible: false,
+      settlementQrGenerating: true,
+      proofMethod: 'qr',
+      selectedType: 'upi',
+      upiImage: null,
+    });
+
+    const body = { order_ids: orderIds };
+    console.log('Settlement QR API payload== ', JSON.stringify(body));
+
+    fetch(constants.settlementQr, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        console.log('Settlement QR API response== ', JSON.stringify(json));
+        const data =
+          json?.data && typeof json.data === 'object' && !Array.isArray(json.data) ? json.data : null;
+        const qrUrl = this.extractSettlementQrUrl(json);
+        const ok = !!json?.status && !!qrUrl;
+        const amountRaw = data?.amount ?? json?.amount;
+        const qrTotal = amountRaw != null ? this.money(amountRaw) : null;
+        const recordId = data?.id ?? json?.id;
+        const qrId = data?.qr_id ?? json?.qr_id;
+        const settlementRecordId =
+          recordId != null && Number.isFinite(Number(recordId)) ? Number(recordId) : null;
+        const payStatus = String(data?.status || '').toLowerCase();
+
+        if (payStatus === 'success' && !ok) {
+          if (json?.message) Toast.show(String(json.message), Toast.SHORT);
+          this.setState({
+            settlementQrModalVisible: false,
+            settlementQrLoading: false,
+            settlementQrFailed: false,
+            settlementQrUrl: '',
+            settlementRecordId: null,
+          });
+          return null;
+        }
+
+        if (json?.message && !ok) Toast.show(String(json.message), Toast.SHORT);
+
+        if (!ok) {
+          this.setState({
+            settlementQrModalVisible: false,
+            settlementQrLoading: false,
+            settlementQrFailed: true,
+            settlementQrUrl: '',
+            settlementRecordId: null,
+          });
+          if (!json?.message) Toast.show('QR url missing', Toast.SHORT);
+          return null;
+        }
+
+        this.setState({
+          settlementQrModalVisible: true,
+          settlementQrLoading: true,
+        });
+
+        return this.prefetchSettlementQrImage(qrUrl)
+          .then((displayUri) => {
+            this.setState({
+              settlementQrLoading: false,
+              settlementQrFailed: false,
+              settlementQrUrl: displayUri || this.toDisplayImageUri(qrUrl),
+              settlementQrTotal: qrTotal,
+              settlementQrId: qrId ? String(qrId) : null,
+              settlementRecordId,
+              proofMethod: 'qr',
+              selectedType: 'upi',
+              upiImage: null,
+            });
+          })
+          .catch(() => {
+            this.setState({
+              settlementQrLoading: false,
+              settlementQrFailed: false,
+              settlementQrUrl: this.toDisplayImageUri(qrUrl),
+              settlementQrTotal: qrTotal,
+              settlementQrId: qrId ? String(qrId) : null,
+              settlementRecordId,
+              proofMethod: 'qr',
+              selectedType: 'upi',
+              upiImage: null,
+            });
+          });
+      })
+      .catch((e) => {
+        console.log('Settlement QR API error== ', e);
+        this.setState({
+          settlementQrLoading: false,
+          settlementQrFailed: true,
+          settlementQrUrl: '',
+        });
+        Toast.show(e?.message || String(e), Toast.SHORT);
+      })
+      .finally(() => {
+        this._settlementQrInFlight = false;
+        this.setState({ settlementQrGenerating: false });
+      });
+  };
+
+  closeSettlementQrModal = () => {
+    this.setState({
+      settlementQrModalVisible: false,
+      settlementQrLoading: false,
+      settlementQrFailed: false,
+      settlementQrUrl: '',
+      settlementQrTotal: null,
+      settlementQrId: null,
+      settlementRecordId: null,
+      settlementQrReceivingPayment: false,
+    });
+  };
+
+  receiveSettlementPayment = () => {
+    const { settlementRecordId } = this.state;
+    if (!settlementRecordId) {
+      Toast.show('Settlement ID missing', Toast.SHORT);
+      return;
+    }
+    if (this._settlementReceiveInFlight) return;
+
+    this._settlementReceiveInFlight = true;
+    this.setState({ settlementQrReceivingPayment: true });
+
+    const body = { id: settlementRecordId };
+    console.log('Settlement QR Payment Success API payload== ', JSON.stringify(body));
+
+    fetch(constants.settlementQrPaymentSuccess, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        console.log('Settlement QR Payment Success API response== ', JSON.stringify(json));
+        const payStatus = String(json?.data?.status || '').toLowerCase();
+        const isSuccess = payStatus === 'success';
+
+        if (isSuccess) {
+          const amountRaw = json?.data?.amount ?? json?.data?.received_amount ?? this.state.settlementQrTotal;
+          this.showSettlementPaymentSuccess({
+            amount: amountRaw,
+            title: 'Payment Received',
+            toastMessage: json?.status ? null : json?.message,
+          });
+          return;
+        }
+
+        if (json?.message) Toast.show(String(json.message), Toast.SHORT);
+      })
+      .catch((e) => {
+        console.log('Settlement QR Payment Success API error== ', e);
+        Toast.show(e?.message || String(e), Toast.SHORT);
+      })
+      .finally(() => {
+        this._settlementReceiveInFlight = false;
+        this.setState({ settlementQrReceivingPayment: false });
+      });
+  };
+
+  finishSettlementPaymentSuccess = () => {
+    if (this._paymentSuccessClosing) return;
+    this._paymentSuccessClosing = true;
+    const onComplete = this.props.navigation.getParam?.('onSettlementComplete');
+    this.setState({ settlementPaymentSuccessVisible: false }, () => {
+      this._paymentSuccessClosing = false;
+      invalidateSettlementRelated();
+      this.goBack();
+      if (typeof onComplete === 'function') {
+        setTimeout(() => onComplete(), 50);
+      }
+    });
+  };
+
+  setProofMethod = (method) => {
+    if (method !== 'upi_screenshot' && method !== 'qr') return;
+    this.setState((prev) => {
+      if (prev.proofMethod === method) return null;
+      const next = {
+        proofMethod: method,
+        selectedType: method === 'upi_screenshot' ? 'upi' : 'upi',
+      };
+      if (method === 'upi_screenshot') {
+        next.settlementQrUrl = '';
+        next.settlementQrId = null;
+        next.settlementRecordId = null;
+        next.settlementQrFailed = false;
+        next.settlementQrModalVisible = false;
+        next.settlementQrLoading = false;
+      } else {
+        next.upiImage = null;
+      }
+      return next;
+    });
+  };
+
+  renderProofMethodRow = (method, title, subtitle) => {
+    const selected = this.state.proofMethod === method;
+    return (
+      <TouchableOpacity
+        key={method}
+        activeOpacity={0.9}
+        onPress={() => this.setProofMethod(method)}
+        style={[styles.proofOptionRow, selected ? styles.proofOptionRowOn : null]}
+      >
+        <View style={[styles.radio, selected ? styles.radioOn : null]}>
+          {selected ? <View style={styles.radioDot} /> : null}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.proofOptionTitle}>{title}</Text>
+          {!!subtitle ? <Text style={styles.proofOptionSub}>{subtitle}</Text> : null}
+        </View>
+        {method === 'qr' && this.state.settlementQrId ? (
+          <View style={styles.uploadedBadge}>
+            <Text style={styles.uploadedBadgeT}>QR ready</Text>
+          </View>
+        ) : null}
+        {method === 'upi_screenshot' && this.state.upiImage?.uri ? (
+          <View style={styles.uploadedBadge}>
+            <Text style={styles.uploadedBadgeT}>Uploaded</Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
   };
 
   // --------- Upload UI flow ----------
@@ -227,7 +593,16 @@ pickLock = false;
         name: img?.filename || `${source}_${Date.now()}.jpg`,
       };
 
-      if (pickingForNow === 'upi') this.setState({ upiImage: file, confirmVisible: true });
+      if (pickingForNow === 'upi') {
+        this.setState({
+          upiImage: file,
+          confirmVisible: true,
+          proofMethod: 'upi_screenshot',
+          selectedType: 'upi',
+          settlementQrId: null,
+          settlementQrUrl: '',
+        });
+      }
       if (pickingForNow === 'bank') this.setState({ bankImage: file, confirmVisible: true });
     } catch (e) {
       console.log('pickImage error:', e);
@@ -252,7 +627,7 @@ pickLock = false;
       return;
     }
 
-    this.setState({ selectedType: 'upi' });
+    this.setState({ selectedType: 'upi', proofMethod: 'upi_screenshot', settlementQrId: null, settlementQrUrl: '' });
 
     const url =
       `upi://pay?pa=${encodeURIComponent(pa)}` +
@@ -271,18 +646,31 @@ pickLock = false;
   // ✅ Submit using submitSettlement API
   onSubmit = () => {
     const orderIds = Array.isArray(this.getSelectedOrders()) ? this.getSelectedOrders() : [];
-    const { selectedType, selectedBankId, upiImage, bankImage } = this.state;
+    const { proofMethod, selectedType, selectedBankId, upiImage, bankImage, settlementQrId } = this.state;
 
     if (!orderIds.length) {
       Toast.show('Order ids missing', Toast.SHORT);
       return;
     }
 
-    if (selectedType === 'upi') {
+    if (proofMethod === 'upi_screenshot') {
+      const banks = this.getDisplayBanks();
+      if (banks.length && !selectedBankId) {
+        Toast.show('Please select bank', Toast.SHORT);
+        return;
+      }
       if (!upiImage?.uri) {
         Toast.show('Please upload UPI screenshot', Toast.SHORT);
         return;
       }
+    } else if (proofMethod === 'qr') {
+      if (!settlementQrId) {
+        Toast.show('Pehle Generate QR karein', Toast.SHORT);
+        return;
+      }
+    } else {
+      Toast.show('Payment method select karein', Toast.SHORT);
+      return;
     }
 
     if (selectedType === 'bank') {
@@ -298,12 +686,15 @@ pickLock = false;
 
     const fd = new FormData();
     orderIds.forEach((id, i) => fd.append(`order_ids[${i}]`, String(id)));
-    fd.append('type', selectedType);
+    fd.append('type', proofMethod === 'qr' ? 'upi' : selectedType);
+
+    if (proofMethod === 'qr') {
+      fd.append('qr_id', String(settlementQrId));
+    }
 
     if (selectedType === 'bank') fd.append('bank_list_id', String(selectedBankId));
 
-    // ONLY relevant proof
-    if (selectedType === 'upi') {
+    if (proofMethod === 'upi_screenshot' && selectedType === 'upi') {
       fd.append('reciept', { uri: upiImage.uri, type: upiImage.type, name: upiImage.name });
     }
     if (selectedType === 'bank') {
@@ -340,19 +731,7 @@ pickLock = false;
   };
 
   onCallSupport = () => {
-    const s = this.getSettlement();
-    const { checkData } = this.state;
-
-    // Use whichever is available from API; no dummy
-    const phone = String(
-      s?.support_phone ||
-        s?.lmd_phone ||
-        s?.phone ||
-        checkData?.support_phone ||
-        checkData?.helpline ||
-        ''
-    ).trim();
-
+    const phone = this.getSupportPhone();
     if (!phone) {
       Toast.show('Support number not available', Toast.SHORT);
       return;
@@ -361,9 +740,82 @@ pickLock = false;
     Linking.openURL(url).catch(() => Toast.show('Unable to call', Toast.SHORT));
   };
 
+  onWhatsAppSupport = () => {
+    const phone = this.getSupportPhone();
+    if (!phone) {
+      Toast.show('Support number not available', Toast.SHORT);
+      return;
+    }
+    const digits = String(phone).replace(/[^\d]/g, '');
+    if (!digits) {
+      Toast.show('Support number not available', Toast.SHORT);
+      return;
+    }
+    const url = `https://wa.me/${digits}`;
+    Linking.openURL(url).catch(() => Toast.show('Unable to open WhatsApp', Toast.SHORT));
+  };
+
+  getSupportPhone = () => {
+    const s = this.getSettlement();
+    const { checkData } = this.state;
+    return String(
+      checkData?.support_phone ||
+        s?.support_phone ||
+        s?.lmd_phone ||
+        s?.phone ||
+        checkData?.helpline ||
+        '',
+    ).trim();
+  };
+
+  normalizeBankList = (dataObj) => {
+    if (!dataObj || typeof dataObj !== 'object') return [];
+
+    const fromList =
+      (Array.isArray(dataObj['bank-list']) && dataObj['bank-list']) ||
+      (Array.isArray(dataObj.bank_list) && dataObj.bank_list) ||
+      (Array.isArray(dataObj.banks) && dataObj.banks) ||
+      null;
+
+    if (fromList?.length) return fromList;
+
+    const single =
+      (dataObj.bank && typeof dataObj.bank === 'object' ? dataObj.bank : null) ||
+      (dataObj.selected_bank && typeof dataObj.selected_bank === 'object' ? dataObj.selected_bank : null) ||
+      (dataObj.default_bank && typeof dataObj.default_bank === 'object' ? dataObj.default_bank : null);
+
+    if (single) return [single];
+
+    const bankName = String(dataObj.bank_name || dataObj.bankName || '').trim();
+    const acc = String(dataObj.account_no || dataObj.account_number || dataObj.account || '').trim();
+    const ifsc = String(dataObj.ifsc_code || dataObj.ifsc || '').trim();
+    const branch = String(dataObj.branch || dataObj.bank_branch || '').trim();
+    const holder = String(dataObj.account_holder || dataObj.beneficiary_name || dataObj.holder_name || '').trim();
+
+    if (bankName || acc || ifsc) {
+      return [{
+        id: 'check-settle-bank',
+        bank_name: bankName,
+        account_no: acc,
+        ifsc_code: ifsc,
+        branch,
+        account_holder: holder,
+        address: String(dataObj.bank_address || dataObj.address || '').trim(),
+      }];
+    }
+
+    return [];
+  };
+
+  getDisplayBanks = () => {
+    const { banks, checkData } = this.state;
+    if (Array.isArray(banks) && banks.length) return banks;
+    return this.normalizeBankList(checkData);
+  };
+
   renderBankRow = (b) => {
     const selected = String(this.state.selectedBankId) === String(b?.id);
-    const bankName = String(b?.bank_name || '').trim();
+    const bankName = String(b?.bank_name || b?.name || '').trim();
     const acc = String(b?.account_no || '').trim();
     const ifsc = String(b?.ifsc_code || '').trim();
     const address = String(b?.address || '').trim();
@@ -374,7 +826,7 @@ pickLock = false;
       <TouchableOpacity
         key={String(b?.id)}
         activeOpacity={0.9}
-        onPress={() => this.setState({ selectedBankId: b?.id, selectedType: 'bank' })}
+        onPress={() => this.setState({ selectedBankId: b?.id })}
         style={[styles.bankPickRow, selected ? styles.bankPickRowOn : null]}
       >
         <View style={[styles.radio, selected ? styles.radioOn : null]}>{selected ? <View style={styles.radioDot} /> : null}</View>
@@ -417,7 +869,6 @@ pickLock = false;
     const mode = String(o?.payment_mode || 'COD').toUpperCase();
     const isPaid = String(o?.payment_status || '').toLowerCase() === 'paid';
     const status = isPaid ? 'Paid' : 'Unpaid';
-    const address = String(o?.shipping_address || '').trim();
 
     return (
       <View key={`${code}-${idx}`} style={styles.orderCard}>
@@ -435,22 +886,15 @@ pickLock = false;
               <Text style={styles.orderFarmer} numberOfLines={1}>{farmer || '-'}</Text>
               <Text style={styles.orderAmt}>₹{amount || '0'}</Text>
             </View>
-            <Text style={styles.orderCode} numberOfLines={1}>#{code}</Text>
-            {!!phone ? <Text style={styles.orderPhone}>{this.maskPhone(phone)}</Text> : null}
-          </View>
-        </View>
-
-        {!!address ? (
-          <View style={styles.orderAddrBox}>
-            <Text style={styles.orderAddrLbl}>DROP</Text>
-            <Text style={styles.orderAddr} numberOfLines={2}>{address}</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.orderFoot}>
-          <View style={styles.orderPill}><Text style={styles.orderPillT}>{mode}</Text></View>
-          <View style={[styles.orderPill, isPaid ? styles.orderPillPaid : styles.orderPillUnpaid]}>
-            <Text style={[styles.orderPillT, isPaid ? styles.orderPillTPaid : styles.orderPillTUnpaid]}>{status}</Text>
+            <Text style={styles.orderMeta} numberOfLines={1}>
+              #{code}{!!phone ? ` · ${this.maskPhone(phone)}` : ''}
+            </Text>
+            <View style={styles.orderFoot}>
+              <View style={styles.orderPill}><Text style={styles.orderPillT}>{mode}</Text></View>
+              <View style={[styles.orderPill, isPaid ? styles.orderPillPaid : styles.orderPillUnpaid]}>
+                <Text style={[styles.orderPillT, isPaid ? styles.orderPillTPaid : styles.orderPillTUnpaid]}>{status}</Text>
+              </View>
+            </View>
           </View>
         </View>
       </View>
@@ -461,8 +905,12 @@ pickLock = false;
     const s = this.getSettlement();
     const orderIds = Array.isArray(this.getSelectedOrders()) ? this.getSelectedOrders() : [];
 
-    const { loading, submitting, checkData, banks, pickerVisible, confirmVisible, pickingFor, upiImage, bankImage } =
-      this.state;
+    const { loading, submitting, checkData, banks, pickerVisible, confirmVisible, pickingFor, upiImage, bankImage,
+      settlementQrModalVisible, settlementQrLoading, settlementQrFailed, settlementQrUrl, settlementQrTotal,
+      settlementQrGenerating, settlementQrReceivingPayment,
+      settlementPaymentSuccessVisible, settlementPaymentSuccessAmount, settlementPaymentSuccessOrders,
+      settlementPaymentSuccessTitle,
+    } = this.state;
 
     const amountStr = this.money(checkData?.total_amount) || this.money(s?.amount) || '';
 
@@ -473,8 +921,10 @@ pickLock = false;
 
     const displayOrders = this.getDisplayOrders();
     const previewUri = pickingFor === 'upi' ? upiImage?.uri : pickingFor === 'bank' ? bankImage?.uri : null;
-    const supportPhone = String(checkData?.support_phone || s?.support_phone || '').trim();
+    const supportPhone = this.getSupportPhone();
     const upiVpa = String(checkData?.upi_vpa || '').trim();
+    const displayBanks = this.getDisplayBanks();
+    const paymentSettled = this.isPaymentSettled();
 
     return (
       <View style={styles.root}>
@@ -490,15 +940,12 @@ pickLock = false;
               <Text style={styles.headerTitle} numberOfLines={1}>Cash Settlement</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {!!supportPhone ? (
-                  <>
-                    <TouchableOpacity onPress={() => { Linking.openURL(`tel:${supportPhone}`).catch(() => {}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}}>
-                      <Image source={require('./assets/call.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { Linking.openURL(`https://wa.me/${supportPhone.replace(/[^\d]/g,'')}`).catch(() => {}); }} activeOpacity={0.7} hitSlop={{top:8,bottom:8,left:8,right:8}} style={{ marginLeft: 8 }}>
-                      <Image source={require('./assets/whatsapp.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
-                    </TouchableOpacity>
-                  </>
-                ) : <View style={{ width: 42 }} />}
+                  <TouchableOpacity onPress={this.onCallSupport} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Image source={require('./assets/call.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 42 }} />
+                )}
               </View>
             </View>
           </SafeAreaView>
@@ -509,12 +956,50 @@ pickLock = false;
             {loading ? <ActivityIndicator size="large" color={THEME.green} style={{ marginTop: 40 }} /> : (
               <>
                 {/* Amount hero */}
-                <View style={styles.heroCard}>
-                  <Text style={styles.heroLabel}>Settlement Amount</Text>
-                  <Text style={styles.heroAmt}>{'₹'}{amountStr || '0'}</Text>
-                  <Text style={styles.heroSub}>{orderCount || 0} order(s) selected</Text>
-                  <Text style={styles.heroHint}>Upload proof via UPI or bank deposit slip</Text>
-                </View>
+                {paymentSettled ? (
+                  <View style={styles.heroStack}>
+                    <View style={[styles.heroCard, styles.heroCardJoinedTop]}>
+                      <View style={styles.heroRow}>
+                        <View style={styles.heroLeft}>
+                          <Text style={styles.heroLabel}>Settlement Amount</Text>
+                          <Text style={styles.heroSub}>{orderCount || 0} order(s) selected</Text>
+                          <View style={styles.heroSettledPill}>
+                            <Text style={styles.heroSettledPillT}>✓ Payment received & settled</Text>
+                          </View>
+                        </View>
+                        <View style={styles.heroRight}>
+                          <Text style={styles.heroAmt}>{'₹'}{amountStr || '0'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.settledBanner}>
+                      <View style={styles.settledBannerIconWrap}>
+                        <Text style={styles.settledBannerTick}>✓</Text>
+                      </View>
+                      <View style={styles.settledBannerTextCol}>
+                        <Text style={styles.settledBannerTitle}>Payment received & settled</Text>
+                        <Text style={styles.settledBannerSub}>
+                          Is order ka payment ho chuka hai. Dubara settle karne ki zaroorat nahi hai.
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.heroCard}>
+                    <View style={styles.heroRow}>
+                      <View style={styles.heroLeft}>
+                        <Text style={styles.heroLabel}>Settlement Amount</Text>
+                        <Text style={styles.heroSub}>{orderCount || 0} order(s) selected</Text>
+                        <Text style={styles.heroHint} numberOfLines={2}>
+                          UPI screenshot ya QR se payment proof dein
+                        </Text>
+                      </View>
+                      <View style={styles.heroRight}>
+                        <Text style={styles.heroAmt}>{'₹'}{amountStr || '0'}</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* Selected orders */}
                 {displayOrders.length > 0 ? (
@@ -531,67 +1016,112 @@ pickLock = false;
 
                 {/* Support */}
                 {!!supportPhone ? (
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoLbl}>Support</Text>
-                    <Text style={styles.infoVal}>{supportPhone}</Text>
-                  </View>
-                ) : null}
-
-                {/* UPI details from API */}
-                {!!upiVpa ? (
-                  <View style={styles.sectionCard}>
-                    <Text style={styles.sectionTitle}>UPI Payment</Text>
-                    <View style={styles.infoCardInner}>
-                      <Text style={styles.infoLbl}>VPA</Text>
-                      <Text style={styles.infoVal}>{upiVpa}</Text>
+                  <View style={styles.supportCard}>
+                    <View style={styles.supportMain}>
+                      <Text style={styles.supportTitle}>Support</Text>
+                      <Text style={styles.supportPhone}>{supportPhone}</Text>
                     </View>
-                    {!!checkData?.upi_name ? (
-                      <View style={styles.infoCardInner}>
-                        <Text style={styles.infoLbl}>Name</Text>
-                        <Text style={styles.infoVal}>{checkData.upi_name}</Text>
-                      </View>
-                    ) : null}
-                    <TouchableOpacity style={styles.uploadBtn} onPress={this.onPayNow} activeOpacity={0.85}>
-                      <Text style={styles.uploadBtnText}>Pay Now · ₹{amountStr || '0'}</Text>
-                    </TouchableOpacity>
+                    <View style={styles.supportActions}>
+                      <TouchableOpacity
+                        style={styles.supportBtnCall}
+                        onPress={this.onCallSupport}
+                        activeOpacity={0.85}
+                      >
+                        <Image source={require('./assets/call.png')} style={styles.supportBtnIco} />
+                        <Text style={styles.supportBtnCallT}>Call</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.supportBtnWa}
+                        onPress={this.onWhatsAppSupport}
+                        activeOpacity={0.85}
+                      >
+                        <Image source={require('./assets/whatsapp.png')} style={styles.supportBtnIco} />
+                        <Text style={styles.supportBtnWaT}>WhatsApp</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : null}
 
-                {/* UPI Upload */}
                 <View style={styles.sectionCard}>
-                  <View style={styles.sectionHead}>
-                    <Text style={styles.sectionTitle}>UPI Screenshot</Text>
-                    {!!upiImage?.uri ? <View style={styles.uploadedBadge}><Text style={styles.uploadedBadgeT}>Uploaded</Text></View> : null}
-                  </View>
-
-                  {!!upiImage?.uri ? (
-                    <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="cover" />
-                  ) : null}
-
-                  <TouchableOpacity style={styles.uploadBtn} onPress={() => this.openPicker('upi')} activeOpacity={0.85}>
-                    <Image style={styles.camIcon} source={require('./assets/cam.png')} />
-                    <Text style={styles.uploadBtnText}>{upiImage?.uri ? 'Re-upload' : 'Upload UPI Screenshot'}</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.sectionTitle}>Payment method</Text>
+                  <Text style={styles.sectionSub}>Sirf ek option select karein</Text>
+                  {this.renderProofMethodRow(
+                    'upi_screenshot',
+                    'UPI Screenshot',
+                    'Pay karke payment screenshot upload karein',
+                  )}
+                  {this.renderProofMethodRow(
+                    'qr',
+                    'Generate QR',
+                    'QR scan karke UPI payment karein',
+                  )}
                 </View>
 
-                {/* Bank Receipt */}
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionHead}>
-                    <Text style={styles.sectionTitle}>Bank Receipt</Text>
-                    {!!bankImage?.uri ? <View style={styles.uploadedBadge}><Text style={styles.uploadedBadgeT}>Uploaded</Text></View> : null}
-                  </View>
+                {this.state.proofMethod === 'upi_screenshot' ? (
+                  <>
+                    <View style={styles.sectionCard}>
+                      <Text style={styles.sectionTitle}>Bank details</Text>
+                      <Text style={styles.sectionSub}>
+                        Bank select karein, pay karein, phir payment screenshot upload karein
+                      </Text>
 
-                  {Array.isArray(banks) && banks.length ? banks.map((b) => this.renderBankRow(b)) : null}
+                      {displayBanks.length ? (
+                        displayBanks.map((b) => this.renderBankRow(b))
+                      ) : (
+                        <View style={styles.bankDetailEmpty}>
+                          <Text style={styles.bankDetailEmptyT}>
+                            Bank details abhi load nahi hue. Thodi der baad dubara try karein ya support se sampark karein.
+                          </Text>
+                        </View>
+                      )}
 
-                  {!!bankImage?.uri ? (
-                    <Image source={{ uri: bankImage.uri }} style={styles.previewImgInline} resizeMode="cover" />
-                  ) : null}
+                      {!!upiVpa ? (
+                        <View style={styles.upiInlineBox}>
+                          <Text style={styles.infoLbl}>UPI VPA</Text>
+                          <Text style={styles.infoVal}>{upiVpa}</Text>
+                          {!!checkData?.upi_name ? (
+                            <>
+                              <Text style={[styles.infoLbl, { marginTop: 10 }]}>UPI name</Text>
+                              <Text style={styles.infoVal}>{checkData.upi_name}</Text>
+                            </>
+                          ) : null}
+                          <TouchableOpacity style={styles.payNowBtn} onPress={this.onPayNow} activeOpacity={0.85}>
+                            <Text style={styles.uploadBtnText}>Pay Now · ₹{amountStr || '0'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                    </View>
 
-                  <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#F1F5F9' }]} onPress={() => this.openPicker('bank')} activeOpacity={0.85}>
-                    <Image style={[styles.camIcon, { tintColor: '#475569' }]} source={require('./assets/cam.png')} />
-                    <Text style={[styles.uploadBtnText, { color: '#475569' }]}>{bankImage?.uri ? 'Re-upload' : 'Upload Bank Receipt'}</Text>
-                  </TouchableOpacity>
-                </View>
+                    <View style={styles.sectionCard}>
+                      <View style={styles.sectionHead}>
+                        <Text style={styles.sectionTitle}>UPI Screenshot</Text>
+                        {!!upiImage?.uri ? (
+                          <View style={styles.uploadedBadge}>
+                            <Text style={styles.uploadedBadgeT}>Uploaded</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {!!upiImage?.uri ? (
+                        <Image source={{ uri: upiImage.uri }} style={styles.previewImgInline} resizeMode="cover" />
+                      ) : null}
+
+                      <TouchableOpacity
+                        style={styles.uploadBtn}
+                        onPress={() => {
+                          this.setProofMethod('upi_screenshot');
+                          this.openPicker('upi');
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Image style={styles.camIcon} source={require('./assets/cam.png')} />
+                        <Text style={styles.uploadBtnText}>
+                          {upiImage?.uri ? 'Re-upload' : 'Upload UPI Screenshot'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : null}
 
                 <View style={{ height: 120 }} />
               </>
@@ -600,10 +1130,35 @@ pickLock = false;
 
           {/* Footer */}
           <View style={styles.footerWrap}>
-            <Text style={styles.noteText}>Verification by Gramik Finance team takes up to 24 hours</Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={this.onSubmit} style={[styles.submitBtn, submitting ? { opacity: 0.6 } : null]} disabled={submitting}>
-              {!submitting ? <Text style={styles.submitText}>Submit for Verification</Text> : <ActivityIndicator size="small" color="#FFF" />}
-            </TouchableOpacity>
+            {this.state.proofMethod === 'qr' ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  this.setProofMethod('qr');
+                  this.generateSettlementQr();
+                }}
+                style={[
+                  styles.footerGenerateQrBtn,
+                  settlementQrGenerating ? { opacity: 0.6 } : null,
+                ]}
+                disabled={settlementQrGenerating}
+              >
+                {settlementQrGenerating && !settlementQrModalVisible ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.footerGenerateQrText}>
+                    Generate QR{amountStr ? ` · ₹${amountStr}` : ''}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <>
+                <Text style={styles.noteText}>Verification by Gramik Finance team takes up to 24 hours</Text>
+                <TouchableOpacity activeOpacity={0.85} onPress={this.onSubmit} style={[styles.submitBtn, submitting ? { opacity: 0.6 } : null]} disabled={submitting}>
+                  {!submitting ? <Text style={styles.submitText}>Submit for Verification</Text> : <ActivityIndicator size="small" color="#FFF" />}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
 
@@ -650,6 +1205,26 @@ pickLock = false;
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+
+        <SettlementQrModal
+          visible={settlementQrModalVisible}
+          uri={settlementQrUrl}
+          loading={settlementQrLoading}
+          failed={settlementQrFailed}
+          total={settlementQrTotal || amountStr}
+          receiveLoading={settlementQrReceivingPayment}
+          onClose={this.closeSettlementQrModal}
+          onRetry={this.generateSettlementQr}
+          onReceivePayment={this.receiveSettlementPayment}
+        />
+
+        <SettlementPaymentSuccessModal
+          visible={settlementPaymentSuccessVisible}
+          amount={settlementPaymentSuccessAmount || amountStr}
+          orders={settlementPaymentSuccessOrders}
+          title={settlementPaymentSuccessTitle}
+          onDone={this.finishSettlementPaymentSuccess}
+        />
       </View>
     );
   }
@@ -673,13 +1248,102 @@ const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: '#5D3FD3',
     borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
-  heroLabel: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
-  heroAmt: { fontSize: 38, fontWeight: '800', color: '#FFF' },
-  heroSub: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginTop: 2 },
-  heroHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.4)', marginTop: 14 },
+  heroStack: {
+    borderRadius: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    backgroundColor: '#DCFCE7',
+  },
+  heroCardJoinedTop: {
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heroLeft: {
+    flex: 1,
+    paddingRight: 12,
+    minWidth: 0,
+  },
+  heroRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  heroLabel: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.55)' },
+  heroAmt: { fontSize: 24, fontWeight: '700', color: '#FFF', letterSpacing: -0.3 },
+  heroSub: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.72)', marginTop: 4 },
+  heroHint: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.45)', marginTop: 8, lineHeight: 15 },
+  heroSettledPill: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(187,247,208,0.75)',
+  },
+  heroSettledPillT: {
+    color: '#BBF7D0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  settledBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: '#DCFCE7',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(22,163,74,0.25)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  settledBannerIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  settledBannerTick: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 24,
+    marginTop: -1,
+  },
+  settledBannerTextCol: {
+    flex: 1,
+    minWidth: 0,
+    paddingBottom: 2,
+  },
+  settledBannerTitle: {
+    color: '#15803D',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  settledBannerSub: {
+    marginTop: 6,
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
 
   ordersSection: { marginTop: 10 },
   ordersSectionHead: {
@@ -709,8 +1373,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingVertical: 10,
   },
   orderMain: { flex: 1, minWidth: 0, marginLeft: 10 },
   orderTitleRow: {
@@ -720,9 +1383,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   orderAvtRing: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: '#EDE9FE',
     borderWidth: 1,
     borderColor: '#DDD6FE',
@@ -730,35 +1393,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  orderAvt: { width: 32, height: 32 },
+  orderAvt: { width: 28, height: 28 },
   orderFarmer: { fontSize: 14, fontWeight: '700', color: THEME.text, flex: 1 },
-  orderCode: { fontSize: 11, fontWeight: '700', color: THEME.green, marginTop: 3, letterSpacing: 0.2 },
-  orderPhone: { fontSize: 11, fontWeight: '500', color: THEME.subText, marginTop: 2 },
-  orderAmt: { fontSize: 16, fontWeight: '800', color: '#16A34A', flexShrink: 0 },
-  orderAddrBox: {
-    marginHorizontal: 12,
-    marginBottom: 10,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#EEF2F6',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  orderAddrLbl: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#EF4444',
-    letterSpacing: 0.5,
-    marginBottom: 3,
-  },
-  orderAddr: { fontSize: 11, color: '#64748B', lineHeight: 15 },
+  orderMeta: { fontSize: 11, fontWeight: '600', color: THEME.subText, marginTop: 3 },
+  orderAmt: { fontSize: 15, fontWeight: '800', color: '#16A34A', flexShrink: 0 },
   orderFoot: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 11,
-    paddingTop: 2,
+    marginTop: 8,
+    gap: 6,
   },
   orderPill: {
     backgroundColor: '#F1F5F9',
@@ -767,7 +1410,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    marginRight: 6,
   },
   orderPillUnpaid: { backgroundColor: '#FFEDD5', borderColor: '#FDBA74' },
   orderPillPaid: { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' },
@@ -804,6 +1446,46 @@ const styles = StyleSheet.create({
   },
   infoLbl: { fontSize: 12, fontWeight: '500', color: THEME.subText },
   infoVal: { fontSize: 13, fontWeight: '700', color: THEME.text },
+
+  supportCard: {
+    marginTop: 10,
+    backgroundColor: THEME.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  supportMain: { flex: 1, minWidth: 0 },
+  supportTitle: { fontSize: 12, fontWeight: '500', color: THEME.subText },
+  supportPhone: { marginTop: 4, fontSize: 15, fontWeight: '700', color: THEME.text },
+  supportActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  supportBtnCall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  supportBtnWa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  supportBtnIco: { width: 16, height: 16, resizeMode: 'contain', marginRight: 5 },
+  supportBtnCallT: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
+  supportBtnWaT: { fontSize: 12, fontWeight: '600', color: '#047857' },
 
   collectionPill: {
     marginTop: 10,
@@ -852,6 +1534,20 @@ const styles = StyleSheet.create({
   },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: THEME.text },
+  sectionSub: { fontSize: 11, fontWeight: '500', color: THEME.subText, marginBottom: 10, marginTop: -2 },
+  proofOptionRow: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: '#fff',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  proofOptionRowOn: { borderColor: THEME.greenDark, backgroundColor: THEME.soft },
+  proofOptionTitle: { fontSize: 13, fontWeight: '700', color: THEME.text },
+  proofOptionSub: { marginTop: 4, fontSize: 11, fontWeight: '500', color: THEME.subText, lineHeight: 15 },
   uploadedBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
   uploadedBadgeT: { fontSize: 10, fontWeight: '700', color: '#16A34A' },
   uploadBtn: { height: 44, borderRadius: 10, backgroundColor: '#16A34A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
@@ -916,6 +1612,39 @@ const styles = StyleSheet.create({
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: THEME.greenDark },
   bankPickTitle: { fontSize: 13, fontWeight: '700', color: THEME.text },
   bankPickSub: { marginTop: 5, fontSize: 11, fontWeight: '600', color: THEME.subText },
+  bankDetailCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  bankDetailName: { fontSize: 14, fontWeight: '700', color: THEME.text },
+  bankDetailLine: { marginTop: 6, fontSize: 12, fontWeight: '500', color: THEME.subText, lineHeight: 17 },
+  bankDetailEmpty: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  bankDetailEmptyT: { fontSize: 12, fontWeight: '500', color: '#9A3412', lineHeight: 17 },
+  upiInlineBox: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: THEME.border,
+  },
+  payNowBtn: {
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
 
   smallUploadBtn: {
     marginTop: 12,
@@ -968,6 +1697,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  footerGenerateQrBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerGenerateQrText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
   // Modals
   modalBackdrop: {

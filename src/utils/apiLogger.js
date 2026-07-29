@@ -24,6 +24,8 @@ const FRIENDLY_NAMES = {
   settleList: 'Settle List',
   settleHistory: 'Settle History',
   submitSettlement: 'Submit Settlement',
+  settlementQr: 'Settlement QR',
+  settlementQrPaymentSuccess: 'Settlement QR Payment Success',
   profile: 'Profile',
   notification: 'Notification',
   orderVerifyOtp: 'Order Verify OTP',

@@ -7,6 +7,7 @@ import Splash from '../screens/Splash';
 import Login from '../screens/Login';
 import Language from '../screens/Language';
 import LMDDashboard from '../screens/LMDDashboard';
+import OrderFilters from '../screens/OrderFilters';
 import TrackOrders from '../screens/TrackOrders';
 import DeliveryDetails from '../screens/DeliveryDetails';
 import RescheduleDelivery from '../screens/RescheduleDelivery';
@@ -52,6 +53,11 @@ export default function AppNavigator() {
         <Stack.Screen name="Language" component={Language} />
         <Stack.Screen name="LMDDashboard" component={LMDDashboard} />
         <Stack.Screen name="TrackOrders" component={TrackOrders} />
+        <Stack.Screen
+          name="OrderFilters"
+          component={OrderFilters}
+          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
+        />
         <Stack.Screen name="DeliveryDetails" component={DeliveryDetails} />
         <Stack.Screen name="RescheduleDelivery" component={RescheduleDelivery} />
         <Stack.Screen name="Survey" component={Survey} />

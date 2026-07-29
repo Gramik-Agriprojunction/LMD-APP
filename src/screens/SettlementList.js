@@ -76,6 +76,35 @@ class SettlementList extends Component {
       ? initialTab
       : this.state.activeTab;
     this.setState({ activeTab: tab }, () => this.fetchList(tab));
+
+    this._hasBeenBlurred = false;
+    this._blurSub = this.props.navigation.addListener('didBlur', () => {
+      this._hasBeenBlurred = true;
+    });
+    this._focusSub = this.props.navigation.addListener('didFocus', () => {
+      const clearSelection = this.props.navigation.getParam?.('clearSelection');
+      const force =
+        this.props.navigation.getParam?.('refreshSettlements') ||
+        this.props.navigation.getParam?.('refresh');
+      if (clearSelection || force) {
+        this.props.navigation.setParams?.({
+          clearSelection: undefined,
+          refreshSettlements: undefined,
+          refresh: undefined,
+        });
+        this.setState({ selectedMap: {}, search: '' }, () => this.fetchList(this.state.activeTab));
+        return;
+      }
+      if (this._hasBeenBlurred) {
+        this._hasBeenBlurred = false;
+        this.fetchList(this.state.activeTab);
+      }
+    });
+  }
+
+  componentWillUnmount() {
+    this._blurSub?.();
+    this._focusSub?.();
   }
 
   goBack = () => {
@@ -245,9 +274,21 @@ class SettlementList extends Component {
   // Next screen
   // ------------------------
   submitSettlement = () => {
+    const selectedCount = this.getSelectedTotals().count;
+    if (selectedCount === 0) {
+      Toast.show('Pehle orders select karein', Toast.SHORT);
+      return;
+    }
     this.props.navigation.navigate('CashSettlement', {
       selectedOrders: this.getSelectedOrderIds(),
       selectedOrderItems: this.getSelectedOrderItems(),
+      onSettlementComplete: () => this.refreshAfterSettlement(),
+    });
+  };
+
+  refreshAfterSettlement = () => {
+    this.setState({ selectedMap: {}, search: '' }, () => {
+      this.fetchList(this.state.activeTab);
     });
   };
 
