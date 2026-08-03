@@ -15,7 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { safeBottomEdges } from '../utils/safeAreaInsets';
+import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
@@ -24,10 +24,12 @@ import ScreenHeader from '../components/ScreenHeader';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 import OrderCard from '../components/OrderCard';
 
 const P = '#5D3FD3';
 const DANGER = '#DC2626';
+const OVERLAY_BOTTOM = overlayBottomPadding();
 
 // Per-reason icon hint — keyed by best-effort match against the API label.
 // Falls back to a yellow warning when no specific icon matches.
@@ -77,6 +79,7 @@ class RejectDelivery extends Component {
   }
 
   componentDidMount() {
+    requestStatusLocationAccess('delivery').then(() => this.startLocationPrefetch());
     this.fetchReasons();
     Animated.parallel([
       Animated.timing(this.headerFade, { toValue: 1, duration: 300, useNativeDriver: true }),
@@ -112,6 +115,12 @@ class RejectDelivery extends Component {
         Animated.spring(v, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
       ),
     ).start();
+  };
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
   };
 
   getOrder = () => this.props?.navigation?.getParam('order', null) || {};
@@ -199,6 +208,7 @@ class RejectDelivery extends Component {
       return;
     }
     this.setState({ show_confirm: true });
+    requestStatusLocationAccess('delivery').then(() => this.startLocationPrefetch());
   };
 
   closeConfirm = () => {
@@ -212,16 +222,20 @@ class RejectDelivery extends Component {
     setTimeout(() => this.submit(key), 200);
   };
 
-  submit = (reasonKey) => {
+  submit = async (reasonKey) => {
     const order = this.resolveOrder();
+    this.setState({ submitting: true });
+
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
     const body = {
       status: 'reject',
       order_id: order.id,
       type: '',
       reason: reasonKey || '',
+      lat,
+      long,
     };
     console.log('Reject Delivery payload== ', body);
-    this.setState({ submitting: true });
 
     fetch(constants.updateStatus, {
       method: 'POST',
@@ -394,6 +408,7 @@ class RejectDelivery extends Component {
           <BottomSheet
             ref={(r) => (this.confirmSheetRef = r)}
             visible={true}
+            dynamicSize
             enablePanDownToClose={true}
             onSheetClose={() => this.setState({ show_confirm: false })}
             onChange={(status) => (status === -1 ? this.setState({ show_confirm: false }) : '')}
@@ -550,7 +565,7 @@ const s = StyleSheet.create({
   confirmBtnT: { color: '#FFF', fontSize: 13, fontWeight: '600', letterSpacing: 0.5 },
 
   // Confirm bottom sheet
-  sheetWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16 },
+  sheetWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 20 + OVERLAY_BOTTOM },
 
   // Compact order-info strip at the top of the sheet
   sheetOrderRow: {

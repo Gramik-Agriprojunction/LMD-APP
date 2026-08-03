@@ -13,6 +13,7 @@ import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 
 const P = '#5D3FD3';
 
@@ -21,6 +22,7 @@ class RescheduleDelivery extends Component {
     super(props);
     this.state = {
       details: null, dateObj: null, slot: '', note: '',
+      reasons: {}, selectedReason: '', reasonsLoading: false,
       showDateModal: false, showSlotPicker: false, submitting: false,
     };
     // Start fully visible — animating opacity on Android causes elevation shadows to appear huge.
@@ -31,8 +33,80 @@ class RescheduleDelivery extends Component {
 
   componentDidMount() {
     const o = this.getOrder();
-    if (o) this.setState({ details: o }, this.animateIn);
+    if (o) this.setState({ details: o }, () => {
+      this.animateIn();
+      this.loadReasons();
+      this.fetchOrderDetails();
+      requestStatusLocationAccess('delivery').then(() => this.startLocationPrefetch());
+    });
   }
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
+  };
+
+  normaliseReasons = (raw) => {
+    if (!raw) return {};
+    if (Array.isArray(raw)) {
+      const out = {};
+      raw.forEach((r) => {
+        if (!r) return;
+        if (typeof r === 'string') out[r] = r;
+        else if (typeof r === 'object') {
+          const k = r.code || r.key || r.id || r.label;
+          if (k) out[String(k)] = r.label || r.title || String(k);
+        }
+      });
+      return out;
+    }
+    if (typeof raw === 'object') return raw;
+    return {};
+  };
+
+  loadReasons = () => {
+    const navReasons = this.props?.navigation?.getParam('reasons', null);
+    const reasons = this.normaliseReasons(navReasons);
+    if (Object.keys(reasons).length) {
+      this.setState({ reasons, reasonsLoading: false });
+    }
+  };
+
+  fetchOrderDetails = () => {
+    const order = this.getOrder();
+    const orderId = order?.id || order?.order_id;
+    if (!orderId) return;
+
+    this.setState({ reasonsLoading: true });
+    fetch(constants.orderDetails, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ order_id: String(orderId) }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        console.log('Reschedule Order Details API response== ', JSON.stringify(json));
+        if (json?.status && json?.order) {
+          const reasons = this.normaliseReasons(json?.rescheduled_reasons);
+          this.setState((prev) => ({
+            details: { ...prev.details, ...json.order },
+            reasons: Object.keys(reasons).length ? reasons : prev.reasons,
+            reasonsLoading: false,
+          }));
+        } else {
+          this.setState({ reasonsLoading: false });
+        }
+      })
+      .catch((e) => {
+        console.log('Reschedule Order Details API error== ', e);
+        this.setState({ reasonsLoading: false });
+      });
+  };
 
   animateIn = () => {
     // No-op: cards are at their final state to avoid Android elevation-shadow artifacts.
@@ -58,11 +132,28 @@ class RescheduleDelivery extends Component {
     return `${String(d.getDate()).padStart(2,'0')} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`;
   };
 
-  SLOTS = ['Morning (9am-12pm)', 'Afternoon (12pm-3pm)', 'Evening (3pm-6pm)', 'Night (6pm-9pm)'];
+  DEFAULT_SLOTS = ['Morning (9am-12pm)', 'Afternoon (12pm-3pm)', 'Evening (3pm-6pm)', 'Night (6pm-9pm)'];
+
+  getSlots = () => {
+    const slots = this.state.details?.delivery_slot;
+    if (Array.isArray(slots) && slots.length) {
+      return slots.map((s) => `${s.label} (${s.time})`);
+    }
+    return this.DEFAULT_SLOTS;
+  };
+
+  isOtherReason = () => {
+    const { selectedReason, reasons } = this.state;
+    if (!selectedReason) return false;
+    const label = reasons?.[selectedReason] || selectedReason;
+    return String(label).toLowerCase().trim() === 'other';
+  };
 
   canConfirm = () => {
-    const { details, dateObj, slot, submitting } = this.state;
-    return !!details?.id && !!dateObj && !!slot && !submitting;
+    const { details, dateObj, slot, selectedReason, note, submitting } = this.state;
+    if (!details?.id || !dateObj || !slot || !selectedReason || submitting) return false;
+    if (this.isOtherReason() && !note.trim()) return false;
+    return true;
   };
 
   callFarmer = () => {
@@ -83,19 +174,25 @@ class RescheduleDelivery extends Component {
     else Linking.openURL(`https://wa.me/${c}`).catch(() => Alert.alert('WhatsApp', `${p}`));
   };
 
-  orderStatusApi = () => {
-    const { details, dateObj, slot, note } = this.state;
-    if (!details?.id || !dateObj || !slot) return;
+  orderStatusApi = async () => {
+    const { details, dateObj, slot, note, selectedReason, reasons } = this.state;
+    if (!this.canConfirm()) return;
 
+    const reasonLabel = reasons?.[selectedReason] || selectedReason || '';
+    const reason = this.isOtherReason() ? (note.trim() || reasonLabel) : reasonLabel;
+    this.setState({ submitting: true });
+
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
     const body = {
-      status: 'reschedule', order_id: String(details.id), type: '', reason: note || '',
+      status: 'reschedule', order_id: String(details.id), type: '', reason,
       date: moment(dateObj).format('YYYY-MM-DD'), slot: String(slot),
+      lat,
+      long,
     };
     if (note) body.note = String(note);
     console.log('Reschedule API payload== ', body);
 
-    this.setState({ submitting: true }, () => {
-      fetch(constants.updateStatus, {
+    fetch(constants.updateStatus, {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + global.token, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(body),
@@ -111,7 +208,6 @@ class RescheduleDelivery extends Component {
           }
         })
         .catch(e => { this.setState({ submitting: false }); });
-    });
   };
 
   getStatusColors = (statusRaw) => {
@@ -119,8 +215,42 @@ class RescheduleDelivery extends Component {
     return { bg: st.tint, text: st.accent };
   };
 
+  renderReasons = () => {
+    const { reasons, reasonsLoading, selectedReason } = this.state;
+    const keys = Object.keys(reasons || {});
+    if (reasonsLoading && !keys.length) {
+      return <ActivityIndicator style={{ marginVertical: 12 }} size="small" color={P} />;
+    }
+    if (!keys.length) {
+      return (
+        <Text style={{ textAlign: 'center', marginVertical: 12, color: '#94A3B8', fontWeight: '500' }}>
+          No reschedule reasons available
+        </Text>
+      );
+    }
+    return keys.map((k) => {
+      const label = reasons[k];
+      const selected = selectedReason === k;
+      return (
+        <TouchableOpacity
+          key={k}
+          activeOpacity={0.8}
+          onPress={() => this.setState({ selectedReason: k })}
+          style={[$.reasonRow, selected && $.reasonRowActive]}
+        >
+          <View style={[$.radioOuter, selected && $.radioOuterActive]}>
+            {selected ? <View style={$.radioInner} /> : null}
+          </View>
+          <Text style={[$.reasonText, selected && $.reasonTextActive]}>{label}</Text>
+        </TouchableOpacity>
+      );
+    });
+  };
+
   render() {
     const { details, dateObj, slot, note, submitting, showDateModal, showSlotPicker } = this.state;
+    const slots = this.getSlots();
+    const noteOptional = !this.isOtherReason();
     const rawCode = details?.order_code || '';
     const orderId = rawCode.includes(' ') ? rawCode.split(' ')[0] : rawCode;
     const farmerName = details?.farmer_data?.name || '';
@@ -147,8 +277,14 @@ class RescheduleDelivery extends Component {
             <View style={$.emptyBox}><Text style={$.emptyT}>Order data not found</Text></View>
           ) : (
             <>
-              {/* Date & Time first */}
+              {/* Reschedule reason */}
               <Animated.View style={this.a(0)}>
+                <Text style={$.secTitle}>Select Reason</Text>
+                <View style={$.reasonBox}>{this.renderReasons()}</View>
+              </Animated.View>
+
+              {/* Date & Time */}
+              <Animated.View style={this.a(1)}>
                 <Text style={$.secTitle}>Select New Date & Time</Text>
 
                 <TouchableOpacity style={[$.selectRow, dateObj && $.selectRowActive]} activeOpacity={0.8} onPress={() => this.setState({ showDateModal: true })}>
@@ -165,7 +301,7 @@ class RescheduleDelivery extends Component {
 
                 {showSlotPicker ? (
                   <View style={$.slotBox}>
-                    {this.SLOTS.map((s, i) => (
+                    {slots.map((s, i) => (
                       <TouchableOpacity key={i} style={[$.slotRow, i !== 0 && $.slotSep, slot === s && $.slotActive]} activeOpacity={0.8} onPress={() => this.setState({ slot: s, showSlotPicker: false })}>
                         <Text style={[$.slotText, slot === s && { color: P, fontWeight: '600' }]}>{s}</Text>
                         {slot === s ? <Text style={$.slotCheck}>✓</Text> : null}
@@ -176,8 +312,13 @@ class RescheduleDelivery extends Component {
               </Animated.View>
 
               {/* Note */}
-              <Animated.View style={this.a(1)}>
-                <Text style={$.secTitle}>Note <Text style={{ fontWeight: '400', color: '#94A3B8' }}>(Optional)</Text></Text>
+              <Animated.View style={this.a(2)}>
+                <Text style={$.secTitle}>
+                  Note{' '}
+                  <Text style={{ fontWeight: '400', color: '#94A3B8' }}>
+                    ({noteOptional ? 'Optional' : 'Required for Other'})
+                  </Text>
+                </Text>
                 <View style={$.noteBox}>
                   <TextInput value={note} onChangeText={t => this.setState({ note: t })} style={$.noteInput}
                     multiline placeholder="Add a note..." placeholderTextColor="#94A3B8" />
@@ -185,7 +326,7 @@ class RescheduleDelivery extends Component {
               </Animated.View>
 
               {/* Order Card — same as DeliveryDetails */}
-              <Animated.View style={[$.card, this.a(2)]}>
+              <Animated.View style={[$.card, this.a(3)]}>
                 {/* Order ID + Status */}
                 <View style={$.ddHero}>
                   <View style={{ flex: 1 }}>
@@ -220,7 +361,7 @@ class RescheduleDelivery extends Component {
               </Animated.View>
 
               {/* Route Card */}
-              <Animated.View style={[$.card, this.a(3)]}>
+              <Animated.View style={[$.card, this.a(4)]}>
                 <View style={$.routeWrap}>
                   <View style={$.routeRow}>
                     <View style={$.routeTl}><View style={[$.routeDot, { backgroundColor: '#0DA60D' }]} /><View style={$.routeLine} /></View>
@@ -324,6 +465,15 @@ const $ = StyleSheet.create({
   routeAddr: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 17, marginTop: 1 },
 
   secTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 10, marginTop: 8 },
+
+  reasonBox: { backgroundColor: '#FFF', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 8, marginBottom: 8 },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 8, borderRadius: 8, marginBottom: 2 },
+  reasonRowActive: { backgroundColor: '#F5F3FF' },
+  radioOuter: { height: 22, width: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  radioOuterActive: { borderColor: P, borderWidth: 2 },
+  radioInner: { height: 12, width: 12, borderRadius: 6, backgroundColor: P },
+  reasonText: { flex: 1, color: '#475569', fontWeight: '500', fontSize: 14 },
+  reasonTextActive: { color: P, fontWeight: '600' },
 
   selectRow: { height: 46, backgroundColor: '#FFF', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 8 },
   selectRowActive: { borderColor: '#16A34A', backgroundColor: '#F0FDF4' },

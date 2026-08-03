@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import { getFcmToken, refreshFcmToken } from '../utils/pushNotifications';
 import { startBackgroundLocationTracker } from '../utils/locationTracker';
+import { warmUpStatusLocation, requestStatusLocationAccess } from '../utils/locationHelper';
 
 const BG = '#5D3FD3';
 const ACCENT = '#FF8A3D';
@@ -331,6 +332,8 @@ class Login extends React.Component {
             this.setState({ show_otp: true }, () => this.animateOtpIn());
           } else {
             setTimeout(() => this.props.navigation.dispatch(DashboardResetAction), 150);
+            warmUpStatusLocation();
+            requestStatusLocationAccess('delivery');
             startBackgroundLocationTracker();
           }
         }
@@ -370,6 +373,8 @@ class Login extends React.Component {
             if (this.state.is_registered) {
               Keyboard.dismiss();
               this.props.navigation.dispatch(DashboardResetAction);
+              warmUpStatusLocation();
+            requestStatusLocationAccess('delivery');
               startBackgroundLocationTracker();
             }
             else { this.setState({ show_name: true }); }

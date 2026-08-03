@@ -5,7 +5,7 @@ import {
   Platform, Easing, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { safeBottomEdges } from '../utils/safeAreaInsets';
+import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import moment from 'moment';
 import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
@@ -752,7 +752,7 @@ class SoilOrderDetail extends Component {
         onSheetClose={this.onPickupSheetClosed}
         enablePanDownToClose
       >
-        <View style={st.bsWrap}>
+        <View style={[st.bsWrap, { paddingBottom: 20 + overlayBottomPadding() }]}>
           <View style={st.bsIconRing}>
             <Image source={ICO.soil} style={st.bsIcon} resizeMode="contain" />
           </View>

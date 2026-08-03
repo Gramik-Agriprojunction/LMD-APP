@@ -12,7 +12,8 @@ import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import {
   prefetchVerifyLocation,
-  getCachedCoordsForApi,
+  resolveCoordsForStatusUpdate,
+  requestStatusLocationAccess,
   coordsForStatusApi,
 } from '../utils/locationHelper';
 import ScreenHeader from '../components/ScreenHeader';
@@ -74,25 +75,16 @@ class BatchPickupOtp extends Component {
       ]).start(() => arrowLoop());
     };
     arrowLoop();
-    this.startLocationPrefetch();
   }
 
   startLocationPrefetch = () => {
-    prefetchVerifyLocation((coords) => {
-      this._verifyCoords = coords;
+    if (this._locationPrefetchStarted) return;
+    this._locationPrefetchStarted = true;
+    requestStatusLocationAccess('delivery').then(() => {
+      prefetchVerifyLocation((coords) => {
+        this._verifyCoords = coords;
+      });
     });
-  };
-
-  getReadyCoords = () => {
-    if (this._verifyCoords?.lat != null && this._verifyCoords?.lng != null) {
-      return this._verifyCoords;
-    }
-    const cached = getCachedCoordsForApi();
-    if (cached.lat != null && cached.lng != null) {
-      this._verifyCoords = cached;
-      return cached;
-    }
-    return { lat: null, lng: null };
   };
 
   submitStatusUpdate = (orderIds, otp, coords = {}) => {
@@ -123,7 +115,7 @@ class BatchPickupOtp extends Component {
     if (this._navTimer) clearTimeout(this._navTimer);
   }
 
-  submit = (code) => {
+  submit = async (code) => {
     const orderIds = this.getOrderIds();
     const otp = code || this.state.otp;
     if (!otp || otp.length < 5) { Toast.show('Please enter 5-digit OTP', Toast.SHORT); return; }
@@ -132,12 +124,13 @@ class BatchPickupOtp extends Component {
 
     this.setState({ isLoading: true, otp });
 
-    const coords = this.getReadyCoords();
-    const apiCoords = coordsForStatusApi(coords);
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
+    const coords = { lat, lng: long };
+
     console.log('[BatchPickup] calling Update Status API', {
       orderIds,
-      lat: apiCoords.lat,
-      long: apiCoords.long,
+      lat,
+      long,
     });
 
     this.submitStatusUpdate(orderIds, otp, coords)

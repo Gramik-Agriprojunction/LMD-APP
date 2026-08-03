@@ -13,7 +13,7 @@ import LiveOrdersGrid, { allCount } from '../components/LiveOrdersGrid';
 import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import { flushPendingNotificationNavigation } from '../utils/notificationNavigation';
-import { prefetchSoilOrderPincode } from '../utils/locationHelper';
+import { prefetchSoilOrderPincode, requestStatusLocationAccess } from '../utils/locationHelper';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
@@ -256,7 +256,7 @@ class LMDDashboard extends Component {
     return (
       <View style={$.root}>
         <StatusBar backgroundColor={P} translucent={false} barStyle="light-content" />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.load(true)} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { requestStatusLocationAccess('delivery'); this.load(true); }} />
 
         <View style={$.hdr}>
           <SafeAreaView edges={['top']}>

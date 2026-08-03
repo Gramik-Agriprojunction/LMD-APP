@@ -30,6 +30,7 @@ import { invalidateOrderRelated } from '../utils/dataCache';
 import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 import { initiateExotelCall } from '../utils/exotelCall';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 
 const BG = '#5D3FD3';
 const QR_SAFE_TOP = (Platform.OS === 'ios' ? 47 : StatusBar.currentHeight || 0);
@@ -159,7 +160,14 @@ class DeliverToFarmer extends Component {
     });
 
     this.cancelReasonsApi();
+    requestStatusLocationAccess('delivery').then(() => this.startLocationPrefetch());
   }
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
+  };
 
   deliverDetailsAPI = (id) => {
     const body = { order_id: String(id) };
@@ -341,18 +349,22 @@ class DeliverToFarmer extends Component {
   };
 
   // ✅ Update Status API
-  orderStatusApi = (status, cancelReasonKey = '') => {
+  orderStatusApi = async (status, cancelReasonKey = '') => {
+    this.setState({ statusLoading: true });
+
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
     const body = {
       status: status == 'deliver' ? 'delivered' : status,
       order_id: this.state.details?.id,
       type: this.state.payment_type,
       reason: cancelReasonKey || '',
+      lat,
+      long,
     };
 
     console.log('Update Status API payload== ', body);
 
-    this.setState({ statusLoading: true }, () => {
-      fetch(constants.updateStatus, {
+    fetch(constants.updateStatus, {
         method: 'POST',
         headers: {
           Authorization: 'Bearer ' + global.token,
@@ -379,7 +391,6 @@ class DeliverToFarmer extends Component {
           this.setState({ statusLoading: false });
           Toast.show('Something went wrong', Toast.SHORT);
         });
-    });
   };
 
   // ✅ Cancel reasons API

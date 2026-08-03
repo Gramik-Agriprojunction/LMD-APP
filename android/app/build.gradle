@@ -87,8 +87,8 @@ android {
         applicationId "com.app.lmd"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 19
-        versionName "19.0"
+        versionCode 21
+        versionName "21.0"
     }
     signingConfigs {
         debug {
@@ -126,6 +126,7 @@ dependencies {
     implementation platform("com.google.firebase:firebase-bom:33.7.0")
     implementation "com.google.firebase:firebase-messaging"
     implementation "com.google.android.gms:play-services-base:18.5.0"
+    implementation "com.google.android.gms:play-services-location:21.0.1"
     implementation "androidx.core:core:1.13.1"
 }
 

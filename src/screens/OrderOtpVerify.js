@@ -11,7 +11,7 @@ import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
-import { prefetchVerifyLocation, getCachedCoordsForApi, coordsForStatusApi, appendCoordsToFormData } from '../utils/locationHelper';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess, coordsForStatusApi, appendCoordsToFormData } from '../utils/locationHelper';
 import OrderCard from '../components/OrderCard';
 import CollectPaymentCard from '../components/CollectPaymentCard';
 import BottomSheet from '../components/BottomSheet';
@@ -127,27 +127,16 @@ class OrderOtpVerify extends Component {
     }, 400);
 
     this.startPulse();
-    this.startLocationPrefetch();
   }
 
   startLocationPrefetch = () => {
-    console.log('[Verify] prefetching location on screen open');
-    prefetchVerifyLocation((coords) => {
-      this._verifyCoords = coords;
-      console.log('[Verify] location ready', coords);
+    if (this._locationPrefetchStarted) return;
+    this._locationPrefetchStarted = true;
+    requestStatusLocationAccess('delivery').then(() => {
+      prefetchVerifyLocation((coords) => {
+        this._verifyCoords = coords;
+      });
     });
-  };
-
-  getReadyCoords = () => {
-    if (this._verifyCoords?.lat != null && this._verifyCoords?.lng != null) {
-      return this._verifyCoords;
-    }
-    const cached = getCachedCoordsForApi();
-    if (cached.lat != null && cached.lng != null) {
-      this._verifyCoords = cached;
-      return cached;
-    }
-    return { lat: null, lng: null };
   };
 
   startPulse = () => {
@@ -311,7 +300,7 @@ class OrderOtpVerify extends Component {
     });
   };
 
-  verifyOtp = (code) => {
+  verifyOtp = async (code) => {
     const orderId = this.getOrderId();
     const otp = code || this.state.otp;
     const actionType = this.getActionType();
@@ -335,15 +324,16 @@ class OrderOtpVerify extends Component {
     }
 
     const otpPayload = hasOtp ? otp : '';
-    const coords = this.getReadyCoords();
-    const apiCoords = coordsForStatusApi(coords);
     this.setState({ isLoading: true, otp: otpPayload });
 
-    console.log('[Verify] calling Update Status API (no GPS wait)', {
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
+    const coords = { lat, lng: long };
+
+    console.log('[Verify] calling Update Status API', {
       orderId,
       actionType,
-      lat: apiCoords.lat,
-      long: apiCoords.long,
+      lat,
+      long,
       type: apiPaymentType(this.state.payment_type),
     });
 

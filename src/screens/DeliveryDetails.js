@@ -34,6 +34,7 @@ import OrderCard from '../components/OrderCard';
 import QrPayModal from '../components/QrPayModal';
 import { SummaryStatIcon, SummarySectionIcon } from '../components/SummaryStatIcons';
 import { initiateExotelCall } from '../utils/exotelCall';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 
 class DeliveryDetails extends Component {
   constructor(props) {
@@ -124,7 +125,14 @@ class DeliveryDetails extends Component {
 
     this.cancelReasonsApi();
     this.rejectReasonsApi();
+    requestStatusLocationAccess('delivery').then(() => this.startLocationPrefetch());
   }
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
+  };
 
   goBack = () => {
     const nav = this.props?.navigation;
@@ -176,6 +184,7 @@ class DeliveryDetails extends Component {
               refreshing: false,
               details: next,
               disputeReasons: Array.isArray(json?.dispute_reasons) ? json.dispute_reasons : [],
+              rescheduledReasons: Array.isArray(json?.rescheduled_reasons) ? json.rescheduled_reasons : [],
             });
           };
 
@@ -571,18 +580,22 @@ class DeliveryDetails extends Component {
     this.props?.navigation?.navigate('Survey', { order_data: this.state?.details });
   };
 
-  orderStatusApi(status, cancelReasonKey = '') {
+  orderStatusApi = async (status, cancelReasonKey = '') => {
+    this.setState({ isLoading: true });
+
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
     const body = {
       status: status == 'deliver' ? 'delivered' : status,
       order_id: this.state.details?.id,
       type: '',
       reason: cancelReasonKey || '',
+      lat,
+      long,
     };
 
-    this.setState({ isLoading: true }, () => {
-      console.log('Update Status API payload== ', body);
+    console.log('Update Status API payload== ', body);
 
-      fetch(constants.updateStatus, {
+    fetch(constants.updateStatus, {
         method: 'POST',
         headers: {
           Authorization: 'Bearer ' + global.token,
@@ -607,8 +620,7 @@ class DeliveryDetails extends Component {
           console.log('Update Status API error== ', error);
           this.setState({ isLoading: false, order_list: [] });
         });
-    });
-  }
+  };
 
   maskPhone = (phoneRaw) => {
     if (!phoneRaw) return '';
@@ -1525,7 +1537,7 @@ class DeliveryDetails extends Component {
                       activeOpacity={0.85}
                       style={[styles.moreSheetTile, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
                       onPress={() => closeAnd(() =>
-                        this.props.navigation.navigate('RescheduleDelivery', { order: d })
+                        this.props.navigation.navigate('RescheduleDelivery', { order: d, reasons: this.state.rescheduledReasons })
                       )}
                     >
                       <View style={[styles.moreSheetIcoWrap, { backgroundColor: '#EDE9FE' }]}>

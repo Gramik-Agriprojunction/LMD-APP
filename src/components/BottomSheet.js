@@ -26,7 +26,9 @@ const BottomSheet = forwardRef(function BottomSheet(props, ref) {
     bottomInset: bottomInsetProp,
   } = props;
 
-  const bottomInset = bottomInsetProp ?? insets.bottom;
+  // Dynamic sheets size to content and handle safe area via inner padding —
+  // bottomInset must be 0 or a gap shows below the sheet background.
+  const bottomInset = bottomInsetProp ?? (dynamicSize ? 0 : insets.bottom);
 
   const modalRef = useRef(null);
   const snapPoints = useMemo(() => [snapPoint], [snapPoint]);

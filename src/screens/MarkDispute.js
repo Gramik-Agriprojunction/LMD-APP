@@ -24,6 +24,7 @@ import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 import ScreenHeader from '../components/ScreenHeader';
 
 const OVERLAY_BOTTOM = overlayBottomPadding();
@@ -94,6 +95,7 @@ class MarkDispute extends Component {
   };
 
   componentDidMount() {
+    this.requestLocationAccess();
     this.fetchReasons();
     Animated.parallel([
       Animated.timing(this.headerFade, { toValue: 1, duration: 300, useNativeDriver: true }),
@@ -109,6 +111,18 @@ class MarkDispute extends Component {
       Animated.spring(this.ctaY, { toValue: 0, delay: 340, friction: 8, tension: 70, useNativeDriver: true }),
     ]).start();
   }
+
+  requestLocationAccess = () => {
+    requestStatusLocationAccess('delivery').then(() => {
+      this.startLocationPrefetch();
+    });
+  };
+
+  startLocationPrefetch = () => {
+    prefetchVerifyLocation((coords) => {
+      this._verifyCoords = coords;
+    });
+  };
 
   componentDidUpdate(_, prev) {
     if (prev.reasonsLoading && !this.state.reasonsLoading) {
@@ -264,6 +278,7 @@ class MarkDispute extends Component {
       return;
     }
     this.setState({ show_confirm: true });
+    this.requestLocationAccess();
   };
 
   closeConfirm = () => {
@@ -276,21 +291,28 @@ class MarkDispute extends Component {
     setTimeout(() => this.submit(key), 200);
   };
 
-  submit = (reasonKey) => {
+  submit = async (reasonKey) => {
     const order = this.resolveOrder();
     const isOther = this.isOtherKey(reasonKey);
     const reasonLabel = this.state.reasons?.[reasonKey] || reasonKey || '';
     const reason = isOther
       ? (this.state.customReason.trim() || reasonLabel)
       : reasonLabel;
+    this.setState({ submitting: true });
+
+    const { lat, long } = await resolveCoordsForStatusUpdate(this._verifyCoords);
+    if (lat == null || long == null) {
+      Toast.show('Location allow karein — Settings mein Location ON karein', Toast.SHORT);
+    }
     const body = {
       status: 'disputed',
       order_id: order.id,
       type: '',
       reason,
+      lat,
+      long,
     };
     console.log('Mark Dispute payload== ', body);
-    this.setState({ submitting: true });
 
     fetch(constants.updateStatus, {
       method: 'POST',
@@ -660,10 +682,7 @@ const s = StyleSheet.create({
   confirmBtnIco: { color: '#FFF', fontSize: 12, fontWeight: '800', lineHeight: 14 },
   confirmBtnT: { color: '#FFF', fontSize: 13, fontWeight: '600', letterSpacing: 0.5 },
 
-  // Confirm bottom sheet — iOS already gets the home-indicator inset from the
-  // BottomSheet's inner SafeAreaView, so we drop the explicit bottom padding on
-  // iOS to keep the action buttons close to the bottom edge.
-  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 12 + OVERLAY_BOTTOM },
+  sheetWrap: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 20 + OVERLAY_BOTTOM },
 
   // Hero block: theme-filled circle with white icon + title + sub. No shadow.
   sheetHero: { alignItems: 'center', marginBottom: 16 },

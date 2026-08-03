@@ -1,10 +1,10 @@
 // Live Base URL
-const baseurl = 'https://lens-api.gramik.in/api/v1/';
+// const baseurl = 'https://lens-api.gramik.in/api/v1/';
 
 // UAT Base URL
-// const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
+const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
 
-const strings = {
+const strings = { 
   login: baseurl + 'auth/lmd/login',
   verifyOtp : baseurl + 'auth/lmd/verify-otp', 
   homescreen : baseurl + 'lmd/home',

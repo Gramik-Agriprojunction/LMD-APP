@@ -4,6 +4,7 @@
 
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
+import './src/utils/locationHelper';
 import './src/utils/apiLogger';
 import './src/utils/metroLog';
 import { AppRegistry } from 'react-native';

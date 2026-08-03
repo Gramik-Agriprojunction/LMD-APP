@@ -331,7 +331,6 @@ class Profile extends Component {
           <BottomSheet
             visible={this.state.show_login}
             dynamicSize
-            bottomInset={Platform.OS === 'ios' ? 0 : undefined}
             onSheetClose={() => this.setState({ show_login: false })}
             enablePanDownToClose={true}
             onChange={(status) => status === -1 ? this.setState({ show_login: false }) : null}
