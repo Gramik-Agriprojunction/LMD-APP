@@ -29,7 +29,11 @@ export const postLocationUpdate = async () => {
 
   _inflight = true;
   try {
-    await ensureLocationPermission('general');
+    const perm = await ensureLocationPermission('general');
+    if (!perm.ok) {
+      console.log('[locationTracker] skip — no permission');
+      return;
+    }
     const coords = await getCurrentCoordsWithPermission('general', { useCache: false });
     const lat = String(coords?.lat || '').trim();
     const lng = String(coords?.lng || coords?.long || '').trim();

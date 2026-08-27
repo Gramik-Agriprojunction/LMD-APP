@@ -310,6 +310,13 @@ class DeliverToFarmer extends Component {
     return Number.isFinite(n) ? n : 0;
   };
 
+  getComboProducts = (it) => {
+    if (String(it?.type || '').toLowerCase() !== 'combo') return [];
+    if (Array.isArray(it?.comboProducts)) return it.comboProducts;
+    if (Array.isArray(it?.combo_products)) return it.combo_products;
+    return [];
+  };
+
   // ✅ Fetch QR
   getQR = (id) => {
     this.setState({ qrLoading: true, qrFailed: false, qrErrorText: '' });
@@ -673,7 +680,10 @@ class DeliverToFarmer extends Component {
 
               {/* Items */}
               <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>{'₹'} {total}</Text></Text>
-              {items.length ? items.map((it, idx) => (
+              {items.length ? items.map((it, idx) => {
+                const comboProducts = this.getComboProducts(it);
+                const parentQty = this.toNum(it?.quantity) || 1;
+                return (
                 <View key={`${it?.variant_id || it?.product_id || idx}`} style={styles.ddCard}>
                   <View style={styles.ddItemRow}>
                     <View style={styles.ddItemImg}>
@@ -682,6 +692,9 @@ class DeliverToFarmer extends Component {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.ddItemName}>{String(it?.product_name || '-')}</Text>
                       <View style={styles.ddItemMeta}>
+                        {comboProducts.length ? (
+                          <View style={styles.ddItemComboPill}><Text style={styles.ddItemComboPillT}>Combo</Text></View>
+                        ) : null}
                         {it?.variation ? <View style={styles.ddItemVarPill}><Text style={styles.ddItemVar}>{it.variation}</Text></View> : null}
                         <Text style={styles.ddItemQty}>Qty: {this.toNum(it?.quantity)}</Text>
                       </View>
@@ -691,8 +704,33 @@ class DeliverToFarmer extends Component {
                       {it?.price && it?.quantity > 1 ? <Text style={styles.ddItemUnit}>{'₹'}{this.toNum(it?.price)} each</Text> : null}
                     </View>
                   </View>
+                  {comboProducts.length ? (
+                    <View style={styles.comboList}>
+                      <Text style={styles.comboIncludes}>Includes</Text>
+                      {comboProducts.map((cp, cIdx) => {
+                        const variant = cp?.variantName || cp?.sku || '';
+                        const pickQty = this.toNum(cp?.quantity) * parentQty;
+                        return (
+                          <View key={`${cp?.variantId || cp?.productId || cIdx}`} style={styles.comboRow}>
+                            {cp?.image ? (
+                              <CachedImage source={{ uri: cp.image }} style={styles.comboImg} />
+                            ) : (
+                              <View style={styles.comboImgPh} />
+                            )}
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={styles.comboName} numberOfLines={2}>{String(cp?.productName || '-')}</Text>
+                              <Text style={styles.comboMeta}>
+                                {variant ? `${variant}  ·  ` : ''}× {pickQty || this.toNum(cp?.quantity)}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </View>
-              )) : <View style={styles.ddCard}><Text style={styles.emptyTxt}>No items</Text></View>}
+                );
+              }) : <View style={styles.ddCard}><Text style={styles.emptyTxt}>No items</Text></View>}
 
               {/* Payment */}
               {!isPaid ? (
@@ -1028,6 +1066,15 @@ const styles = StyleSheet.create({
   ddItemMeta: { flexDirection: 'row', alignItems: 'center' },
   ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
   ddItemVar: { fontSize: 12, fontWeight: '600', color: '#EA580C' },
+  ddItemComboPill: { backgroundColor: '#EDE9FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 },
+  ddItemComboPillT: { fontSize: 11, fontWeight: '700', color: '#6D28D9' },
+  comboList: { marginHorizontal: 12, marginBottom: 10, marginTop: -2, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', paddingVertical: 6, paddingHorizontal: 10 },
+  comboIncludes: { fontSize: 10, fontWeight: '700', color: '#64748B', letterSpacing: 0.3, textTransform: 'uppercase', marginBottom: 4 },
+  comboRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  comboImg: { width: 32, height: 32, borderRadius: 6, resizeMode: 'cover', backgroundColor: '#FFF', marginRight: 10 },
+  comboImgPh: { width: 32, height: 32, borderRadius: 6, backgroundColor: '#E2E8F0', marginRight: 10 },
+  comboName: { fontSize: 12, fontWeight: '600', color: '#334155' },
+  comboMeta: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 2 },
   ddItemQty: { fontSize: 12, fontWeight: '500', color: '#64748B' },
   ddItemPrice: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
   ddItemUnit: { fontSize: 10, fontWeight: '400', color: '#94A3B8', marginTop: 2 },

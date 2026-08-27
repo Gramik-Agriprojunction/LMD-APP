@@ -6,6 +6,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import UpdateModal from './src/components/UpdateModal';
 import AndroidInsetBridge from './src/components/AndroidInsetBridge';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { initPushNotifications } from './src/utils/pushNotifications';
 import { startBackgroundLocationTracker, stopBackgroundLocationTracker } from './src/utils/locationTracker';
 import { requestStatusLocationAccess } from './src/utils/locationHelper';
@@ -21,12 +22,20 @@ function AppShell({ children }) {
 
 export default function App() {
   useEffect(() => {
-    initPushNotifications();
-    if (Platform.OS === 'android') {
-      requestStatusLocationAccess('delivery');
-    }
+    let cancelled = false;
+    (async () => {
+      // Location first, then notifications — same asks as before, but not two
+      // system dialogs on the same Activity frame (that was the Play crash).
+      if (Platform.OS === 'android') {
+        await requestStatusLocationAccess('delivery');
+      }
+      if (!cancelled) initPushNotifications();
+    })();
     startBackgroundLocationTracker();
-    return () => stopBackgroundLocationTracker();
+    return () => {
+      cancelled = true;
+      stopBackgroundLocationTracker();
+    };
   }, []);
 
   return (
@@ -36,7 +45,9 @@ export default function App() {
           <BottomSheetModalProvider>
             <AppShell>
               <StatusBar barStyle="dark-content" />
-              <AppNavigator />
+              <ErrorBoundary>
+                <AppNavigator />
+              </ErrorBoundary>
               <UpdateModal />
             </AppShell>
           </BottomSheetModalProvider>

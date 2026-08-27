@@ -87,8 +87,8 @@ android {
         applicationId "com.app.lmd"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 21
-        versionName "21.0"
+        versionCode 26
+        versionName "26.0"
     }
     signingConfigs {
         debug {

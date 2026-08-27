@@ -325,7 +325,7 @@ class Login extends React.Component {
       .then((json) => {
         this.setState({ isLoading: false });
         console.log('Login API response== ', json);
-        Toast.show(json.message, Toast.SHORT);
+        try { if (json?.message) Toast.show(String(json.message), Toast.SHORT); } catch (e) {}
         if (json.status) {
           this.setState({ is_registered: json.is_registered });
           if (type) {
@@ -365,7 +365,7 @@ class Login extends React.Component {
       .then((json) => {
         this.setState({ isLoadingOtp: false });
         console.log('Verify OTP API response== ', json);
-        Toast.show(json.message, Toast.SHORT);
+        try { if (json?.message) Toast.show(String(json.message), Toast.SHORT); } catch (e) {}
         if (json.status) {
           this.setState({ show_otp: false }, () => {
             global.token = json.token; global.userType = json.user_type;
@@ -374,7 +374,7 @@ class Login extends React.Component {
               Keyboard.dismiss();
               this.props.navigation.dispatch(DashboardResetAction);
               warmUpStatusLocation();
-            requestStatusLocationAccess('delivery');
+              requestStatusLocationAccess('delivery');
               startBackgroundLocationTracker();
             }
             else { this.setState({ show_name: true }); }

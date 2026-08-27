@@ -12,7 +12,10 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Let system windows handle insets so third-party checkout modals (Razorpay) fill edge-to-edge correctly.
     WindowCompat.setDecorFitsSystemWindows(window, true)
-    super.onCreate(savedInstanceState)
+    // Never restore the previous fragment state. Permission dialogs / process
+    // death otherwise recreate react-native-screens fragments and kill the app
+    // with "LMD keeps stopping" (Play pre-launch crash after login).
+    super.onCreate(null)
   }
 
   /**

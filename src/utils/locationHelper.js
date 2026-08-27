@@ -40,15 +40,24 @@ const getGeolocationApi = () => {
 
 let _geoConfigured = false;
 
-/** Android: use Google Play Services (fixes "No location provider available"). */
+/**
+ * skipPermissionRequests: we request via PermissionsAndroid ourselves.
+ * Letting the native module also prompt races the Activity (Play crash).
+ * locationProvider 'auto' falls back to Android LocationManager when Play
+ * Services is missing/outdated on pre-launch devices.
+ */
 const configureGeolocation = (Geo) => {
   if (!Geo?.setRNConfiguration || _geoConfigured) return;
-  Geo.setRNConfiguration({
-    skipPermissionRequests: false,
-    authorizationLevel: 'whenInUse',
-    locationProvider: Platform.OS === 'android' ? 'playServices' : 'auto',
-  });
-  _geoConfigured = true;
+  try {
+    Geo.setRNConfiguration({
+      skipPermissionRequests: true,
+      authorizationLevel: 'whenInUse',
+      locationProvider: 'auto',
+    });
+    _geoConfigured = true;
+  } catch (e) {
+    console.log('[location] setRNConfiguration failed:', e?.message || e);
+  }
 };
 
 const requestNativeAuthorization = (Geo) => new Promise((resolve) => {
@@ -66,50 +75,67 @@ const requestNativeAuthorization = (Geo) => new Promise((resolve) => {
 });
 
 const hasAndroidLocationPermission = async () => {
-  const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
-  const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
-  return PermissionsAndroid.check(fine) || PermissionsAndroid.check(coarse);
+  try {
+    const fine = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    const coarse = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION);
+    return !!(fine || coarse);
+  } catch (e) {
+    return false;
+  }
 };
+
+let _androidPermInFlight = null;
 
 /** Shows the system permission dialog on Android (more reliable than native module alone). */
 const requestAndroidLocationPermission = async () => {
   try {
-    const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
-    const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
-
     if (await hasAndroidLocationPermission()) {
       return { ok: true };
     }
 
-    console.log('[location] requesting Android location permission');
-    const result = await PermissionsAndroid.requestMultiple([fine, coarse]);
-    const fineResult = result[fine];
-    const coarseResult = result[coarse];
+    if (_androidPermInFlight) return _androidPermInFlight;
 
-    if (
-      fineResult === PermissionsAndroid.RESULTS.GRANTED
-      || coarseResult === PermissionsAndroid.RESULTS.GRANTED
-    ) {
-      return { ok: true };
-    }
+    const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+    const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
 
-    if (
-      fineResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
-      || coarseResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
-    ) {
-      console.log('[location] Android location permission blocked (never ask again)');
-      return { ok: false, error: 'permission_blocked' };
-    }
+    _androidPermInFlight = (async () => {
+      console.log('[location] requesting Android location permission');
+      const result = await PermissionsAndroid.requestMultiple([fine, coarse]);
+      const fineResult = result[fine];
+      const coarseResult = result[coarse];
 
-    console.log('[location] Android location permission denied');
-    return { ok: false, error: 'permission_denied' };
+      if (
+        fineResult === PermissionsAndroid.RESULTS.GRANTED
+        || coarseResult === PermissionsAndroid.RESULTS.GRANTED
+      ) {
+        return { ok: true };
+      }
+
+      if (
+        fineResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+        || coarseResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+      ) {
+        console.log('[location] Android location permission blocked (never ask again)');
+        return { ok: false, error: 'permission_blocked' };
+      }
+
+      console.log('[location] Android location permission denied');
+      return { ok: false, error: 'permission_denied' };
+    })()
+      .catch((e) => {
+        console.log('[location] Android permission request failed:', e?.message || e);
+        return { ok: false, error: 'permission_denied' };
+      })
+      .finally(() => { _androidPermInFlight = null; });
+
+    return _androidPermInFlight;
   } catch (e) {
     console.log('[location] Android permission request failed:', e?.message || e);
     return { ok: false, error: 'permission_denied' };
   }
 };
 
-export const ensureLocationPermission = async (purpose = 'general') => {
+export const ensureLocationPermission = async (purpose = 'general', { prompt = true } = {}) => {
   const Geo = getGeolocationApi();
   if (!Geo) {
     console.log('[location] geolocation module not loaded');
@@ -119,9 +145,12 @@ export const ensureLocationPermission = async (purpose = 'general') => {
   configureGeolocation(Geo);
 
   if (Platform.OS === 'android') {
+    if (await hasAndroidLocationPermission()) return { ok: true };
+    if (!prompt) return { ok: false, error: 'permission_denied' };
     return requestAndroidLocationPermission();
   }
 
+  if (!prompt) return { ok: true };
   return requestNativeAuthorization(Geo);
 };
 
@@ -394,7 +423,7 @@ const getCurrentCoordsWithFallback = ({ fresh = false } = {}) => new Promise((re
 
 export const getCurrentCoords = () => getCurrentCoordsWithFallback();
 
-export const getCurrentCoordsWithPermission = async (purpose = 'general', { useCache = true } = {}) => {
+export const getCurrentCoordsWithPermission = async (purpose = 'general', { useCache = true, prompt = true } = {}) => {
   if (!isNativeGeolocationLinked()) {
     return { lat: '', lng: '', error: 'unavailable' };
   }
@@ -404,7 +433,7 @@ export const getCurrentCoordsWithPermission = async (purpose = 'general', { useC
     if (cached) return cached;
   }
 
-  const perm = await ensureLocationPermission(purpose);
+  const perm = await ensureLocationPermission(purpose, { prompt });
   if (!perm.ok) {
     if (!useCache) {
       return { lat: '', lng: '', error: perm.error || 'permission_denied' };
@@ -516,6 +545,11 @@ export const prefetchVerifyLocation = (onReady) => {
 /** Ask permission (if needed) and warm GPS — call when status screen opens. */
 export const requestStatusLocationAccess = async (purpose = 'delivery') => {
   if (!getGeolocationApi()) return { ok: false, error: 'unavailable' };
+
+  // Wait until the current screen has finished mounting. A permission dialog
+  // during a native-stack transition recreates the Activity and crashes
+  // react-native-screens on some Play pre-launch devices.
+  await new Promise((r) => { setTimeout(r, 450); });
 
   let perm = await ensureLocationPermission(purpose);
   if (!perm.ok) {
@@ -892,9 +926,9 @@ export const getCachedPrefetchedPincode = () => {
 };
 
 /** Fetch fresh GPS coords (no PIN). */
-export const getFreshCoords = async ({ maxWaitMs = 15000 } = {}) => {
+export const getFreshCoords = async ({ maxWaitMs = 15000, prompt = true } = {}) => {
   const result = await Promise.race([
-    getCurrentCoordsWithPermission('general', { useCache: false }),
+    getCurrentCoordsWithPermission('general', { useCache: false, prompt }),
     new Promise((resolve) => {
       setTimeout(() => resolve({ lat: '', lng: '', error: 'timeout' }), maxWaitMs);
     }),

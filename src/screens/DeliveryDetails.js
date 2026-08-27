@@ -407,6 +407,52 @@ class DeliveryDetails extends Component {
     return Number.isFinite(n) ? n : 0;
   };
 
+  getComboProducts = (it) => {
+    if (String(it?.type || '').toLowerCase() !== 'combo') return [];
+    if (Array.isArray(it?.comboProducts)) return it.comboProducts;
+    if (Array.isArray(it?.combo_products)) return it.combo_products;
+    return [];
+  };
+
+  renderComboProducts = (it) => {
+    const comboProducts = this.getComboProducts(it);
+    if (!comboProducts.length) return null;
+    const parentQty = this.toNum(it?.quantity) || 1;
+    return (
+      <View style={styles.comboList}>
+        <Text style={styles.comboIncludes}>Includes</Text>
+        {comboProducts.map((cp, cIdx) => {
+          const variant = cp?.variantName || cp?.sku || '';
+          const pickQty = this.toNum(cp?.quantity) * parentQty;
+          return (
+            <View key={`${cp?.variantId || cp?.productId || cIdx}`} style={styles.comboRow}>
+              <View style={styles.comboImgWrap}>
+                {cp?.image ? (
+                  <CachedImage source={{ uri: cp.image }} style={styles.comboImg} />
+                ) : (
+                  <Image source={require('./assets/box.png')} style={styles.comboImgFallback} />
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.comboName} numberOfLines={2}>{String(cp?.productName || '-')}</Text>
+                <View style={styles.ddItemMeta}>
+                  {variant ? (
+                    <View style={styles.ddItemVarPill}>
+                      <Text style={styles.ddItemVar}>{variant}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.ddItemQtyPill}>
+                    <Text style={styles.ddItemQty}>× {pickQty || this.toNum(cp?.quantity)}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
   // Convert a positive integer to English words using Indian numbering (Lakh / Crore)
   amountInWords = (value) => {
     let num = Math.floor(this.toNum(value));
@@ -866,44 +912,55 @@ class DeliveryDetails extends Component {
               <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>₹ {total}</Text></Text>
               {items.length ? (
                 <View style={styles.itemsCard}>
-                  {items.map((it, idx) => (
+                  {items.map((it, idx) => {
+                    const comboProducts = this.getComboProducts(it);
+                    return (
                     <View
                       key={`${it?.variant_id || it?.product_id || idx}`}
-                      style={[styles.ddItemRow, idx > 0 && styles.ddItemRowDivider]}
+                      style={idx > 0 ? styles.ddItemRowDivider : null}
                     >
-                      {/* Product image in a soft tinted container */}
-                      <View style={styles.ddItemImgWrap}>
-                        {it?.image ? (
-                          <CachedImage source={{ uri: it.image }} style={styles.ddProductImg} />
-                        ) : (
-                          <Image source={require('./assets/box.png')} style={styles.ddProductFallback} />
-                        )}
-                      </View>
+                      <View style={styles.ddItemRow}>
+                        {/* Product image in a soft tinted container */}
+                        <View style={styles.ddItemImgWrap}>
+                          {it?.image ? (
+                            <CachedImage source={{ uri: it.image }} style={styles.ddProductImg} />
+                          ) : (
+                            <Image source={require('./assets/box.png')} style={styles.ddProductFallback} />
+                          )}
+                        </View>
 
-                      {/* Name + meta pills */}
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={styles.ddItemName} numberOfLines={2}>{String(it?.product_name || '-')}</Text>
-                        <View style={styles.ddItemMeta}>
-                          {it?.variation ? (
-                            <View style={styles.ddItemVarPill}>
-                              <Text style={styles.ddItemVar}>{it.variation}</Text>
+                        {/* Name + meta pills */}
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={styles.ddItemName} numberOfLines={2}>{String(it?.product_name || '-')}</Text>
+                          <View style={styles.ddItemMeta}>
+                            {comboProducts.length ? (
+                              <View style={styles.ddItemComboPill}>
+                                <Text style={styles.ddItemComboPillT}>Combo</Text>
+                              </View>
+                            ) : null}
+                            {it?.variation ? (
+                              <View style={styles.ddItemVarPill}>
+                                <Text style={styles.ddItemVar}>{it.variation}</Text>
+                              </View>
+                            ) : null}
+                            <View style={styles.ddItemQtyPill}>
+                              <Text style={styles.ddItemQty}>× {this.toNum(it?.quantity)}</Text>
                             </View>
-                          ) : null}
-                          <View style={styles.ddItemQtyPill}>
-                            <Text style={styles.ddItemQty}>× {this.toNum(it?.quantity)}</Text>
                           </View>
                         </View>
-                      </View>
 
-                      {/* Price column */}
-                      <View style={styles.ddItemPriceCol}>
-                        <Text style={styles.ddItemPrice}>₹{this.toNum(it?.total_price || it?.price)}</Text>
-                        {it?.price && this.toNum(it?.quantity) > 1 ? (
-                          <Text style={styles.ddItemUnit}>₹{this.toNum(it?.price)} ea</Text>
-                        ) : null}
+                        {/* Price column */}
+                        <View style={styles.ddItemPriceCol}>
+                          <Text style={styles.ddItemPrice}>₹{this.toNum(it?.total_price || it?.price)}</Text>
+                          {it?.price && this.toNum(it?.quantity) > 1 ? (
+                            <Text style={styles.ddItemUnit}>₹{this.toNum(it?.price)} ea</Text>
+                          ) : null}
+                        </View>
                       </View>
+                      {this.renderComboProducts(it)}
                     </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : (
                 <View style={styles.ddCard}><Text style={styles.emptyItemsText}>Koi item nahi</Text></View>
@@ -1697,6 +1754,58 @@ const styles = StyleSheet.create({
   ddItemPriceCol: { alignItems: 'flex-end', minWidth: 60 },
   ddItemPrice: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
   ddItemUnit: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
+  ddItemComboPill: {
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  ddItemComboPillT: { fontSize: 11, fontWeight: '700', color: '#6D28D9' },
+  comboList: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    marginTop: -2,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  comboIncludes: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
+  comboRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  comboImgWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  comboImg: { width: 32, height: 32, resizeMode: 'contain' },
+  comboImgFallback: { width: 16, height: 16, resizeMode: 'contain', tintColor: '#94A3B8' },
+  comboName: { fontSize: 11, fontWeight: '600', color: '#334155', marginBottom: 4, lineHeight: 14 },
 
   statusPill: { alignSelf: 'flex-start', borderRadius: 60, paddingHorizontal: 14, paddingVertical: 6 },
   statusPillText: { fontSize: 10, fontWeight: '700' },

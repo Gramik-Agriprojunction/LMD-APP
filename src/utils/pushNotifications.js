@@ -81,65 +81,79 @@ const configurePushNotification = () => {
   if (configured) return;
   configured = true;
 
-  PushNotification.configure({
-    onRegister: (token) => {
-      console.log('[push] onRegister', token);
-      if (!global.fcmToken && token?.token) {
-        global.fcmToken = token.token;
-        global.os = token.os || Platform.OS;
-        console.log('[push] FCM/APNs TOKEN (rnpn) ==>', global.fcmToken);
-      }
-    },
+  try {
+    PushNotification.configure({
+      onRegister: (token) => {
+        console.log('[push] onRegister', token);
+        if (!global.fcmToken && token?.token) {
+          global.fcmToken = token.token;
+          global.os = token.os || Platform.OS;
+          console.log('[push] FCM/APNs TOKEN (rnpn) ==>', global.fcmToken);
+        }
+      },
 
-    onNotification: (notification) => {
-      console.log('[push] onNotification', notification);
-      if (notification?.userInteraction) {
-        const data = notification?.data || notification?.userInfo || {};
-        handleNotificationOpen(data);
-      }
-      if (Platform.OS === 'ios') {
-        notification.finish(PushNotificationIOS.FetchResult.NoData);
-      }
-    },
+      onNotification: (notification) => {
+        console.log('[push] onNotification', notification);
+        if (notification?.userInteraction) {
+          const data = notification?.data || notification?.userInfo || {};
+          handleNotificationOpen(data);
+        }
+        if (Platform.OS === 'ios') {
+          try {
+            notification.finish(PushNotificationIOS.FetchResult.NoData);
+          } catch (e) {}
+        }
+      },
 
-    onRegistrationError: (err) => {
-      console.log('[push] onRegistrationError', err?.message || err);
-    },
+      onRegistrationError: (err) => {
+        console.log('[push] onRegistrationError', err?.message || err);
+      },
 
-    permissions: { alert: true, badge: true, sound: true },
-    popInitialNotification: true,
-    requestPermissions: Platform.OS === 'ios',
-  });
+      permissions: { alert: true, badge: true, sound: true },
+      popInitialNotification: true,
+      requestPermissions: Platform.OS === 'ios',
+    });
+  } catch (e) {
+    console.log('[push] configure failed', e?.message || e);
+  }
 
   if (Platform.OS === 'android') {
-    PushNotification.createChannel(
-      {
-        channelId: DEFAULT_CHANNEL_ID,
-        channelName: 'LMD Notifications',
-        channelDescription: 'Order, settlement and delivery alerts',
-        importance: 4,
-        vibrate: true,
-      },
-      (created) => console.log(`[push] channel "${DEFAULT_CHANNEL_ID}" created=${created}`),
-    );
+    try {
+      PushNotification.createChannel(
+        {
+          channelId: DEFAULT_CHANNEL_ID,
+          channelName: 'LMD Notifications',
+          channelDescription: 'Order, settlement and delivery alerts',
+          importance: 4,
+          vibrate: true,
+        },
+        (created) => console.log(`[push] channel "${DEFAULT_CHANNEL_ID}" created=${created}`),
+      );
+    } catch (e) {
+      console.log('[push] createChannel failed', e?.message || e);
+    }
   }
 };
 
 const showForegroundNotification = (remoteMessage) => {
-  const n = remoteMessage?.notification;
-  const data = remoteMessage?.data || {};
-  const title = n?.title || data.title || 'LMD';
-  const message = n?.body || data.message || data.body || '';
+  try {
+    const n = remoteMessage?.notification;
+    const data = remoteMessage?.data || {};
+    const title = n?.title || data.title || 'LMD';
+    const message = n?.body || data.message || data.body || '';
 
-  PushNotification.localNotification({
-    channelId: DEFAULT_CHANNEL_ID,
-    title,
-    message,
-    playSound: true,
-    soundName: 'default',
-    userInfo: data,
-    data,
-  });
+    PushNotification.localNotification({
+      channelId: DEFAULT_CHANNEL_ID,
+      title,
+      message,
+      playSound: true,
+      soundName: 'default',
+      userInfo: data,
+      data,
+    });
+  } catch (e) {
+    console.log('[push] localNotification failed', e?.message || e);
+  }
 };
 
 const fetchFcmToken = async () => {
@@ -202,20 +216,24 @@ const subscribeToMessages = () => {
 };
 
 export const initPushNotifications = async () => {
-  global.os = Platform.OS;
-  configurePushNotification();
+  try {
+    global.os = Platform.OS;
+    configurePushNotification();
 
-  const [, granted] = await Promise.all([
-    requestIOSAuth(),
-    ensureAndroidPermission(),
-  ]);
-  if (!granted && Platform.OS === 'android') {
-    console.log('[push] POST_NOTIFICATIONS permission not granted');
+    const [, granted] = await Promise.all([
+      requestIOSAuth(),
+      ensureAndroidPermission(),
+    ]);
+    if (!granted && Platform.OS === 'android') {
+      console.log('[push] POST_NOTIFICATIONS permission not granted');
+    }
+
+    await fetchFcmToken();
+    subscribeToTokenRefresh();
+    subscribeToMessages();
+  } catch (e) {
+    console.log('[push] init failed', e?.message || e);
   }
-
-  await fetchFcmToken();
-  subscribeToTokenRefresh();
-  subscribeToMessages();
 };
 
 export const getFcmToken = () => global.fcmToken || '';

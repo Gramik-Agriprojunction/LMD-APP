@@ -14,6 +14,7 @@ import { getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
 import { flushPendingNotificationNavigation } from '../utils/notificationNavigation';
 import { prefetchSoilOrderPincode, requestStatusLocationAccess } from '../utils/locationHelper';
+import { startBackgroundLocationTracker } from '../utils/locationTracker';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
@@ -242,12 +243,19 @@ class LMDDashboard extends Component {
     const name = d?.partner?.name || '';
     const rule = d?.partner?.rule;
     const live = d?.live_orders || {};
-    const todayRaw = d?.today_deliveries || [];
-    const filtersActive = hasActiveFilters(levels[0], pickReadyFilter, rescheduleDateFilter, levels[1], levels, priorityFilter, entityFilters);
-    const todayRowsRaw = buildListRows(todayRaw, levels[0], pickReadyFilter, levels[1], levels);
-    const todayRows = listRowsWithoutGroupHeaders(todayRowsRaw, filtersActive);
-    const hasToday = todayRows.some((r) => r.type === 'order');
-    const pendingSettlements = d?.pending_settlements || [];
+    const todayRaw = Array.isArray(d?.today_deliveries) ? d.today_deliveries : [];
+    let filtersActive = false;
+    let todayRows = [];
+    let hasToday = false;
+    try {
+      filtersActive = hasActiveFilters(levels[0], pickReadyFilter, rescheduleDateFilter, levels[1], levels, priorityFilter, entityFilters);
+      const todayRowsRaw = buildListRows(todayRaw, levels[0], pickReadyFilter, levels[1], levels);
+      todayRows = listRowsWithoutGroupHeaders(todayRowsRaw, filtersActive);
+      hasToday = todayRows.some((r) => r.type === 'order');
+    } catch (e) {
+      console.log('[dashboard] today list failed', e?.message || e);
+    }
+    const pendingSettlements = Array.isArray(d?.pending_settlements) ? d.pending_settlements : [];
     const pendingAmount = d?.pending_settlement_amount;
     const pendingCount = d?.pending_settlement_orders_count;
     const earn = this.n(d?.earnings?.this_month);
@@ -256,7 +264,7 @@ class LMDDashboard extends Component {
     return (
       <View style={$.root}>
         <StatusBar backgroundColor={P} translucent={false} barStyle="light-content" />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { requestStatusLocationAccess('delivery'); this.load(true); }} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { requestStatusLocationAccess('delivery'); startBackgroundLocationTracker(); this.load(true); }} />
 
         <View style={$.hdr}>
           <SafeAreaView edges={['top']}>
