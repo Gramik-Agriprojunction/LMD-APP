@@ -310,6 +310,19 @@ class Profile extends Component {
             <Text style={styles.actionArrow}>›</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.92}
+            onPress={() => this.props?.navigation?.navigate('FarmerList')}
+          >
+            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/farmernew.png')} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Add Farmer</Text>
+              <Text style={styles.actionSub}>Naya kisan jodein aur added list dekhein</Text>
+            </View>
+            <Text style={styles.actionArrow}>›</Text>
+          </TouchableOpacity>
+
            <TouchableOpacity onPress={()=> this.setState({show_login : true})} style={styles.actionCard} activeOpacity={0.92}>
                 <Image style={{height:35,width:38,marginRight:20,resizeMode:'contain'}} source={require('./assets/exit.png')} />
             <View style={{ flex: 1 }}>

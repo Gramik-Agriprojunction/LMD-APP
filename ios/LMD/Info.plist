@@ -51,7 +51,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>LMD uses your location to verify delivery and auto-fill PIN code for soil test pickup.</string>
+	<string>LMD uses your location to auto-fill PIN code, zoom the field map to you, and verify deliveries.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>LMD uses your location to verify delivery and auto-fill PIN code when you allow location access.</string>
 	<key>RCTNewArchEnabled</key>
@@ -78,6 +78,7 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>MaterialCommunityIcons.ttf</string>
+		<string>Ionicons.ttf</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

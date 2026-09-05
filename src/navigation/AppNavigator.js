@@ -28,6 +28,9 @@ import SoilOrders from '../screens/SoilOrders';
 import SoilOrderDetail from '../screens/SoilOrderDetail';
 import CreateSoilOrder from '../screens/CreateSoilOrder';
 import SelectFarmer from '../screens/SelectFarmer';
+import FarmerList from '../screens/FarmerList';
+import AddFarmer from '../screens/AddFarmer';
+import AddLand from '../screens/AddLand';
 
 const Stack = createNativeStackNavigator();
 
@@ -88,6 +91,21 @@ export default function AppNavigator() {
           name="SelectFarmer"
           component={SelectFarmer}
           options={{ contentStyle: { backgroundColor: '#edf1f7' } }}
+        />
+        <Stack.Screen
+          name="FarmerList"
+          component={FarmerList}
+          options={{ contentStyle: { backgroundColor: '#5D3FD3' } }}
+        />
+        <Stack.Screen
+          name="AddFarmer"
+          component={AddFarmer}
+          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
+        />
+        <Stack.Screen
+          name="AddLand"
+          component={AddLand}
+          options={{ contentStyle: { backgroundColor: '#5D3FD3' } }}
         />
       </Stack.Navigator>
     </NavigationContainer>

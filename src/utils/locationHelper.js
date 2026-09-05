@@ -65,11 +65,19 @@ const requestNativeAuthorization = (Geo) => new Promise((resolve) => {
     resolve({ ok: true });
     return;
   }
+  let done = false;
+  const finish = (value) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    resolve(value);
+  };
+  const timer = setTimeout(() => finish({ ok: false, error: 'permission_denied' }), 90000);
   Geo.requestAuthorization(
-    () => resolve({ ok: true }),
+    () => finish({ ok: true }),
     (err) => {
       console.log('[location] requestAuthorization failed:', err?.message || err);
-      resolve({ ok: false, error: 'permission_denied' });
+      finish({ ok: false, error: 'permission_denied' });
     },
   );
 });
@@ -151,7 +159,21 @@ export const ensureLocationPermission = async (purpose = 'general', { prompt = t
   }
 
   if (!prompt) return { ok: true };
-  return requestNativeAuthorization(Geo);
+  const auth = await requestNativeAuthorization(Geo);
+  if (auth.ok) return auth;
+  // iOS often errors even when When In Use is already granted.
+  try {
+    await new Promise((resolve, reject) => {
+      Geo.getCurrentPosition(
+        () => resolve(true),
+        reject,
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 },
+      );
+    });
+    return { ok: true };
+  } catch (e) {
+    return auth;
+  }
 };
 
 const normalizeGeoError = (err) => {
@@ -222,15 +244,30 @@ const promptEnableLocationServices = () => new Promise((resolve) => {
   );
 });
 
+let _settingsPromptOpen = false;
+
 const promptOpenAppSettings = () => new Promise((resolve) => {
+  if (_settingsPromptOpen) {
+    resolve(false);
+    return;
+  }
+  _settingsPromptOpen = true;
   Alert.alert(
     'Location permission',
     'App ko location access dena zaroori hai. Settings > Permissions > Location mein Allow karein.',
     [
-      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+        onPress: () => {
+          _settingsPromptOpen = false;
+          resolve(false);
+        },
+      },
       {
         text: 'Settings kholein',
         onPress: async () => {
+          _settingsPromptOpen = false;
           try {
             await Linking.openSettings();
           } catch (e) { /* ignore */ }
@@ -238,6 +275,7 @@ const promptOpenAppSettings = () => new Promise((resolve) => {
         },
       },
     ],
+    { cancelable: true, onDismiss: () => { _settingsPromptOpen = false; resolve(false); } },
   );
 });
 
@@ -923,6 +961,60 @@ const storePinPrefetch = (payload) => {
 export const getCachedPrefetchedPincode = () => {
   if (!_pinPrefetch?.pincode || Date.now() - _pinPrefetchAt > PIN_PREFETCH_TTL) return null;
   return { ..._pinPrefetch };
+};
+
+/** GPS for farmer form / land map. Asks permission only when GPS is actually blocked. */
+export const getLocationForForm = async ({ maxWaitMs = 12000, prompt = true } = {}) => {
+  const mem = readCachedCoords(900000);
+  if (mem?.lat && mem?.lng) {
+    getFastCoordsForStatus().catch(() => {});
+    return { lat: mem.lat, lng: mem.lng };
+  }
+
+  const disk = await hydrateCoordsFromDisk();
+  if (disk?.lat && disk?.lng) return disk;
+
+  const Geo = getGeolocationApi();
+  if (!Geo) return { lat: '', lng: '', error: 'unavailable' };
+
+  try {
+    const fast = await Promise.race([
+      getFastCoordsForStatus(),
+      new Promise((_, reject) => { setTimeout(() => reject(new Error('timeout')), 5000); }),
+    ]);
+    if (fast?.lat && fast?.lng) return { lat: String(fast.lat), lng: String(fast.lng) };
+  } catch (e) { /* need permission or a slower read */ }
+
+  if (prompt) {
+    await new Promise((r) => { setTimeout(r, 300); });
+    const perm = await ensureLocationPermission('general', { prompt: true });
+    if (!perm.ok) {
+      try {
+        const retry = await Promise.race([
+          getFastCoordsForStatus(),
+          new Promise((_, reject) => { setTimeout(() => reject(new Error('timeout')), 4000); }),
+        ]);
+        if (retry?.lat && retry?.lng) return { lat: String(retry.lat), lng: String(retry.lng) };
+      } catch (e) { /* really blocked */ }
+      const stillMissing = !readCachedCoords(900000);
+      if (!stillMissing) return readCachedCoords(900000);
+      const opened = await promptOpenAppSettings();
+      if (opened) {
+        await waitForAppResume(120000);
+        await ensureLocationPermission('general', { prompt: true });
+      }
+    }
+  }
+
+  try {
+    const after = await Promise.race([
+      getFastCoordsForStatus(),
+      new Promise((_, reject) => { setTimeout(() => reject(new Error('timeout')), Math.min(maxWaitMs, 8000)); }),
+    ]);
+    if (after?.lat && after?.lng) return { lat: String(after.lat), lng: String(after.lng) };
+  } catch (e) { /* fall through */ }
+
+  return getFreshCoords({ maxWaitMs, prompt: false });
 };
 
 /** Fetch fresh GPS coords (no PIN). */
