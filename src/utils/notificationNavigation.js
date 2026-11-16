@@ -31,7 +31,7 @@ export const applyNotificationNavigation = (navigation, payload) => {
 
   if (nav.includes('settlement')) {
     if (navId) navigation.navigate('SettlementDetail', { settlementId: navId });
-    else navigation.navigate('SettlementList');
+    else navigation.navigate('MainTabs', { screen: 'SettlementList' });
     return true;
   }
 
@@ -43,12 +43,12 @@ export const applyNotificationNavigation = (navigation, payload) => {
   const orderId = navId || payload?.orderId;
   if (nav.includes('orderdetail') || nav.includes('delivery') || orderId) {
     if (orderId) navigation.navigate('DeliveryDetails', { order: { id: orderId } });
-    else navigation.navigate('TrackOrders');
+    else navigation.navigate('MainTabs', { screen: 'TrackOrders' });
     return true;
   }
 
   if (nav.includes('track') || nav.includes('order')) {
-    navigation.navigate('TrackOrders');
+    navigation.navigate('MainTabs', { screen: 'TrackOrders' });
     return true;
   }
 

@@ -25,6 +25,7 @@ import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Co
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import { stopBackgroundLocationTracker } from '../utils/locationTracker';
 import NotificationBellButton from '../components/NotificationBellButton';
+import { clearViewPartner } from '../utils/lmdViewMode';
 
 const resetAction = StackActions.reset({
   index: 0,                       
@@ -61,7 +62,11 @@ class Profile extends Component {
 
   goBack = () => {
     const nav = this.props?.navigation;
-    if (nav?.goBack) nav.goBack();
+    if (nav?.canGoBack?.()) {
+      nav.goBack();
+      return;
+    }
+    nav?.navigate?.('LMDDashboard');
   };
 
   goToSettlementHistory = () => {
@@ -147,6 +152,8 @@ class Profile extends Component {
       try {
         stopBackgroundLocationTracker();
         global.token = '';
+        global.userType = '';
+        await clearViewPartner();
         await AsyncStorage.multiRemove(['accessToken', 'userType', 'language', 'referral_code']);
       } catch (e) {
         console.log('Logout clear error:', e);
@@ -179,9 +186,13 @@ class Profile extends Component {
         <View style={styles.headerWrap}>
           <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
+              {this.props?.navigation?.canGoBack?.() ? (
+                <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
+                  <Image style={styles.backImg} source={require('./assets/back.png')} />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.headerIconBtn} />
+              )}
 
               <View style={styles.profileRow}>
                 <View style={styles.avatar}>

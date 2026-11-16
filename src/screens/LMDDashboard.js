@@ -17,6 +17,7 @@ import { prefetchSoilOrderPincode, requestStatusLocationAccess } from '../utils/
 import { startBackgroundLocationTracker } from '../utils/locationTracker';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import OrderCard from '../components/OrderCard';
+import ReadOnlyBanner from '../components/ReadOnlyBanner';
 import PendingSettlementsCarousel from '../components/PendingSettlementsCarousel';
 import NotificationBellButton from '../components/NotificationBellButton';
 import OrderGroupHeader from '../components/OrderGroupHeader';
@@ -290,6 +291,7 @@ class LMDDashboard extends Component {
         </View>
 
         <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+          <ReadOnlyBanner navigation={this.props.navigation} />
           {this.state.loading && !this.state.refreshing ? <ShimmerLoader /> : (
             <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.refresh} tintColor={P} colors={[P]} />}>

@@ -6,14 +6,11 @@ import { navigationRef, flushPendingNotificationNavigation } from '../utils/noti
 import Splash from '../screens/Splash';
 import Login from '../screens/Login';
 import Language from '../screens/Language';
-import LMDDashboard from '../screens/LMDDashboard';
+import MainTabNavigator from './MainTabNavigator';
 import OrderFilters from '../screens/OrderFilters';
-import TrackOrders from '../screens/TrackOrders';
 import DeliveryDetails from '../screens/DeliveryDetails';
 import RescheduleDelivery from '../screens/RescheduleDelivery';
 import Survey from '../screens/Survey';
-import Profile from '../screens/Profile';
-import SettlementList from '../screens/SettlementList';
 import CashSettlement from '../screens/CashSettlement';
 import SettlementHistory from '../screens/SettlementHistory';
 import SettlementDetail from '../screens/SettlementDetail';
@@ -31,6 +28,7 @@ import SelectFarmer from '../screens/SelectFarmer';
 import FarmerList from '../screens/FarmerList';
 import AddFarmer from '../screens/AddFarmer';
 import AddLand from '../screens/AddLand';
+import ChooseLmdPartner from '../screens/ChooseLmdPartner';
 
 const Stack = createNativeStackNavigator();
 
@@ -54,8 +52,12 @@ export default function AppNavigator() {
         <Stack.Screen name="Splash" component={Splash} />
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Language" component={Language} />
-        <Stack.Screen name="LMDDashboard" component={LMDDashboard} />
-        <Stack.Screen name="TrackOrders" component={TrackOrders} />
+        <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+        <Stack.Screen
+          name="ChooseLmdPartner"
+          component={ChooseLmdPartner}
+          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
+        />
         <Stack.Screen
           name="OrderFilters"
           component={OrderFilters}
@@ -64,8 +66,6 @@ export default function AppNavigator() {
         <Stack.Screen name="DeliveryDetails" component={DeliveryDetails} />
         <Stack.Screen name="RescheduleDelivery" component={RescheduleDelivery} />
         <Stack.Screen name="Survey" component={Survey} />
-        <Stack.Screen name="Profile" component={Profile} />
-        <Stack.Screen name="SettlementList" component={SettlementList} />
         <Stack.Screen name="CashSettlement" component={CashSettlement} />
         <Stack.Screen name="SettlementHistory" component={SettlementHistory} />
         <Stack.Screen

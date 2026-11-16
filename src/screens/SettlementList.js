@@ -109,7 +109,11 @@ class SettlementList extends Component {
 
   goBack = () => {
     const nav = this.props?.navigation;
-    if (nav?.goBack) nav.goBack();
+    if (nav?.canGoBack?.()) {
+      nav.goBack();
+      return;
+    }
+    nav?.navigate?.('LMDDashboard');
   };
 
   // ------------------------
@@ -488,9 +492,13 @@ class SettlementList extends Component {
         <View style={styles.headerWrap}>
           <SafeAreaView edges={['top']} style={styles.headerSafe}>
             <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
+              {this.props?.navigation?.canGoBack?.() ? (
+                <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
+                  <Image style={styles.backImg} source={require('./assets/back.png')} />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.headerIconBtn} />
+              )}
 
               <View style={styles.headerSearch}>
                 <Image style={styles.headerSearchIco} source={require('./assets/search.png')} />

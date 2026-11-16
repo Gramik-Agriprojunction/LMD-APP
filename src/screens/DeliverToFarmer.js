@@ -96,7 +96,7 @@ class DeliverToFarmer extends Component {
             this.setState({ showSuccessModal: false });
             this.successModalY.setValue(0);
             const nav = this.props?.navigation;
-            nav?.navigate('TrackOrders');
+            nav?.navigate('MainTabs', { screen: 'TrackOrders' });
           });
         } else {
           Animated.spring(this.successModalY, { toValue: 0, friction: 8, useNativeDriver: true }).start();
@@ -536,7 +536,7 @@ class DeliverToFarmer extends Component {
 
       this._successTimer = setTimeout(() => {
         this.setState({ showSuccessModal: false });
-        this.props?.navigation?.navigate('TrackOrders');
+        this.props?.navigation?.navigate('MainTabs', { screen: 'TrackOrders' });
       }, 2500);
     });
   };
@@ -547,7 +547,7 @@ class DeliverToFarmer extends Component {
     Animated.timing(this.successModalY, { toValue: SH, duration: 250, useNativeDriver: true }).start(() => {
       this.setState({ showSuccessModal: false });
       this.successModalY.setValue(0);
-      this.props?.navigation?.navigate('TrackOrders');
+      this.props?.navigation?.navigate('MainTabs', { screen: 'TrackOrders' });
     });
   };
 

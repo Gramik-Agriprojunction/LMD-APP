@@ -2,7 +2,10 @@
 // const baseurl = 'https://lens-api.gramik.in/api/v1/';
 
 // UAT Base URL
-const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
+// const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
+
+// Local Base URL (iOS Simulator)
+const baseurl = 'http://localhost:5000/api/v1/';
 
 const strings = { 
   login: baseurl + 'auth/lmd/login',
@@ -42,7 +45,8 @@ const strings = {
   // TODO: wire when LMD create/list farmer APIs are ready
   createFarmer : baseurl + 'lmd/create-farmer',
   updateFarmer : baseurl + 'lmd/update-farmer',
-  lmdFarmers : baseurl + 'lmd/farmers',
+  lmdFarmers : baseurl + 'lmd/farmer-list',
+  lmdViewPartners : baseurl + 'lmd/view/partners',
   cropList : baseurl + 'crop',
   exotelCall : baseurl + 'lmd/exotel/call',
   locationUpdate : baseurl + 'user/location-update',

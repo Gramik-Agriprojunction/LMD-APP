@@ -233,12 +233,12 @@ appendArrayOfObjects = (fd, key, arr) => {
 
 goToDashboardAndReset = () => {
   const nav = this.props?.navigation;
-  if (!nav?.dispatch) return nav?.navigate?.('LMDDashboard');
+  if (!nav?.dispatch) return nav?.navigate?.('MainTabs');
 
   nav.dispatch(
     StackActions.reset({
       index: 0,
-      actions: [NavigationActions.navigate({ routeName: 'LMDDashboard' })],
+      actions: [NavigationActions.navigate({ routeName: 'MainTabs' })],
     })
   );
 };

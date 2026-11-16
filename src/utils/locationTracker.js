@@ -1,6 +1,7 @@
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import constants from './constants';
+import { isSuperAdmin } from './lmdViewMode';
 import { ensureLocationPermission, getCurrentCoordsWithPermission } from './locationHelper';
 
 const INTERVAL_MS = 5 * 60 * 1000;
@@ -25,6 +26,7 @@ const hasToken = async () => {
 
 export const postLocationUpdate = async () => {
   if (_inflight) return;
+  if (isSuperAdmin()) return;
   if (!(await hasToken())) return;
 
   _inflight = true;

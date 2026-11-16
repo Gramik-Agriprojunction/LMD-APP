@@ -561,9 +561,13 @@ class TrackOrders extends Component {
         <View style={s.hdr}>
           <SafeAreaView edges={['top']}>
             <View style={s.hdrRow}>
-              <TouchableOpacity onPress={() => this.props.navigation.goBack()} style={s.hdrBtn} activeOpacity={0.7} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
-                <Image source={require('./assets/back.png')} style={s.hdrIco} />
-              </TouchableOpacity>
+              {this.props.navigation?.canGoBack?.() ? (
+                <TouchableOpacity onPress={() => this.props.navigation.goBack()} style={s.hdrBtn} activeOpacity={0.7} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
+                  <Image source={require('./assets/back.png')} style={s.hdrIco} />
+                </TouchableOpacity>
+              ) : (
+                <View style={s.hdrBtn} />
+              )}
               <View style={s.searchBar}>
                 <Image source={require('./assets/search.png')} style={s.searchBarIco} />
                 <TextInput

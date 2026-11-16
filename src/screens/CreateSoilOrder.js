@@ -709,7 +709,7 @@ class CreateSoilOrder extends Component {
     this.props.navigation.reset({
       index: 1,
       routes: [
-        { name: 'LMDDashboard' },
+        { name: 'MainTabs' },
         { name: 'SoilOrderDetail', params: { orderId, order, fromCreate: fromAuto } },
       ],
     });
@@ -718,7 +718,7 @@ class CreateSoilOrder extends Component {
   goToDashboard = () => {
     if (this._payNavTimer) clearTimeout(this._payNavTimer);
     this.setState({ paymentResult: null });
-    this.props.navigation.reset({ index: 0, routes: [{ name: 'LMDDashboard' }] });
+    this.props.navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
   };
 
   createSoilOrder = async (paymentId = '') => {

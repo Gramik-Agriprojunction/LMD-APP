@@ -18,6 +18,7 @@ function buildCompatNavigation(navigation, route) {
     push: (routeName, params) => navigation.push?.(routeName, params),
     replace: (routeName, params) => navigation.replace?.(routeName, params),
     goBack: () => navigation.goBack(),
+    canGoBack: () => (typeof navigation.canGoBack === 'function' ? navigation.canGoBack() : false),
     getParam: (key, def) => {
       const v = route?.params?.[key];
       return v === undefined ? def : v;

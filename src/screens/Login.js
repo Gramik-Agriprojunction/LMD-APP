@@ -9,10 +9,10 @@ import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Co
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import OTPInputView from '@twotalltotems/react-native-otp-input';
 import { getFcmToken, refreshFcmToken } from '../utils/pushNotifications';
 import { startBackgroundLocationTracker } from '../utils/locationTracker';
 import { warmUpStatusLocation, requestStatusLocationAccess } from '../utils/locationHelper';
+import { clearViewPartner, isSuperAdmin } from '../utils/lmdViewMode';
 
 const BG = '#5D3FD3';
 const ACCENT = '#FF8A3D';
@@ -20,7 +20,12 @@ const ACCENT_DARK = '#E26A1A';
 
 const DashboardResetAction = StackActions.reset({
   index: 0,
-  actions: [NavigationActions.navigate({ routeName: 'LMDDashboard' })],
+  actions: [NavigationActions.navigate({ routeName: 'MainTabs' })],
+});
+
+const ChoosePartnerResetAction = StackActions.reset({
+  index: 0,
+  actions: [NavigationActions.navigate({ routeName: 'ChooseLmdPartner' })],
 });
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -102,6 +107,8 @@ class Login extends React.Component {
     this.otpHaloOpacity = new Animated.Value(0.4);
     this.otpVerifyFade = new Animated.Value(0);
     this.otpVerifyY = new Animated.Value(20);
+
+    this.otpInputRef = React.createRef();
   }
 
   componentWillUnmount() {
@@ -254,6 +261,8 @@ class Login extends React.Component {
     this.startShieldPulse();
     this.startHaloPulse();
     this.startResendCountdown();
+
+    setTimeout(() => this.otpInputRef.current?.focus(), 650);
   };
 
   startShieldPulse = () => {
@@ -281,6 +290,8 @@ class Login extends React.Component {
   startResendCountdown = () => {
     if (this._resendTimer) clearInterval(this._resendTimer);
     this.setState({ resendIn: 30 });
+    this.otpInputRef = React.createRef();
+
     this._resendTimer = setInterval(() => {
       this.setState((p) => {
         if (p.resendIn <= 1) {
@@ -294,7 +305,9 @@ class Login extends React.Component {
 
   handleResendOtp = () => {
     if (this.state.resendIn > 0 || this.state.isLoading) return;
-    this.setState({ otp: '' });
+    this.setState({ otp: '' }, () => {
+      this.otpInputRef.current?.focus();
+    });
     this.loginApi(true);
     this.startResendCountdown();
   };
@@ -367,10 +380,14 @@ class Login extends React.Component {
         console.log('Verify OTP API response== ', json);
         try { if (json?.message) Toast.show(String(json.message), Toast.SHORT); } catch (e) {}
         if (json.status) {
-          this.setState({ show_otp: false }, () => {
+          this.setState({ show_otp: false }, async () => {
             global.token = json.token; global.userType = json.user_type;
+            await clearViewPartner();
             this._storeData(json);
-            if (this.state.is_registered) {
+            if (isSuperAdmin()) {
+              Keyboard.dismiss();
+              this.props.navigation.dispatch(ChoosePartnerResetAction);
+            } else if (this.state.is_registered) {
               Keyboard.dismiss();
               this.props.navigation.dispatch(DashboardResetAction);
               warmUpStatusLocation();
@@ -394,6 +411,13 @@ class Login extends React.Component {
 
   onOtpFilled = (code) => {
     this.setState({ otp: code }, () => this.verifyOtp());
+  };
+
+  onOtpChangeText = (text) => {
+    const cleaned = String(text).replace(/\D/g, '').slice(0, 5);
+    this.setState({ otp: cleaned }, () => {
+      if (cleaned.length === 5) this.onOtpFilled(cleaned);
+    });
   };
 
   goBackToMobile = () => {
@@ -600,17 +624,41 @@ class Login extends React.Component {
           </View>
         </Animated.View>
 
-        {/* OTP cells */}
+        {/* OTP — single hidden field + display cells (RN 0.85 / iOS reliable) */}
         <Animated.View style={{ opacity: this.otpFormFade, transform: [{ translateY: this.otpFormY }] }}>
-          <OTPInputView
-            style={st.otpView}
-            pinCount={5}
-            autoFocusOnLoad={true}
-            codeInputFieldStyle={st.otpField}
-            codeInputHighlightStyle={st.otpFieldActive}
-            onCodeChanged={(code) => this.setState({ otp: code })}
-            onCodeFilled={this.onOtpFilled}
-          />
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => this.otpInputRef.current?.focus()}
+            style={st.otpTapWrap}
+          >
+            <View style={st.otpRow}>
+              {Array.from({ length: 5 }, (_, index) => {
+                const value = otp[index] || '';
+                const filled = otp.length > index;
+                const active = otp.length === index;
+                return (
+                  <View
+                    key={`otp-${index}`}
+                    style={[st.otpField, filled && st.otpFieldFilled, active && st.otpFieldActive]}
+                  >
+                    <Text style={st.otpDigit}>{value}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <TextInput
+              ref={this.otpInputRef}
+              value={otp}
+              onChangeText={this.onOtpChangeText}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
+              maxLength={5}
+              caretHidden
+              selectionColor="transparent"
+              style={st.hiddenOtpInput}
+            />
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Verify CTA */}
@@ -700,12 +748,20 @@ class Login extends React.Component {
         <StatusBar backgroundColor={BG} translucent={false} barStyle="light-content" />
         <SafeAreaView edges={['top']} style={st.safe}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <ScrollView contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <TouchableOpacity activeOpacity={1} onPress={Keyboard.dismiss} style={st.inner}>
-                {!show_otp && !show_name && this.renderLogin()}
-                {show_otp && this.renderOtp()}
-                {show_name && this.renderName()}
-              </TouchableOpacity>
+            <ScrollView contentContainerStyle={st.scroll} keyboardShouldPersistTaps="always" showsVerticalScrollIndicator={false}>
+              <View style={st.inner}>
+                {!show_otp && !show_name ? (
+                  <TouchableOpacity activeOpacity={1} onPress={Keyboard.dismiss}>
+                    {this.renderLogin()}
+                  </TouchableOpacity>
+                ) : null}
+                {show_otp ? this.renderOtp() : null}
+                {show_name ? (
+                  <TouchableOpacity activeOpacity={1} onPress={Keyboard.dismiss}>
+                    {this.renderName()}
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -871,9 +927,13 @@ const st = StyleSheet.create({
   btnText: { fontSize: 16, fontWeight: '900', color: BG, letterSpacing: 0.5 },
 
   // OTP
-  otpView: { width: '100%', height: 72, marginBottom: 20 },
-  otpField: { width: 56, height: 64, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', color: '#FFF', fontSize: 26, fontWeight: '800' },
+  otpTapWrap: { width: '100%', marginBottom: 20 },
+  otpRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', height: 64 },
+  otpField: { width: 56, height: 64, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  otpFieldFilled: { backgroundColor: 'rgba(255,255,255,0.12)' },
   otpFieldActive: { borderColor: '#FFF', borderWidth: 2.5, backgroundColor: 'rgba(255,255,255,0.16)' },
+  otpDigit: { color: '#FFF', fontSize: 26, fontWeight: '800' },
+  hiddenOtpInput: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', opacity: 0.01, color: 'transparent' },
 
   verifyingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   verifyingText: { color: '#FFF', fontSize: 13, fontWeight: '600', marginLeft: 8 },

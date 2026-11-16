@@ -74,8 +74,15 @@ export const normalizeFarmerRecord = (raw) => {
     (sum, key) => sum + Math.max(0, Number(cattle[key]) || 0),
     0,
   );
+  const profileCompleted =
+    raw.profileCompleted === true ||
+    raw.profile_completed === true ||
+    raw.verified === true;
+
   return {
     ...raw,
+    profileCompleted,
+    verified: profileCompleted,
     lands,
     farmer_lands: raw.farmer_lands || plotsForApi(lands),
     crops: Array.isArray(raw.crops) ? raw.crops : [],
@@ -194,16 +201,73 @@ export const farmerDisplayAddress = (f) => {
 
 export const farmerId = (f) => f?.id || f?.localId || f?.farmer_id || f?.user_id;
 
-export const getAddedFarmers = async () => {
+export const fetchLmdFarmerList = async ({
+  tab = 'all',
+  search = '',
+  page = 1,
+  limit = 100,
+} = {}) => {
+  const qs = new URLSearchParams();
+  qs.set('page', String(page));
+  qs.set('limit', String(Math.min(100, Math.max(1, limit))));
+  if (String(search || '').trim()) qs.set('search', String(search).trim());
+  if (tab === 'verified') qs.set('tab', 'verified');
+
+  const res = await fetch(`${constants.lmdFarmers}?${qs.toString()}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = json?.message || json?.msg || `Request failed (${res.status})`;
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
+  }
+
+  const payload = json?.data ?? json?.response?.data ?? json ?? {};
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : unwrapFarmerList(json);
+
+  return {
+    farmers: rows.map(normalizeFarmerRecord),
+    total: Number(payload?.total) || rows.length,
+    allFarmerCount: Number(payload?.allFarmerCount) || rows.length,
+    verifiedFarmerCount: Number(payload?.verifiedFarmerCount) || 0,
+    tab: payload?.tab || tab,
+  };
+};
+
+export const getAddedFarmers = async (options) => {
   const local = (await readAll()).map(normalizeFarmerRecord);
   try {
-    const res = await fetch(constants.lmdFarmers, {
+    if (options && typeof options === 'object') {
+      const result = await fetchLmdFarmerList(options);
+      if (result.farmers.length && (options.tab || 'all') === 'all') {
+        const pending = local.filter((row) => row?.pendingSync);
+        const byKey = new Map();
+        result.farmers.forEach((row) => {
+          const key = String(farmerId(row) || farmerDisplayPhone(row) || '');
+          if (key) byKey.set(key, row);
+        });
+        pending.forEach((row) => {
+          const key = String(farmerId(row) || farmerDisplayPhone(row) || '');
+          if (key && !byKey.has(key)) byKey.set(key, row);
+        });
+        await writeAll(Array.from(byKey.values()));
+      }
+      return result;
+    }
+
+    const res = await fetch(`${constants.lmdFarmers}?page=1&limit=100`, {
       method: 'GET',
       headers: authHeaders(),
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) return local;
-    const remote = unwrapFarmerList(json).map(normalizeFarmerRecord);
+    if (!res.ok) return { farmers: local, allFarmerCount: local.length, verifiedFarmerCount: 0, total: local.length };
+    const payload = json?.data ?? json ?? {};
+    const remote = (Array.isArray(payload?.data) ? payload.data : unwrapFarmerList(json)).map(normalizeFarmerRecord);
     const pending = local.filter((row) => row?.pendingSync);
     const byKey = new Map();
     remote.forEach((row) => {
@@ -216,9 +280,19 @@ export const getAddedFarmers = async () => {
     });
     const merged = byKey.size ? Array.from(byKey.values()) : (remote.length ? remote : local);
     await writeAll(merged);
-    return merged;
+    return {
+      farmers: merged,
+      total: merged.length,
+      allFarmerCount: Number(payload?.allFarmerCount) || merged.length,
+      verifiedFarmerCount: Number(payload?.verifiedFarmerCount) || 0,
+    };
   } catch (e) {
-    return local;
+    return {
+      farmers: local,
+      total: local.length,
+      allFarmerCount: local.length,
+      verifiedFarmerCount: local.filter((f) => f?.profileCompleted).length,
+    };
   }
 };
 

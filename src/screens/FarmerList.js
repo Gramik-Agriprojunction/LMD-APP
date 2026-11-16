@@ -26,15 +26,29 @@ import {
 } from '../utils/addedFarmers';
 import { fetchFreshSoilOrderPincode, getCachedCoordsForApi, lookupPincodeFromCoords, prefetchSoilOrderPincode } from '../utils/locationHelper';
 
-const cropNames = (f) => {
-  const list = [...(f?.crops || []), ...(f?.annualCrops || [])];
-  const fromCrops = list.map((c) => c?.name || c?.cropName).filter(Boolean);
-  if (fromCrops.length) return fromCrops.slice(0, 3);
-  return [...(f?.farmer_lands || f?.lands || [])]
-    .map((land) => land?.cropName)
-    .filter(Boolean)
-    .slice(0, 3);
+const formatCropChip = (c) => {
+  if (!c || typeof c !== 'object') return String(c || '').trim();
+  const name = c?.cropName || c?.name || c?.crop || '';
+  const variety = c?.variety || '';
+  const area = c?.sowingArea != null && c.sowingArea !== '' ? `${c.sowingArea} ac` : '';
+  return [name, variety, area].filter(Boolean).join(' · ');
 };
+
+const cropChips = (f) => {
+  const fromCrops = (f?.crops || [])
+    .filter((c) => c?.isCurrent !== false)
+    .map(formatCropChip)
+    .filter(Boolean);
+  if (fromCrops.length) return fromCrops.slice(0, 3);
+  const list = [...(f?.annualCrops || []), ...(f?.farmer_lands || f?.lands || [])];
+  const fallback = list
+    .map((c) => c?.name || c?.cropName || c?.crop || formatCropChip(c))
+    .filter(Boolean);
+  return fallback.slice(0, 3);
+};
+
+const isFarmerVerified = (f) =>
+  f?.profileCompleted === true || f?.verified === true;
 
 class FarmerList extends Component {
   constructor(props) {
@@ -42,8 +56,13 @@ class FarmerList extends Component {
     this.state = {
       search: '',
       farmers: [],
+      tab: 'all',
+      allFarmerCount: 0,
+      verifiedFarmerCount: 0,
+      loading: false,
     };
     this._unsub = null;
+    this._searchTimer = null;
   }
 
   componentDidMount() {
@@ -59,11 +78,35 @@ class FarmerList extends Component {
 
   componentWillUnmount() {
     this._unsub?.();
+    if (this._searchTimer) clearTimeout(this._searchTimer);
   }
 
   loadFarmers = async () => {
-    const farmers = await getAddedFarmers();
-    this.setState({ farmers });
+    const { tab, search } = this.state;
+    this.setState({ loading: true });
+    try {
+      const result = await getAddedFarmers({ tab, search, page: 1, limit: 100 });
+      const farmers = Array.isArray(result) ? result : (result?.farmers || []);
+      this.setState({
+        farmers,
+        allFarmerCount: result?.allFarmerCount ?? farmers.length,
+        verifiedFarmerCount: result?.verifiedFarmerCount ?? farmers.filter(isFarmerVerified).length,
+        loading: false,
+      });
+    } catch (e) {
+      this.setState({ loading: false });
+    }
+  };
+
+  setTab = (tab) => {
+    if (tab === this.state.tab) return;
+    this.setState({ tab }, () => this.loadFarmers());
+  };
+
+  onSearchChange = (text) => {
+    this.setState({ search: text });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.loadFarmers(), 320);
   };
 
   goBack = () => this.props?.navigation?.goBack?.();
@@ -74,23 +117,14 @@ class FarmerList extends Component {
     this.props?.navigation?.navigate('AddFarmer', { farmer, mode: 'edit' });
   };
 
-  filtered = () => {
-    const q = String(this.state.search || '').trim().toLowerCase();
-    const list = this.state.farmers || [];
-    if (!q) return list;
-    return list.filter((f) => {
-      const name = farmerDisplayName(f).toLowerCase();
-      const phone = farmerDisplayPhone(f);
-      const addr = farmerDisplayAddress(f).toLowerCase();
-      return name.includes(q) || phone.includes(q) || addr.includes(q);
-    });
-  };
-
   renderItem = ({ item, index }) => {
     const name = farmerDisplayName(item);
     const phone = farmerDisplayPhone(item);
     const addr = farmerDisplayAddress(item);
-    const crops = cropNames(item);
+    const crops = cropChips(item);
+    const verified = isFarmerVerified(item);
+    const totalArea =
+      item?.totalArea ?? item?.land?.area ?? item?.land?.sowingArea ?? '';
     const cattle = item?.cattleCount || {};
     const cattleTotal = ['cow', 'buffalo', 'goat', 'other'].reduce(
       (sum, key) => sum + Math.max(0, Number(cattle[key]) || 0),
@@ -105,8 +139,9 @@ class FarmerList extends Component {
         useNativeDriver
       >
         <Pressable
-          onPress={() => this.goEdit(item)}
-          style={({ pressed }) => [st.card, pressed && st.cardPressed]}
+          onPress={verified ? undefined : () => this.goEdit(item)}
+          disabled={verified}
+          style={({ pressed }) => [st.card, !verified && pressed && st.cardPressed]}
         >
           <View style={st.cardTop}>
             <View style={st.avatar}>
@@ -115,11 +150,19 @@ class FarmerList extends Component {
             <View style={st.cardContent}>
               <View style={st.topRow}>
                 <Text style={st.name} numberOfLines={1}>{name}</Text>
-                <View style={st.editPill}>
-                  <MaterialCommunityIcons name="pencil-outline" size={11} color={S.P} />
-                  <Text style={st.editTxt}>Edit</Text>
-                </View>
+                {!verified ? (
+                  <View style={st.editPill}>
+                    <MaterialCommunityIcons name="pencil-outline" size={11} color={S.P} />
+                    <Text style={st.editTxt}>Edit</Text>
+                  </View>
+                ) : null}
               </View>
+              {verified ? (
+                <View style={st.verifiedBadge}>
+                  <MaterialCommunityIcons name="check-circle" size={12} color="#FFF" />
+                  <Text style={st.verifiedTxt}>Verified</Text>
+                </View>
+              ) : null}
               {!!phone && (
                 <View style={st.phoneRow}>
                   <MaterialCommunityIcons name="phone" size={11} color={S.P} />
@@ -136,12 +179,12 @@ class FarmerList extends Component {
             </View>
           )}
 
-          {(crops.length > 0 || cattleTotal > 0 || item?.totalArea) ? (
+          {(crops.length > 0 || cattleTotal > 0 || totalArea) ? (
             <View style={st.metaRow}>
-              {item?.totalArea ? (
+              {totalArea ? (
                 <View style={st.metaChip}>
                   <MaterialCommunityIcons name="arrow-expand-all" size={11} color="#087A4D" />
-                  <Text style={st.metaTxt}>{item.totalArea} acres</Text>
+                  <Text style={st.metaTxt}>{totalArea} acres</Text>
                 </View>
               ) : null}
               {cattleTotal > 0 ? (
@@ -177,8 +220,14 @@ class FarmerList extends Component {
   );
 
   render() {
-    const { search } = this.state;
-    const farmers = this.filtered();
+    const {
+      search,
+      farmers,
+      tab,
+      allFarmerCount,
+      verifiedFarmerCount,
+      loading,
+    } = this.state;
 
     return (
       <View style={st.root}>
@@ -202,23 +251,40 @@ class FarmerList extends Component {
               <TextInput
                 style={st.searchIn}
                 value={search}
-                onChangeText={(text) => this.setState({ search: text })}
+                onChangeText={this.onSearchChange}
                 placeholder="Naam ya mobile search karein..."
                 placeholderTextColor="#94A3B8"
                 returnKeyType="search"
                 autoCorrect={false}
               />
               {!!search && (
-                <TouchableOpacity onPress={() => this.setState({ search: '' })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity
+                  onPress={() => this.setState({ search: '' }, () => this.loadFarmers())}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
                   <MaterialCommunityIcons name="close-circle" size={18} color="#CBD5E1" />
                 </TouchableOpacity>
               )}
             </View>
-            {farmers.length > 0 && (
-              <View style={st.countPill}>
-                <Text style={st.countTxt}>{farmers.length} farmers</Text>
-              </View>
-            )}
+          </View>
+
+          <View style={st.tabRow}>
+            <Pressable
+              onPress={() => this.setTab('all')}
+              style={[st.tabBtn, tab === 'all' ? st.tabBtnAllOn : st.tabBtnOff]}
+            >
+              <Text style={[st.tabLbl, tab === 'all' ? st.tabLblAllOn : st.tabLblOff]}>
+                All farmers ({allFarmerCount})
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => this.setTab('verified')}
+              style={[st.tabBtn, tab === 'verified' ? st.tabBtnVerifiedOn : st.tabBtnOff]}
+            >
+              <Text style={[st.tabLbl, tab === 'verified' ? st.tabLblVerifiedOn : st.tabLblOff]}>
+                Verified ({verifiedFarmerCount})
+              </Text>
+            </Pressable>
           </View>
 
           <FlatList
@@ -229,6 +295,8 @@ class FarmerList extends Component {
             contentContainerStyle={st.list}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            refreshing={loading}
+            onRefresh={this.loadFarmers}
           />
 
           {this.state.farmers.length > 0 ? (
@@ -275,11 +343,43 @@ const st = StyleSheet.create({
   searchWrap: {
     paddingHorizontal: 16,
     paddingTop: 18,
-    paddingBottom: 8,
+    paddingBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  tabBtn: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    borderWidth: 1,
+  },
+  tabBtnOff: {
+    backgroundColor: '#FFF',
+    borderColor: '#E2E8F0',
+  },
+  tabBtnAllOn: {
+    backgroundColor: '#FFF',
+    borderColor: S.P,
+    borderWidth: 1.5,
+  },
+  tabBtnVerifiedOn: {
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
+  },
+  tabLbl: { fontSize: 12, fontWeight: '700' },
+  tabLblOff: { color: '#64748B' },
+  tabLblAllOn: { color: S.P_DARK },
+  tabLblVerifiedOn: { color: '#FFF' },
   searchBox: {
     flex: 1,
     flexDirection: 'row',
@@ -294,15 +394,6 @@ const st = StyleSheet.create({
     ...softShadow,
   },
   searchIn: { flex: 1, fontSize: 14, color: S.TXT, paddingVertical: 10 },
-  countPill: {
-    backgroundColor: S.P_TINT,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: S.P_GLOW,
-  },
-  countTxt: { fontSize: 11, fontWeight: '700', color: S.P_DARK },
   list: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 100, flexGrow: 1 },
   card: {
     backgroundColor: '#FFF',
@@ -342,6 +433,18 @@ const st = StyleSheet.create({
     borderRadius: 12,
   },
   editTxt: { fontSize: 10, fontWeight: '700', color: S.P },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 4,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  verifiedTxt: { fontSize: 10, fontWeight: '700', color: '#FFF' },
   phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   phoneTxt: { fontSize: 11, fontWeight: '600', color: S.P_DARK },
   addrRow: {

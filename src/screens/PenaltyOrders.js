@@ -354,7 +354,7 @@ class PenaltyOrders extends Component {
             {isPendingSettlement && (
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => this.props.navigation.navigate('SettlementList')}
+                onPress={() => this.props.navigation.navigate('MainTabs', { screen: 'SettlementList' })}
                 style={styles.settleBtn}
               >
                 <View style={styles.settleBtnBadge}>

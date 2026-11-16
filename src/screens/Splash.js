@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { safeBottomEdges } from '../utils/safeAreaInsets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withV4Navigation } from '../utils/v4Compat';
+import { loadViewPartner, needsPartnerSelection } from '../utils/lmdViewMode';
 
 const P = '#5D3FD3';
 const { width, height } = Dimensions.get('window');
@@ -102,9 +103,10 @@ class Splash extends React.Component {
     global.token = token;
     global.userType = userType;
     global.language = language;
+    await loadViewPartner();
     setTimeout(() => {
       if (token != null && token != '' && token != undefined) {
-        this.props.navigation.replace('LMDDashboard');
+        this.props.navigation.replace(needsPartnerSelection() ? 'ChooseLmdPartner' : 'MainTabs');
       } else {
         this.props.navigation.replace('Login');
       }
