@@ -1,29 +1,17 @@
 /**
- * ScreenHeader — single, app-wide header used on every screen with a back
- * button. Guarantees the back chip and title sit at the exact same coordinates
- * on every screen so navigation feels stable.
+ * ScreenHeader — app-wide header matching Delivery Jaankari style.
  *
  *   <ScreenHeader bg="#5D3FD3" title="Notifications" onBack={() => nav.goBack()} />
- *   <ScreenHeader bg="#9333EA" kicker="Action Required" title="Reject Delivery" onBack={…} />
- *   <ScreenHeader bg="#5D3FD3" onBack={…}>
- *     <SearchBox … />            // custom center slot
- *   </ScreenHeader>
- *   <ScreenHeader bg="#5D3FD3" title="Cash Settlement" onBack={…} right={<BellButton/>} />
- *
- * Layout invariants:
- *   - `SafeAreaView edges={['top']}` consumes the status-bar height
- *   - Header row: height 56, paddingHorizontal 12
- *   - Back chip: 40 × 40 round, marginLeft 4, tinted from the bg
- *   - Title slot: flex 1 centered horizontally
- *   - Right slot: 44px mirror of left (40 + 4 inset), content aligned to inner edge
+ *   <ScreenHeader bg="#9333EA" kicker="Action Zaroori" title="Reject Delivery" onBack={…} />
+ *   <ScreenHeader bg="#5D3FD3" onBack={…} below={<SearchBox … />} />
+ *   <ScreenHeader bg="#5D3FD3" title="Cash" onBack={…} right={<Bell />} />
  */
 import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const SIDE = 38;
 const BACK_ICON = require('../screens/assets/back.png');
-const SIDE_INSET = 4;
-const SIDE_SIZE = 40;
 
 const isLightHex = (hex) => {
   if (typeof hex !== 'string') return false;
@@ -32,7 +20,6 @@ const isLightHex = (hex) => {
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
-  // perceived luminance
   return (0.299 * r + 0.587 * g + 0.114 * b) > 186;
 };
 
@@ -43,71 +30,129 @@ export default function ScreenHeader({
   onBack,
   right,
   children,
+  below,
   iconChipBg,
   iconTint,
   titleColor,
   kickerColor,
 }) {
   const light = isLightHex(bg);
-  const chipBg = iconChipBg || (light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.16)');
+  const chipBg = iconChipBg || (light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.20)');
   const tint = iconTint || (light ? '#0F172A' : '#FFF');
   const tColor = titleColor || (light ? '#0F172A' : '#FFF');
-  const kColor = kickerColor || (light ? 'rgba(15,23,42,0.6)' : 'rgba(255,255,255,0.65)');
+  const kColor = kickerColor || (light ? 'rgba(15,23,42,0.6)' : 'rgba(255,255,255,0.70)');
 
   return (
-    <View style={{ backgroundColor: bg }}>
-      <SafeAreaView edges={['top']} style={{ backgroundColor: bg }}>
+    <View style={[styles.sheet, { backgroundColor: bg }, below ? styles.sheetWithBelow : null]}>
+      {!light ? (
+        <>
+          <View style={styles.blobA} />
+          <View style={styles.blobB} />
+        </>
+      ) : null}
+
+      <SafeAreaView edges={['top']}>
         <View style={styles.row}>
-          <TouchableOpacity
-            onPress={onBack}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            style={[styles.chip, { backgroundColor: chipBg }]}
-          >
-            <Image source={BACK_ICON} style={[styles.ico, { tintColor: tint }]} />
-          </TouchableOpacity>
+          {onBack ? (
+            <TouchableOpacity
+              onPress={onBack}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={[styles.chip, { backgroundColor: chipBg }]}
+            >
+              <Image source={BACK_ICON} style={[styles.backIco, { tintColor: tint }]} />
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.chip, { backgroundColor: 'transparent' }]} />
+          )}
 
           <View style={[styles.center, children && styles.centerFill]}>
             {children ? (
               children
             ) : (
               <>
-                {!!kicker && <Text style={[styles.kicker, { color: kColor }]} numberOfLines={1}>{kicker}</Text>}
-                {!!title && <Text style={[styles.title, { color: tColor, marginTop: kicker ? 1 : 0 }]} numberOfLines={1}>{title}</Text>}
+                {!!kicker && (
+                  <Text style={[styles.kicker, { color: kColor }]} numberOfLines={1}>
+                    {kicker}
+                  </Text>
+                )}
+                {!!title && (
+                  <Text
+                    style={[styles.title, { color: tColor, marginTop: kicker ? 1 : 0 }]}
+                    numberOfLines={1}
+                  >
+                    {title}
+                  </Text>
+                )}
               </>
             )}
           </View>
 
           <View style={styles.sideSlot}>
-            {right || <View style={styles.sidePlaceholder} />}
+            {right || <View style={[styles.chip, { backgroundColor: 'transparent' }]} />}
           </View>
         </View>
+
+        {below ? <View style={styles.below}>{below}</View> : null}
       </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
+  sheet: {
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    overflow: 'hidden',
+    paddingBottom: 10,
+    elevation: 4,
+  },
+  sheetWithBelow: { paddingBottom: 16 },
+  blobA: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    right: -50,
+    top: -60,
+  },
+  blobB: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    left: -40,
+    bottom: -50,
+  },
+  row: {
+    height: 52,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   chip: {
-    width: SIDE_SIZE,
-    height: SIDE_SIZE,
-    borderRadius: SIDE_SIZE / 2,
+    width: SIDE,
+    height: SIDE,
+    borderRadius: SIDE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: SIDE_INSET,
   },
-  ico: { width: 17, height: 17, resizeMode: 'contain' },
+  backIco: { width: 18, height: 18, resizeMode: 'contain' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   centerFill: { alignItems: 'stretch' },
-  kicker: { fontSize: 10, fontWeight: '600', letterSpacing: 1 },
-  title: { fontSize: 14.5, fontWeight: '700', letterSpacing: 0.2 },
+  kicker: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+  title: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
   sideSlot: {
-    width: SIDE_SIZE + SIDE_INSET,
-    height: SIDE_SIZE,
-    paddingRight: SIDE_INSET,
+    width: SIDE,
+    height: SIDE,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
-  sidePlaceholder: { width: SIDE_SIZE, height: SIDE_SIZE },
+  below: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+  },
 });

@@ -21,6 +21,7 @@ import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import { getStatus, STATUS } from '../utils/statusColors';
 import BottomSheet from '../components/BottomSheet';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
@@ -332,8 +333,8 @@ class RejectDelivery extends Component {
 
     return (
       <View style={s.root}>
-        <StatusBar barStyle="light-content" backgroundColor={theme.bg} />
-        <ScreenHeader bg={theme.bg} kicker="Action Zaroori" title="Delivery Reject Karein" onBack={this.goBack} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.brand} />
+        <ScreenHeader bg={HEADER.brand} kicker="Action Zaroori" title="Delivery Reject Karein" onBack={this.goBack} />
 
         <ScrollView
           style={{ flex: 1 }}

@@ -1,34 +1,73 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Easing } from 'react-native';
+import React from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { STATUS, STATUS_SEQUENCE } from '../utils/statusColors';
 
-const { width } = Dimensions.get('window');
-const G = 6;
-// Available width inside the Live Orders white card:
-//   - screen padding (8 each side)
-//   - card padding (10 each side)
-// Minus 2 gaps, divided by 3 columns.
-const SW = Math.floor((width - 8 * 2 - 10 * 2 - G * 2) / 3);
-
-// API live-counts keys per canonical status. `picked_up` + `in_transit` both
-// roll into the PICKUP tile (In-Transit was dropped from the grid).
 const LIVE_KEY = {
-  PENDING:    'pending',
+  PENDING: 'pending',
   RESCHEDULE: 'reschedule_order',
-  PICKUP:     ['picked_up', 'in_transit'],
-  DELIVERED:  'delivered',
-  DISPUTED:   'disputed',
-  CANCELLED:  'cancelled',
-  REJECTED:   'rejected',
-  RTO:        'rto',
+  PICKUP: ['picked_up', 'in_transit'],
+  DELIVERED: 'delivered',
+  DISPUTED: 'disputed',
+  CANCELLED: 'cancelled',
+  REJECTED: 'rejected',
+  RTO: 'rto',
+};
+
+const ICONS = {
+  ALL: 'view-grid-outline',
+  PENDING: 'clock-outline',
+  REJECTED: 'close-circle-outline',
+  RESCHEDULE: 'calendar-clock',
+  PICKUP: 'truck-delivery-outline',
+  DELIVERED: 'check-decagram',
+  DISPUTED: 'alert-circle-outline',
+  CANCELLED: 'cancel',
+  RTO: 'backup-restore',
+};
+
+const LABELS = {
+  ALL: 'All',
+  PENDING: 'Pending',
+  REJECTED: 'Rejected',
+  RESCHEDULE: 'Reschedule',
+  PICKUP: 'Picked Up',
+  DELIVERED: 'Delivered',
+  DISPUTED: 'Disputed',
+  CANCELLED: 'Cancelled',
+  RTO: 'RTO',
 };
 
 const STATS = STATUS_SEQUENCE.map((k) => {
-  const s = STATUS[k];
-  return { k, l: s.label, liveKey: k === 'ALL' ? null : LIVE_KEY[k], bg: s.bg };
+  const st = STATUS[k];
+  return {
+    k,
+    l: LABELS[k] || st.label,
+    liveKey: k === 'ALL' ? null : LIVE_KEY[k],
+    bg: st.bg,
+    tint: st.tint,
+    accent: st.accent,
+    icon: ICONS[k] || 'package-variant',
+  };
 });
 
-const SUM_KEYS = ['pending', 'picked_up', 'delivered', 'in_transit', 'reschedule_order', 'disputed', 'cancelled', 'rejected', 'rto'];
+const SUM_KEYS = [
+  'pending',
+  'picked_up',
+  'delivered',
+  'in_transit',
+  'reschedule_order',
+  'disputed',
+  'cancelled',
+  'rejected',
+  'rto',
+];
 
 const toNum = (v) => {
   const n = Number(v);
@@ -37,52 +76,52 @@ const toNum = (v) => {
 
 const allCount = (live) => SUM_KEYS.reduce((sum, k) => sum + toNum(live?.[k]), 0);
 
-function StatTile({ st, value, isSel, anySel, onPress }) {
-  // Unselected tiles fade slightly so the selected one pops.
-  const opacity = useRef(new Animated.Value(isSel || !anySel ? 1 : 0.82)).current;
-
-  useEffect(() => {
-    Animated.timing(opacity, {
-      toValue: isSel || !anySel ? 1 : 0.82,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-  }, [isSel, anySel, opacity]);
-
+function StatTile({ st, value, isSel, onPress }) {
   return (
-    <Animated.View style={{ opacity, zIndex: isSel ? 2 : 1 }}>
+    <View style={s.cell}>
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={onPress}
-        style={[s.sb, { backgroundColor: st.bg }, isSel && s.sbSel]}
+        style={[
+          s.tile,
+          { backgroundColor: isSel ? st.tint : '#FFFFFF' },
+          isSel && { borderColor: st.bg },
+          !isSel && s.tileIdle,
+        ]}
       >
-        <Text style={s.sbV} numberOfLines={1}>{String(value)}</Text>
-        <Text style={s.sbL} numberOfLines={1}>{st.l}</Text>
-        {isSel && <View style={s.sbCheck}><Text style={s.sbCheckT}>✓</Text></View>}
+        <View style={[s.iconWrap, { backgroundColor: isSel ? '#FFFFFF' : st.tint }]}>
+          <MaterialCommunityIcons name={st.icon} size={15} color={st.bg} />
+        </View>
+        <View style={s.txtCol}>
+          <Text style={[s.count, isSel && { color: st.accent }]} numberOfLines={1}>
+            {Number(value).toLocaleString('en-IN')}
+          </Text>
+          <Text style={[s.label, isSel && { color: st.accent }]} numberOfLines={1}>
+            {st.l}
+          </Text>
+        </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 }
 
 export default function LiveOrdersGrid({ live, selected, onPress, showAll = true }) {
   const list = showAll ? STATS : STATS.filter((x) => x.k !== 'ALL');
-  const anySel = !!selected && list.some((st) => st.k === selected);
   return (
-    <View style={s.sg}>
+    <View style={s.grid}>
       {list.map((st) => {
-        const v = st.k === 'ALL'
-          ? allCount(live)
-          : Array.isArray(st.liveKey)
-          ? st.liveKey.reduce((sum, k) => sum + toNum(live?.[k]), 0)
-          : toNum(live?.[st.liveKey]);
-        const isSel = selected === st.k;
+        const v =
+          st.k === 'ALL'
+            ? allCount(live)
+            : Array.isArray(st.liveKey)
+              ? st.liveKey.reduce((sum, k) => sum + toNum(live?.[k]), 0)
+              : toNum(live?.[st.liveKey]);
         return (
           <StatTile
             key={st.k}
             st={st}
             value={v}
-            isSel={isSel}
-            anySel={anySel}
+            isSel={selected === st.k}
             onPress={() => onPress?.(st.k)}
           />
         );
@@ -93,62 +132,65 @@ export default function LiveOrdersGrid({ live, selected, onPress, showAll = true
 
 export { allCount };
 
+const G = 7;
+
 const s = StyleSheet.create({
-  sg: {
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    // space-between distributes any leftover pixels evenly across the row
-    // so left and right edges line up with the card padding identically.
-    justifyContent: 'space-between',
-    rowGap: G,
+    marginHorizontal: -G / 2,
   },
-  sb: {
-    width: SW,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    minHeight: 48,
-    justifyContent: 'center',
-    borderWidth: 2,
+  cell: {
+    width: '33.333%',
+    paddingHorizontal: G / 2,
+    marginBottom: G,
+  },
+  tile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    minHeight: 56,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: 'transparent',
+    gap: 7,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+      },
+      android: { elevation: 1 },
+    }),
   },
-  sbSel: {
-    borderColor: '#FFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+  tileIdle: {
+    borderColor: 'rgba(15,23,42,0.06)',
   },
-  sbV: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#FFF',
-    includeFontPadding: false,
-  },
-  sbL: {
-    fontSize: 10.5,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.95)',
-    marginTop: 2,
-    includeFontPadding: false,
-  },
-  sbCheck: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+  iconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sbCheckT: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: '#1E293B',
+  txtCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  count: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
     includeFontPadding: false,
-    lineHeight: 11,
+    letterSpacing: -0.2,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+    includeFontPadding: false,
   },
 });

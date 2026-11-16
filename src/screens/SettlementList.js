@@ -31,9 +31,11 @@ import {
   UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import OrderCard from '../components/OrderCard';
+import { HEADER } from '../theme/headerColors';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
 const P = '#5D3FD3';
@@ -110,11 +112,8 @@ class SettlementList extends Component {
 
   goBack = () => {
     const nav = this.props?.navigation;
-    if (nav?.canGoBack?.()) {
-      nav.goBack();
-      return;
-    }
-    nav?.navigate?.('LMDDashboard');
+    if (nav?.canGoBack?.()) nav.goBack();
+    else nav?.navigate?.('Home');
   };
 
   // ------------------------
@@ -417,38 +416,12 @@ class SettlementList extends Component {
   // Header inside list
   // ------------------------
   renderListHeader = () => {
-    const { counts, stats } = this.state;
+    const { counts } = this.state;
     const activeTab = this.state.activeTab;
 
     return (
       <View>
         <View style={styles.mainCard}>
-          <Text style={styles.cardTitle}>Today's Settlement</Text>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statCell}>
-              <Text style={styles.statVal}>{this.toNum(stats?.todaysOrders)}</Text>
-              <Text style={styles.statLbl}>Orders</Text>
-            </View>
-            <View style={styles.statSep} />
-            <View style={styles.statCell}>
-              <Text style={[styles.statVal, { color: THEME.orange }]}>₹{this.money(stats?.codCollected) || '0'}</Text>
-              <Text style={styles.statLbl}>COD</Text>
-            </View>
-            <View style={styles.statSep} />
-            <View style={styles.statCell}>
-              <Text style={[styles.statVal, { color: '#16A34A' }]}>₹{this.money(stats?.cashDeposited) || '0'}</Text>
-              <Text style={styles.statLbl}>Deposited</Text>
-            </View>
-            <View style={styles.statSep} />
-            <View style={styles.statCell}>
-              <Text style={[styles.statVal, { color: P }]}>₹{this.money(stats?.upiCollected) || '0'}</Text>
-              <Text style={styles.statLbl}>UPI</Text>
-            </View>
-          </View>
-
-          <View style={styles.cardDivider} />
-
           <View style={styles.tabsRow}>
             {[
               { key: 'all', label: 'All', count: counts.all },
@@ -487,37 +460,66 @@ class SettlementList extends Component {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.cash} />
 
-        {/* Header */}
-        <View style={styles.headerWrap}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <View style={styles.headerRow}>
-              {this.props?.navigation?.canGoBack?.() ? (
-                <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
-                  <Image style={styles.backImg} source={require('./assets/back.png')} />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.headerIconBtn} />
-              )}
+        {/* Modern header sheet — DeliveryDetails style */}
+        <View style={styles.hdrSheet}>
+          <View style={styles.hdrBlobA} />
+          <View style={styles.hdrBlobB} />
+          <SafeAreaView edges={['top']}>
+            <View style={styles.hdrTopRow}>
+              <TouchableOpacity
+                onPress={this.goBack}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.hdrBack}
+              >
+                <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
+              </TouchableOpacity>
+              <Text style={styles.hdrTitle}>Cash Jama</Text>
+              <View style={[styles.hdrBack, { backgroundColor: 'transparent' }]} />
+            </View>
 
-              <View style={styles.headerSearch}>
-                <Image style={styles.headerSearchIco} source={require('./assets/search.png')} />
-                <TextInput
-                  value={this.state.search}
-                  onChangeText={this.onSearchChange}
-                  placeholder="Search orders..."
-                  placeholderTextColor="rgba(255,255,255,0.45)"
-                  style={styles.headerSearchInput}
-                  returnKeyType="search"
-                  onSubmitEditing={() => this.fetchList()}
-                />
-                {this.state.search ? (
-                  <TouchableOpacity onPress={this.clearSearch} activeOpacity={0.7} style={styles.headerCrossBtn}>
-                    <Image source={require('./assets/cross.png')} style={styles.headerCrossIco} />
-                  </TouchableOpacity>
-                ) : null}
+            <View style={styles.hdrHero}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hdrHeroLbl}>AAJ KI COD</Text>
+                <Text style={styles.hdrHeroAmt}>₹ {this.money(this.state.stats?.codCollected) || '0'}</Text>
+                <View style={styles.hdrChipRow}>
+                  <View style={styles.hdrChip}>
+                    <MaterialCommunityIcons name="package-variant" size={12} color="#FFF" />
+                    <Text style={styles.hdrChipT}>{this.toNum(this.state.stats?.todaysOrders)} Orders</Text>
+                  </View>
+                  <View style={styles.hdrChip}>
+                    <MaterialCommunityIcons name="cash-check" size={12} color="#FFF" />
+                    <Text style={styles.hdrChipT}>Dep ₹{this.money(this.state.stats?.cashDeposited) || '0'}</Text>
+                  </View>
+                  <View style={styles.hdrChip}>
+                    <MaterialCommunityIcons name="qrcode" size={12} color="#FFF" />
+                    <Text style={styles.hdrChipT}>UPI ₹{this.money(this.state.stats?.upiCollected) || '0'}</Text>
+                  </View>
+                </View>
               </View>
+              <View style={styles.hdrStatus}>
+                <Text style={[styles.hdrStatusT, { color: HEADER.cash }]}>Cash</Text>
+              </View>
+            </View>
+
+            <View style={styles.hdrSearch}>
+              <MaterialCommunityIcons name="magnify" size={18} color="rgba(255,255,255,0.7)" />
+              <TextInput
+                value={this.state.search}
+                onChangeText={this.onSearchChange}
+                placeholder="Order / farmer dhoondhein..."
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                style={styles.hdrSearchInput}
+                returnKeyType="search"
+                onSubmitEditing={() => this.fetchList()}
+              />
+              {this.state.search ? (
+                <TouchableOpacity onPress={this.clearSearch} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialCommunityIcons name="close-circle" size={18} color="rgba(255,255,255,0.55)" />
+                </TouchableOpacity>
+              ) : null}
             </View>
           </SafeAreaView>
         </View>
@@ -581,46 +583,117 @@ class SettlementList extends Component {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: THEME.bg },
+  root: { flex: 1, backgroundColor: '#EBE7F5' },
 
-  headerWrap: { backgroundColor: P, paddingBottom: 8 },
-  headerSafe: { backgroundColor: P },
-  headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  headerIconBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center', justifyContent: 'center', marginLeft: 4, marginRight: 10,
+  hdrSheet: {
+    backgroundColor: HEADER.cash,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    paddingBottom: 16,
+    overflow: 'hidden',
   },
-  backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#fff' },
-  headerSearch: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 10, height: 38, paddingHorizontal: 10,
+  hdrBlobA: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    right: -50,
+    top: -60,
   },
-  headerSearchIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },
-  headerSearchInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0 },
-  headerCrossBtn: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
-  headerCrossIco: { width: 8, height: 8, resizeMode: 'contain', tintColor: '#FFF' },
+  hdrBlobB: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    left: -40,
+    bottom: -50,
+  },
+  hdrTopRow: {
+    height: 52,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hdrBack: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hdrTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  hdrHero: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 18,
+    paddingTop: 4,
+  },
+  hdrHeroLbl: { color: 'rgba(255,255,255,0.80)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  hdrHeroAmt: { color: '#FFF', fontSize: 32, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 },
+  hdrChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  hdrChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  hdrChipT: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  hdrStatus: {
+    backgroundColor: '#FFF',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  hdrStatusT: { fontSize: 12, fontWeight: '800' },
+  hdrSearch: {
+    marginTop: 14,
+    marginHorizontal: 14,
+    height: 44,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  hdrSearchInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0, fontWeight: '500' },
 
-  listContent: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 120 },
+  listContent: { paddingHorizontal: 10, paddingTop: 12, paddingBottom: 120 },
 
   mainCard: {
-    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10,
-    marginBottom: 6, borderWidth: 1, borderColor: THEME.border,
+    backgroundColor: '#F7F5FC',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E5F0',
   },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: THEME.text, marginBottom: 12 },
-  statsRow: { flexDirection: 'row', alignItems: 'center' },
-  statCell: { flex: 1, alignItems: 'center' },
-  statVal: { fontSize: 15, fontWeight: '800', color: THEME.text },
-  statLbl: { fontSize: 10, fontWeight: '500', color: THEME.subText, marginTop: 3 },
-  statSep: { width: 1, height: 28, backgroundColor: '#E2E8F0' },
-  cardDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
   tabsRow: { flexDirection: 'row' },
   tab: {
-    flex: 1, borderRadius: 8, paddingVertical: 9, marginHorizontal: 2,
-    alignItems: 'center', borderWidth: 1.5, borderColor: 'transparent',
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 9,
+    marginHorizontal: 2,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   tabT: { fontSize: 11, fontWeight: '600', color: THEME.subText },
 
-  subHint: { fontSize: 11, color: THEME.muted, marginBottom: 8, marginLeft: 4 },
+  subHint: { fontSize: 12, color: THEME.muted, marginBottom: 10, marginLeft: 4, fontWeight: '500' },
 
   rowWrap: { marginBottom: 0 },
   rowSelectedWrap: { marginBottom: 0 },
@@ -633,9 +706,21 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 12, color: THEME.muted, textAlign: 'center', paddingHorizontal: 32 },
 
   footerWrap: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    backgroundColor: '#FFF', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 13,
-    borderTopWidth: 1, borderTopColor: '#E2E8F0',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F7F5FC',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 8,
   },
   footerRow: { flexDirection: 'row', alignItems: 'center' },
   footerLeft: { width: 100, marginRight: 12 },
@@ -643,10 +728,20 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 18, fontWeight: '800', color: THEME.orange, marginTop: 2 },
   footerSel: { fontSize: 10, fontWeight: '600', color: P, marginTop: 3 },
   settleBtn: {
-    flex: 1, height: 48, borderRadius: 12, backgroundColor: '#16A34A',
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16,
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    shadowColor: '#16A34A',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   settleBtnOff: { opacity: 0.5 },
-  settleBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  settleBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
 });
 export default withV4Navigation(SettlementList);

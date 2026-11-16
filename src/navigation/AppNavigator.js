@@ -6,7 +6,7 @@ import { navigationRef, flushPendingNotificationNavigation } from '../utils/noti
 import Splash from '../screens/Splash';
 import Login from '../screens/Login';
 import Language from '../screens/Language';
-import MainTabNavigator from './MainTabNavigator';
+import MainTabs from './MainTabs';
 import OrderFilters from '../screens/OrderFilters';
 import DeliveryDetails from '../screens/DeliveryDetails';
 import RescheduleDelivery from '../screens/RescheduleDelivery';
@@ -42,37 +42,29 @@ export default function AppNavigator() {
         initialRouteName="Splash"
         screenOptions={{
           headerShown: false,
-          // 'fade' avoids the slide-transition elevation shadow that
-          // native-stack renders on Android during screen mount.
           animation: 'fade',
           animationDuration: 200,
-          contentStyle: { backgroundColor: '#5D3FD3' },
+          contentStyle: { backgroundColor: '#F4F6FB' },
         }}
       >
         <Stack.Screen name="Splash" component={Splash} />
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Language" component={Language} />
-        <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+        <Stack.Screen name="MainTabs" component={MainTabs} />
+        {/* Legacy aliases → same tab roots (deep links / old navigate calls) */}
+        <Stack.Screen name="LMDDashboard" component={MainTabs} />
         <Stack.Screen
           name="ChooseLmdPartner"
           component={ChooseLmdPartner}
-          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
+          options={{ contentStyle: { backgroundColor: '#EBE7F5' } }}
         />
-        <Stack.Screen
-          name="OrderFilters"
-          component={OrderFilters}
-          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
-        />
+        <Stack.Screen name="OrderFilters" component={OrderFilters} options={{ contentStyle: { backgroundColor: '#EBE7F5' } }} />
         <Stack.Screen name="DeliveryDetails" component={DeliveryDetails} />
         <Stack.Screen name="RescheduleDelivery" component={RescheduleDelivery} />
         <Stack.Screen name="Survey" component={Survey} />
         <Stack.Screen name="CashSettlement" component={CashSettlement} />
         <Stack.Screen name="SettlementHistory" component={SettlementHistory} />
-        <Stack.Screen
-          name="SettlementDetail"
-          component={SettlementDetail}
-          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
-        />
+        <Stack.Screen name="SettlementDetail" component={SettlementDetail} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
         <Stack.Screen name="Earnings" component={Earnings} />
         <Stack.Screen name="Notifications" component={Notifications} />
         <Stack.Screen name="OrderOtpVerify" component={OrderOtpVerify} />
@@ -82,31 +74,11 @@ export default function AppNavigator() {
         <Stack.Screen name="RejectDelivery" component={RejectDelivery} />
         <Stack.Screen name="SoilOrders" component={SoilOrders} />
         <Stack.Screen name="SoilOrderDetail" component={SoilOrderDetail} />
-        <Stack.Screen
-          name="CreateSoilOrder"
-          component={CreateSoilOrder}
-          options={{ contentStyle: { backgroundColor: '#edf1f7' } }}
-        />
-        <Stack.Screen
-          name="SelectFarmer"
-          component={SelectFarmer}
-          options={{ contentStyle: { backgroundColor: '#edf1f7' } }}
-        />
-        <Stack.Screen
-          name="FarmerList"
-          component={FarmerList}
-          options={{ contentStyle: { backgroundColor: '#5D3FD3' } }}
-        />
-        <Stack.Screen
-          name="AddFarmer"
-          component={AddFarmer}
-          options={{ contentStyle: { backgroundColor: '#E8ECF4' } }}
-        />
-        <Stack.Screen
-          name="AddLand"
-          component={AddLand}
-          options={{ contentStyle: { backgroundColor: '#5D3FD3' } }}
-        />
+        <Stack.Screen name="CreateSoilOrder" component={CreateSoilOrder} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
+        <Stack.Screen name="SelectFarmer" component={SelectFarmer} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
+        <Stack.Screen name="FarmerList" component={FarmerList} options={{ contentStyle: { backgroundColor: '#5D3FD3' } }} />
+        <Stack.Screen name="AddFarmer" component={AddFarmer} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
+        <Stack.Screen name="AddLand" component={AddLand} options={{ contentStyle: { backgroundColor: '#5D3FD3' } }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

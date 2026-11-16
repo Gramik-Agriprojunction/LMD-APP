@@ -20,13 +20,26 @@
  *   />
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Linking } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Toast from 'react-native-simple-toast';
 import { getStatus, getPriority, normalizeStatus } from '../utils/statusColors';
+import { COLORS } from '../theme/tokens';
 import moment from 'moment';
 
-const P = '#5D3FD3';
+const P = COLORS.primary;
+
+// Opens turn-by-turn directions in Google Maps (delivery-partner navigation).
+const openMaps = (addr) => {
+  const q = String(addr || '').trim();
+  if (!q || q === '-') {
+    try { Toast.show('Address available nahi hai', Toast.SHORT); } catch (_) {}
+    return;
+  }
+  Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=two-wheeler`)
+    .catch(() => { try { Toast.show('Maps nahi khul paya', Toast.SHORT); } catch (_) {} });
+};
 
 const CALL_PURPLE = require('../screens/assets/call.png');
 const CALL_ORANGE = require('../screens/assets/phone.png');
@@ -158,10 +171,63 @@ export default function OrderCard({
     if (typeof onCopyOrderId === 'function') onCopyOrderId(o.orderId);
   };
 
+  const txt = dark ? '#FFF' : '#171A2A';
+  const sub = dark ? 'rgba(255,255,255,0.72)' : '#64748B';
+  const pillBase = dark
+    ? { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }
+    : null;
+  const dropText = o.dropAddress || '-';
+  // Navigation target: until the parcel is picked up -> dark store; after pickup -> farmer drop.
+  const stKey = normalizeStatus(o.status);
+  const isPickedUp = ['PICKUP', 'DELIVERED', 'DISPUTED'].includes(stKey);
+  const storeQuery = [o.ds.name, o.ds.location || [o.ds.city, o.ds.pincode].filter(Boolean).join(', ')]
+    .filter(Boolean).join(', ');
+  const navToStore = !isPickedUp;
+  const navTarget = navToStore ? storeQuery : o.dropAddress;
+  const pickText = o.ds.location || [o.ds.city, o.ds.pincode].filter(Boolean).join(', ') || '-';
+
+  // Action buttons: call / WhatsApp / navigate — big, labelled tap targets.
+  const actionBar = (onCall || onWhatsApp || !hideRoute) ? (
+    <View style={s.actionBar}>
+      {!!onCall && (
+        <TouchableOpacity
+          onPress={() => onCall(o.farmerPhone, o.apiOrderId || o.orderId)}
+          activeOpacity={0.8}
+          style={[s.actBtn, { backgroundColor: dark ? 'rgba(255,255,255,0.14)' : '#EDE9FE' }]}
+        >
+          <MaterialCommunityIcons name="phone" size={17} color={dark ? '#FFF' : '#5D3FD3'} />
+          <Text style={[s.actTxt, { color: dark ? '#FFF' : '#4C1D95' }]}>Call</Text>
+        </TouchableOpacity>
+      )}
+      {!!onWhatsApp && (
+        <TouchableOpacity
+          onPress={() => onWhatsApp(o.farmerPhone)}
+          activeOpacity={0.8}
+          style={[s.actBtn, { backgroundColor: dark ? 'rgba(255,255,255,0.14)' : '#DCFCE7' }]}
+        >
+          <MaterialCommunityIcons name="whatsapp" size={18} color={dark ? '#FFF' : '#15803D'} />
+          <Text style={[s.actTxt, { color: dark ? '#FFF' : '#166534' }]}>WhatsApp</Text>
+        </TouchableOpacity>
+      )}
+      {!hideRoute && (
+        <TouchableOpacity
+          onPress={() => openMaps(navTarget)}
+          activeOpacity={0.8}
+          style={[s.actBtn, { backgroundColor: dark ? 'rgba(255,255,255,0.14)' : '#DBEAFE' }]}
+        >
+          <MaterialCommunityIcons name="navigation-variant" size={17} color={dark ? '#FFF' : '#2563EB'} />
+          <Text style={[s.actTxt, { color: dark ? '#FFF' : '#1D4ED8' }]}>{navToStore ? 'To Store' : 'To Drop'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  ) : null;
+
   return (
     <Wrap {...wrapProps} style={[s.card, dark && s.cardDark, selected && s.cardSelected, style]}>
-      {/* Greyish header — order id (with copy) + status chip + farmer + call/wa */}
-      <HeaderWrap {...headerWrapProps} style={[s.top, dark && s.topDark, selected && s.topSelected]}>
+      {!dark ? <View style={[s.statusStrip, { backgroundColor: stColor.bg }]} /> : null}
+
+      {/* Header — order id + chips, farmer, amount */}
+      <HeaderWrap {...headerWrapProps} style={[s.top, selected && s.topSelected]}>
         <View style={s.head}>
           <View style={s.headLeft}>
             <TouchableOpacity
@@ -173,7 +239,12 @@ export default function OrderCard({
             >
               <Text style={[s.oid, dark && { color: '#FFF' }]}>#{o.orderId || '-'}</Text>
               {!!o.orderId && (
-                <Text style={[s.oidCopy, dark && { color: 'rgba(255,255,255,0.75)' }]}>⎘</Text>
+                <MaterialCommunityIcons
+                  name="content-copy"
+                  size={13}
+                  color={dark ? 'rgba(255,255,255,0.75)' : '#8B93A7'}
+                  style={{ marginLeft: 6 }}
+                />
               )}
             </TouchableOpacity>
           </View>
@@ -181,8 +252,8 @@ export default function OrderCard({
             {!!o.priority && (() => {
               const pri = getPriority(o.priority);
               return (
-                <View style={[chipBox, s.priChip, { backgroundColor: pri.bg }]}>
-                  <Text style={chipText}>{pri.label}</Text>
+                <View style={[chipBox, s.priChip, { backgroundColor: pri.tint }]}>
+                  <Text style={[chipText, { color: pri.accent }]}>{pri.label}</Text>
                 </View>
               );
             })()}
@@ -191,8 +262,9 @@ export default function OrderCard({
                 <Text style={[chipText, { color: markStatusMeta.accent }]}>{markStatusLabel}</Text>
               </View>
             )}
-            <View style={[chipBox, { backgroundColor: stColor.bg }]}>
-              <Text style={chipText}>{stColor.label}</Text>
+            <View style={[chipBox, { backgroundColor: stColor.tint }]}>
+              <View style={[s.chipDot, { backgroundColor: stColor.bg }]} />
+              <Text style={[chipText, { color: stColor.accent }]}>{stColor.label}</Text>
             </View>
             {extraHeaderRight}
           </View>
@@ -212,6 +284,7 @@ export default function OrderCard({
 
         {!showScheduleBanner && !!o.deliveryTimeText ? (
           <View style={[s.deliveryTimeStrip, dark && s.deliveryTimeStripDark]}>
+            <MaterialCommunityIcons name="clock-outline" size={14} color={dark ? '#86EFAC' : '#16A34A'} />
             <Text style={[s.deliveryTimeLine, dark && s.deliveryTimeLineDark]} numberOfLines={2}>
               {o.deliveryTimeText}
             </Text>
@@ -226,110 +299,93 @@ export default function OrderCard({
           )}
           <Image source={farmerImg} style={[s.avt, useFarmerNew && s.avtNew]} />
           <View style={{ flex: 1 }}>
-            <Text style={[s.name, dark && { color: '#FFF' }]} numberOfLines={1}>{o.farmerName || '-'}</Text>
+            <Text style={[s.name, { color: txt }]} numberOfLines={1}>{o.farmerName || '-'}</Text>
             {!!o.farmerPhone && (
-              <Text style={[s.phone, dark && { color: 'rgba(255,255,255,0.7)' }]}>{mask(o.farmerPhone)}</Text>
+              <Text style={[s.phone, { color: sub }]}>{mask(o.farmerPhone)}</Text>
             )}
           </View>
-          {!!onCall && (
-            <TouchableOpacity onPress={() => onCall(o.farmerPhone, o.apiOrderId || o.orderId)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={s.actBtn}>
-              <Image source={CALL_PURPLE} style={s.actIco} />
-            </TouchableOpacity>
-          )}
-          {!!onWhatsApp && (
-            <TouchableOpacity onPress={() => onWhatsApp(o.farmerPhone)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={[s.actBtn, { marginLeft: 12 }]}>
-              <Image source={require('../screens/assets/whatsapp.png')} style={s.actIco} />
-            </TouchableOpacity>
+          {!hideFooter && (
+            <Text style={[s.amt, dark && { color: '#FCD34D' }]}>₹{o.amount}</Text>
           )}
         </View>
       </HeaderWrap>
 
       <BodyWrap {...bodyWrapProps}>
-      {/* Route */}
-      {!hideRoute && (
-        <View style={[s.routeWrap, dark && s.routeWrapDark]}>
-          <View style={s.routeRow}>
-            <View style={s.routeTl}>
-              <View style={[s.dot, { backgroundColor: '#0DA60D' }]} />
-              <View style={[s.routeLine, dark && { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+        {/* Route — compact timeline, no nested boxes */}
+        {!hideRoute && (
+          <View style={[s.routeWrap, dark && s.routeWrapDark]}>
+            <View style={s.stopRow}>
+              <View style={s.rail}>
+                <View style={[s.dot, { backgroundColor: '#16A34A' }]} />
+                <View style={[s.railLine, dark && { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+              </View>
+              <View style={s.stopBody}>
+                <Text style={[s.stopLbl, { color: dark ? '#86EFAC' : '#15803D' }]}>PICKUP</Text>
+                <Text style={[s.stopTitle, { color: txt }]} numberOfLines={1}>{o.ds.name || '-'}</Text>
+                <Text style={[s.stopAddr, { color: sub }]} numberOfLines={2}>{pickText}</Text>
+              </View>
+              {o.ds.mobile && onCallStore ? (
+                <TouchableOpacity
+                  onPress={() => onCallStore(o.ds.mobile)}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  style={s.storeCall}
+                >
+                  <MaterialCommunityIcons name="phone-outline" size={16} color="#EA580C" />
+                </TouchableOpacity>
+              ) : null}
             </View>
-            <View style={s.routeBody}>
-              <Text style={[s.routeLbl, { color: '#0DA60D' }]}>PICKUP</Text>
-              <Text style={[s.routeTitle, dark && { color: '#FFF' }]}>{o.ds.name || '-'}</Text>
-              {o.ds.mobile ? <Text style={[s.routePhone, dark && { color: 'rgba(255,255,255,0.7)' }]}>{o.ds.mobile}</Text> : null}
-              <Text style={[s.routeAddr, dark && { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={2}>
-                {o.ds.location || [o.ds.city, o.ds.pincode].filter(Boolean).join(', ') || '-'}
-              </Text>
+            <View style={s.stopRow}>
+              <View style={s.rail}>
+                <View style={[s.dot, { backgroundColor: dark ? '#F87171' : '#EF4444' }]} />
+              </View>
+              <View style={[s.stopBody, { paddingBottom: 0 }]}>
+                <Text style={[s.stopLbl, { color: dark ? '#FCA5A5' : '#DC2626' }]}>DROP</Text>
+                <Text style={[s.dropTxt, { color: txt }]} numberOfLines={3}>{dropText}</Text>
+              </View>
             </View>
-            {o.ds.mobile && onCallStore ? (
-              <TouchableOpacity onPress={() => onCallStore(o.ds.mobile)} activeOpacity={0.7} style={s.dsCall}>
-                <Image source={CALL_ORANGE} style={s.dsCallIco} />
+          </View>
+        )}
+
+        {/* Footer — payment / readiness pills (+ selection checkbox) */}
+        {!hideFooter && (
+          <View style={s.foot}>
+            {showCheckbox && !checkboxInHeader && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={(e) => {
+                  try { e?.stopPropagation?.(); } catch (_) {}
+                  if (typeof onToggleSelect === 'function') onToggleSelect();
+                }}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                style={[s.checkBoxFoot, isChecked && s.checkBoxOn]}
+              >
+                {isChecked ? <Text style={s.checkTick}>✓</Text> : null}
               </TouchableOpacity>
+            )}
+            {!!o.paymentMode && (
+              <View style={[s.pill, pillBase || { backgroundColor: '#EEF2F7' }]}>
+                <Text style={[s.pillT, { color: dark ? '#FFF' : '#475569' }]}>{String(o.paymentMode).toUpperCase()}</Text>
+              </View>
+            )}
+            {!!o.paymentStatus && (
+              <View style={[s.pill, pillBase || { backgroundColor: o.paymentStatus === 'paid' ? '#DCFCE7' : '#FEF3C7' }]}>
+                <Text style={[s.pillT, { color: dark ? '#FFF' : (o.paymentStatus === 'paid' ? '#15803D' : '#B45309') }]}>
+                  {o.paymentStatus === 'paid' ? 'PAID' : 'UNPAID'}
+                </Text>
+              </View>
+            )}
+            {o.pickReady !== null && !hidePickReadyPill ? (
+              <View style={[s.pill, pillBase || { backgroundColor: o.pickReady ? '#DCFCE7' : '#FFEDD5' }]}>
+                <Text style={[s.pillT, { color: dark ? '#FFF' : (o.pickReady ? '#15803D' : '#C2410C') }]}>
+                  {o.pickReady ? (compactChips ? 'READY' : 'PICK READY') : (compactChips ? 'WAITING' : 'NOT READY')}
+                </Text>
+              </View>
             ) : null}
           </View>
-          <View style={s.routeRow}>
-            <View style={s.routeTl}>
-              <View style={[s.dot, { backgroundColor: dark ? '#F87171' : '#EF4444' }]} />
-            </View>
-            <View style={[s.routeBody, { paddingBottom: 0 }]}>
-              <Text style={[s.routeLbl, { color: dark ? '#FCA5A5' : '#EF4444' }]}>DROP</Text>
-              <Text style={[s.routeAddr, dark && { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={3}>
-                {o.dropAddress || '-'}
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
+        )}
 
-      {/* Footer */}
-      {!hideFooter && (
-        <View style={[s.foot, dark && s.footDark]}>
-          {showCheckbox && !checkboxInHeader && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={(e) => {
-                try { e?.stopPropagation?.(); } catch (_) {}
-                if (typeof onToggleSelect === 'function') onToggleSelect();
-              }}
-              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-              style={[s.checkBoxFoot, isChecked && s.checkBoxOn]}
-            >
-              {isChecked ? <Text style={s.checkTick}>✓</Text> : null}
-            </TouchableOpacity>
-          )}
-          {!!o.paymentMode && (
-            <View style={[s.pill, dark
-              ? { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }
-              : { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' }]}>
-              <Text style={[s.pillT, { color: dark ? '#FFF' : '#475569' }]}>{String(o.paymentMode).toUpperCase()}</Text>
-            </View>
-          )}
-          {!!o.paymentStatus && (
-            <View style={[s.pill, dark
-              ? { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }
-              : { backgroundColor: o.paymentStatus === 'paid' ? '#DCFCE7' : '#FEF3C7', borderWidth: 1, borderColor: o.paymentStatus === 'paid' ? '#86EFAC' : '#FCD34D' }]}>
-              <Text style={[s.pillT, { color: dark ? '#FFF' : (o.paymentStatus === 'paid' ? '#15803D' : '#B45309') }]}>
-                {o.paymentStatus === 'paid' ? 'PAID' : 'UNPAID'}
-              </Text>
-            </View>
-          )}
-          {o.pickReady !== null && !hidePickReadyPill ? (
-            <View style={[s.pill, dark
-              ? { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }
-              : {
-                backgroundColor: o.pickReady ? '#DCFCE7' : '#FFEDD5',
-                borderWidth: 1,
-                borderColor: o.pickReady ? '#86EFAC' : '#FDBA74',
-              }]}>
-              <Text style={[s.pillT, { color: dark ? '#FFF' : (o.pickReady ? '#15803D' : '#C2410C') }]}>
-                {o.pickReady ? (compactChips ? 'READY' : 'PICK READY') : (compactChips ? 'WAITING' : 'NOT READY')}
-              </Text>
-            </View>
-          ) : null}
-          <View style={{ flex: 1 }} />
-          <Text style={[s.amt, dark && { color: '#FCD34D' }]}>₹{o.amount}</Text>
-        </View>
-      )}
+        {actionBar}
       </BodyWrap>
 
       {/* Optional slot that lives inside the same card (penalty extras, etc.) */}
@@ -340,31 +396,38 @@ export default function OrderCard({
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.borderSoft,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    elevation: 2,
+    shadowColor: '#1A1F3A',
     shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
   },
-  // When the card sits on a coloured/full-screen background, use translucent
-  // surfaces instead of opaque white so it blends with the screen theme.
+  statusStrip: {
+    position: 'absolute',
+    left: 0,
+    top: 16,
+    height: 28,
+    width: 4,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
+    zIndex: 2,
+  },
   cardDark: {
     backgroundColor: 'rgba(0,0,0,0.18)',
     borderColor: 'rgba(255,255,255,0.18)',
     shadowOpacity: 0,
     elevation: 0,
   },
-  cardSelected: { borderColor: '#08081c', borderWidth: 2, backgroundColor: '#EEF0FA', shadowOpacity: 0.12 },
+  cardSelected: { borderColor: '#08081c', borderWidth: 2, backgroundColor: '#EEF0FA' },
 
-  top: { backgroundColor: '#F1F5F9' },
-  topDark: { backgroundColor: 'rgba(255,255,255,0.07)' },
-  topSelected: { backgroundColor: '#E0E7FF' },
+  top: { backgroundColor: 'transparent' },
+  topSelected: { backgroundColor: '#E4DEFA' },
 
   head: {
     flexDirection: 'row',
@@ -372,9 +435,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     rowGap: 4,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   headLeft: { flexShrink: 1, marginRight: 8 },
   headChips: {
@@ -386,64 +449,101 @@ const s = StyleSheet.create({
     maxWidth: '100%',
   },
   oidWrap: { flexDirection: 'row', alignItems: 'center' },
-  oid: { fontSize: 10.5, fontWeight: '600', color: P, letterSpacing: 0.2, includeFontPadding: false },
-  oidCopy: { fontSize: 18, fontWeight: '500', color: P, marginLeft: 6, opacity: 0.75, includeFontPadding: false, lineHeight: 20 },
+  oid: { fontSize: 14, fontWeight: '900', color: COLORS.primaryDark, letterSpacing: 0.3, includeFontPadding: false },
 
-  chip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  chipT: { fontSize: 9, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
-  chipSm: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  chipTSm: { fontSize: 7.5, fontWeight: '700', color: '#FFF', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 10 },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999 },
+  chipT: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+  chipSm: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  chipTSm: { fontSize: 8, fontWeight: '800', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 11 },
+  chipDot: { width: 6, height: 6, borderRadius: 3, marginRight: 5 },
   priChip: { marginRight: 6 },
   markChip: { marginRight: 6 },
 
   scheduleStrip: {
-    marginHorizontal: 12,
+    marginHorizontal: 14,
     marginBottom: 8,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#FAF5FF',
     borderWidth: 1,
     borderColor: '#E9D5FF',
-    borderLeftWidth: 3,
-    borderLeftColor: '#9333EA',
   },
   scheduleStripDark: {
     backgroundColor: 'rgba(147,51,234,0.12)',
     borderColor: 'rgba(196,181,253,0.35)',
   },
-  scheduleLine: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#64748B',
-    lineHeight: 17,
-  },
+  scheduleLine: { fontSize: 12, fontWeight: '500', color: '#64748B', lineHeight: 17 },
   scheduleLineDark: { color: 'rgba(255,255,255,0.8)' },
   schedulePrefix: { fontSize: 12, fontWeight: '500', color: '#64748B' },
   scheduleHighlight: { fontSize: 12, fontWeight: '800', color: '#7E22CE' },
   scheduleHighlightDark: { color: '#F3E8FF' },
 
   deliveryTimeStrip: {
-    marginHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 14,
     marginBottom: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
   },
-  deliveryTimeStripDark: {
-    backgroundColor: 'rgba(22,163,74,0.15)',
-    borderColor: 'rgba(134,239,172,0.4)',
-  },
-  deliveryTimeLine: { fontSize: 12, fontWeight: '700', color: '#16A34A', lineHeight: 17 },
+  deliveryTimeStripDark: { backgroundColor: 'rgba(22,163,74,0.15)' },
+  deliveryTimeLine: { flex: 1, fontSize: 12, fontWeight: '700', color: '#16A34A', lineHeight: 17 },
   deliveryTimeLineDark: { color: '#86EFAC' },
 
-  // Selection checkbox lives in the FOOTER on the left, alongside the payment
-  // pills and the amount. Visual size is still 26 × 26; hitSlop on the
-  // TouchableOpacity stretches the actual tap zone to ~58 × 58 so it's easy
-  // to hit without colliding with the COD/PAID pills or the amount text.
+  person: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 12 },
+  avt: { width: 40, height: 40, borderRadius: 20, resizeMode: 'cover', marginRight: 11, backgroundColor: '#EDE9FE' },
+  avtNew: { width: 40, height: 40, borderRadius: 12, resizeMode: 'contain' },
+  name: { fontSize: 15.5, fontWeight: '800' },
+  phone: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  amt: { fontSize: 20, fontWeight: '900', color: '#16A34A', letterSpacing: -0.4 },
+
+  routeWrap: {
+    marginHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  routeWrapDark: { borderTopColor: 'rgba(255,255,255,0.15)' },
+  stopRow: { flexDirection: 'row', alignItems: 'stretch' },
+  rail: { width: 16, alignItems: 'center', marginRight: 10, paddingTop: 3 },
+  dot: { width: 11, height: 11, borderRadius: 5.5, borderWidth: 2.5, borderColor: '#FFF' },
+  railLine: { flex: 1, width: 2, borderRadius: 1, backgroundColor: '#DDD6F0', marginTop: 3, marginBottom: -2 },
+  stopBody: { flex: 1, paddingBottom: 14 },
+  stopLbl: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 2 },
+  stopTitle: { fontSize: 14, fontWeight: '800' },
+  stopAddr: { fontSize: 12, fontWeight: '400', lineHeight: 17, marginTop: 2 },
+  dropTxt: { fontSize: 13.5, fontWeight: '600', lineHeight: 19 },
+  storeCall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFEDD5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+
+  foot: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4, gap: 6 },
+  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  pillT: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+
+  actionBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14 },
+  actBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  actTxt: { fontSize: 12.5, fontWeight: '800' },
+
   checkBoxFoot: {
     width: 26,
     height: 26,
@@ -453,7 +553,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 6,
   },
   checkBoxHead: {
     width: 22,
@@ -468,32 +568,4 @@ const s = StyleSheet.create({
   },
   checkBoxOn: { backgroundColor: '#08081c', borderColor: '#08081c' },
   checkTick: { color: '#FCD34D', fontSize: 15, fontWeight: '900', marginTop: -1, lineHeight: 17 },
-
-  person: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
-  avt: { width: 30, height: 30, borderRadius: 15, resizeMode: 'cover', marginRight: 10 },
-  avtNew: { width: 32, height: 32, borderRadius: 10, resizeMode: 'contain' },
-  name: { fontSize: 13.5, fontWeight: '700', color: '#1E293B' },
-  phone: { fontSize: 11.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
-  actBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  actIco: { width: 32, height: 32, resizeMode: 'contain' },
-  dsCall: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 2, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  dsCallIco: { width: 28, height: 28, resizeMode: 'contain' },
-
-  routeWrap: { marginHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
-  routeWrapDark: {},
-  routeRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  routeTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
-  dot: { width: 9, height: 9, borderRadius: 4.5 },
-  routeLine: { width: 1.5, flex: 1, minHeight: 10, backgroundColor: '#D1D5DB', marginTop: 3, marginBottom: 0 },
-  routeBody: { flex: 1, paddingBottom: 10 },
-  routeLbl: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
-  routeTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  routePhone: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
-  routeAddr: { fontSize: 12, fontWeight: '400', color: '#64748B', lineHeight: 16, marginTop: 1 },
-
-  foot: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#FAFBFC' },
-  footDark: { backgroundColor: 'rgba(255,255,255,0.05)', borderTopColor: 'rgba(255,255,255,0.15)' },
-  pill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, marginRight: 6 },
-  pillT: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3 },
-  amt: { fontSize: 16, fontWeight: '800', color: '#16A34A' },
 });

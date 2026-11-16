@@ -22,6 +22,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -928,28 +931,18 @@ pickLock = false;
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.cash} />
 
-        {/* Header */}
-        <View style={styles.headerWrap}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.85}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle} numberOfLines={1}>Cash Settlement</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {!!supportPhone ? (
-                  <TouchableOpacity onPress={this.onCallSupport} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Image source={require('./assets/call.png')} style={{ width: 28, height: 28, resizeMode: 'contain' }} />
-                  </TouchableOpacity>
-                ) : (
-                  <View style={{ width: 42 }} />
-                )}
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
+        <ScreenHeader
+          bg={HEADER.cash}
+          title="Cash Settlement"
+          onBack={this.goBack}
+          right={!!supportPhone ? (
+            <TouchableOpacity onPress={this.onCallSupport} activeOpacity={0.7} style={styles.hdrCallBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="phone" size={18} color="#FFF" />
+            </TouchableOpacity>
+          ) : null}
+        />
 
         <View style={{ flex: 1 }}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -1234,6 +1227,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: THEME.bg },
 
   // Header
+  hdrCallBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.20)', alignItems: 'center', justifyContent: 'center' },
   headerWrap: { backgroundColor: THEME.green },
   headerSafe: { backgroundColor: THEME.green },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },

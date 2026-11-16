@@ -20,6 +20,8 @@ import {
   InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import BottomSheet from '../components/BottomSheet';
@@ -96,7 +98,7 @@ class DeliverToFarmer extends Component {
             this.setState({ showSuccessModal: false });
             this.successModalY.setValue(0);
             const nav = this.props?.navigation;
-            nav?.navigate('MainTabs', { screen: 'TrackOrders' });
+            nav?.navigate('MainTabs', { screen: 'Orders' });
           });
         } else {
           Animated.spring(this.successModalY, { toValue: 0, friction: 8, useNativeDriver: true }).start();
@@ -536,7 +538,7 @@ class DeliverToFarmer extends Component {
 
       this._successTimer = setTimeout(() => {
         this.setState({ showSuccessModal: false });
-        this.props?.navigation?.navigate('MainTabs', { screen: 'TrackOrders' });
+        this.props?.navigation?.navigate('MainTabs', { screen: 'Orders' });
       }, 2500);
     });
   };
@@ -547,7 +549,7 @@ class DeliverToFarmer extends Component {
     Animated.timing(this.successModalY, { toValue: SH, duration: 250, useNativeDriver: true }).start(() => {
       this.setState({ showSuccessModal: false });
       this.successModalY.setValue(0);
-      this.props?.navigation?.navigate('MainTabs', { screen: 'TrackOrders' });
+      this.props?.navigation?.navigate('MainTabs', { screen: 'Orders' });
     });
   };
 
@@ -592,19 +594,9 @@ class DeliverToFarmer extends Component {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={BG} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.orders} />
 
-        <View style={styles.headerWrap}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
-                <Image style={styles.backImg} source={require('./assets/back.png')} />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle} numberOfLines={1}>Deliver To Farmer</Text>
-              <View style={{ width: 42, height: 42 }} />
-            </View>
-          </SafeAreaView>
-        </View>
+        <ScreenHeader bg={HEADER.orders} title="Deliver To Farmer" onBack={this.goBack} />
 
         <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { if (this.state.details?.id) this.deliverDetailsAPI(this.state.details.id); }} />
 

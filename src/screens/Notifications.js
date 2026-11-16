@@ -17,7 +17,8 @@ import constants from '../utils/constants';
 import { applyNotificationNavigation } from '../utils/notificationNavigation';
 import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
-import { NotificationCountBadge } from '../components/NotificationBellButton';
+import { HEADER } from '../theme/headerColors';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { S, soilIcons as I } from '../utils/soilTheme';
 
 const P = S.P;
@@ -50,6 +51,7 @@ class Notifications extends Component {
       totalPages: 1,
       total: 0,
       hasMore: false,
+      filterTab: 'all', // all | unread
     };
     this._seq = 0;
   }
@@ -183,15 +185,57 @@ class Notifications extends Component {
     };
   };
 
-  renderNotifIcon = (evt) => {
-    const style = [styles.iconImg, evt.tint !== false && { tintColor: evt.color }];
-    return <Image source={evt.icon} style={style} resizeMode="contain" />;
-  };
-
   isRead = (item) =>
     item?.isRead === true || item?.read === true || item?.is_read === true || item?.status === 'read';
 
+  unreadCount = () => (this.state.notifications || []).filter((n) => !this.isRead(n)).length;
+
+  markItemRead = (item) => {
+    const id = item?.id;
+    if (id == null) return;
+    this.setState((prev) => ({
+      notifications: (prev.notifications || []).map((n) =>
+        String(n?.id) === String(id)
+          ? { ...n, isRead: true, read: true, is_read: true, status: 'read' }
+          : n,
+      ),
+    }));
+  };
+
+  markAllRead = () => {
+    const unread = this.unreadCount();
+    if (!unread) return;
+    this.setState((prev) => ({
+      notifications: (prev.notifications || []).map((n) => ({
+        ...n,
+        isRead: true,
+        read: true,
+        is_read: true,
+        status: 'read',
+      })),
+    }));
+  };
+
+  filteredList = () => {
+    const { notifications, filterTab } = this.state;
+    if (filterTab === 'unread') return (notifications || []).filter((n) => !this.isRead(n));
+    return notifications || [];
+  };
+
+  renderNotifIcon = (evt) => {
+    const src = evt?.icon || evt?.typeMeta?.icon || I.bell;
+    const tint = evt?.tint !== false;
+    return (
+      <Image
+        source={src}
+        style={[styles.iconImg, tint && { tintColor: evt?.color || P }]}
+        resizeMode="contain"
+      />
+    );
+  };
+
   onNotificationPress = (item) => {
+    this.markItemRead(item);
     applyNotificationNavigation(this.props.navigation, {
       nav: item?.nav || '',
       navId: item?.navId != null ? String(item.navId) : '',
@@ -214,35 +258,44 @@ class Notifications extends Component {
 
     return (
       <TouchableOpacity
-        activeOpacity={0.82}
+        activeOpacity={0.88}
         onPress={() => this.onNotificationPress(item)}
         style={styles.cardWrap}
       >
         <View style={[styles.card, !read && styles.cardUnread]}>
-          <View style={[styles.accent, { backgroundColor: evt.color }]} />
-
-          <View style={[styles.iconBox, { backgroundColor: evt.bg }]}>
+          <View style={[styles.iconRing, { backgroundColor: evt.bg || '#EDE9FE' }]}>
             {this.renderNotifIcon(evt)}
+            {!read ? <View style={[styles.iconBadge, { backgroundColor: evt.color || P }]} /> : null}
           </View>
 
           <View style={styles.inner}>
             <View style={styles.titleRow}>
-              <Text style={[styles.title, !read && styles.titleUnread]}>{title}</Text>
+              <Text style={[styles.title, !read && styles.titleUnread]} numberOfLines={1}>
+                {title}
+              </Text>
               {!!time ? <Text style={styles.time}>{this.timeAgo(time)}</Text> : null}
             </View>
-            {!!body ? (
-              <Text style={[styles.body, read && styles.bodyRead]}>{body}</Text>
-            ) : null}
-            {!!typeText ? (
-              <View style={[styles.typeChip, { backgroundColor: evt.typeMeta?.bg || S.BG }]}>
-                <Text style={[styles.typeText, { color: evt.typeMeta?.color || S.SUB }]}>
-                  {typeText}
-                </Text>
-              </View>
-            ) : null}
-          </View>
 
-          {!read ? <View style={[styles.unreadDot, { backgroundColor: evt.color }]} /> : null}
+            {!!body ? (
+              <Text style={[styles.body, read && styles.bodyRead]} numberOfLines={2}>
+                {body}
+              </Text>
+            ) : null}
+
+            <View style={styles.footerRow}>
+              {!!typeText ? (
+                <View style={[styles.typeChip, { backgroundColor: evt.bg || '#F1F5F9' }]}>
+                  <View style={[styles.typeDot, { backgroundColor: evt.color || P }]} />
+                  <Text style={[styles.typeText, { color: evt.color || P }]}>{typeText}</Text>
+                </View>
+              ) : <View />}
+              {!read ? (
+                <Text style={styles.unreadLbl}>Unread</Text>
+              ) : (
+                <MaterialCommunityIcons name="check" size={14} color="#CBD5E1" />
+              )}
+            </View>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -250,13 +303,20 @@ class Notifications extends Component {
 
   renderEmpty = () => {
     if (this.state.isLoading) return null;
+    const unreadOnly = this.state.filterTab === 'unread';
     return (
       <View style={styles.emptyWrap}>
-        <View style={[styles.emptyIconWrap, { backgroundColor: S.P_SOFT }]}>
+        <View style={styles.emptyIconWrap}>
           <Image source={I.bell} style={[styles.emptyIcon, { tintColor: P }]} />
         </View>
-        <Text style={styles.emptyTitle}>Abhi koi notification nahi</Text>
-        <Text style={styles.emptySub}>Naya update aate hi yahan dikhega</Text>
+        <Text style={styles.emptyTitle}>
+          {unreadOnly ? 'Sab padh liya' : 'Abhi koi notification nahi'}
+        </Text>
+        <Text style={styles.emptySub}>
+          {unreadOnly
+            ? 'Naye alerts aate hi Unread me dikhenge'
+            : 'Naya update aate hi yahan dikhega'}
+        </Text>
       </View>
     );
   };
@@ -270,24 +330,80 @@ class Notifications extends Component {
         </View>
       );
     }
-    if (hasMore) return <View style={styles.footerSpacer} />;
+    if (hasMore && this.state.filterTab === 'all') return <View style={styles.footerSpacer} />;
     return null;
   };
 
-  renderHeaderBadge = () => <NotificationCountBadge large />;
+  renderListHeader = () => {
+    const unread = this.unreadCount();
+    const { filterTab } = this.state;
+    return (
+      <View style={styles.toolbar}>
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => this.setState({ filterTab: 'all' })}
+            style={[styles.tabChip, filterTab === 'all' && styles.tabChipOn]}
+          >
+            <Text style={[styles.tabChipT, filterTab === 'all' && styles.tabChipTOn]}>Sabhi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => this.setState({ filterTab: 'unread' })}
+            style={[styles.tabChip, filterTab === 'unread' && styles.tabChipOn]}
+          >
+            <Text style={[styles.tabChipT, filterTab === 'unread' && styles.tabChipTOn]}>
+              Unread{unread > 0 ? ` (${unread})` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {unread > 0 ? (
+          <TouchableOpacity style={styles.markAllBtn} activeOpacity={0.85} onPress={this.markAllRead}>
+            <MaterialCommunityIcons name="check-all" size={16} color={P} />
+            <Text style={styles.markAllT}>Sabhi padhein</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.markAllBtnGhost}>
+            <MaterialCommunityIcons name="check-all" size={16} color="#94A3B8" />
+            <Text style={styles.markAllGhostT}>Sab clear</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   render() {
-    const { isLoading, notifications, refreshing } = this.state;
+    const { isLoading, refreshing } = this.state;
+    const unread = this.unreadCount();
+    const list = this.filteredList();
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={P} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.brand} />
 
         <ScreenHeader
-          bg={P}
+          bg={HEADER.brand}
           title="Notifications"
           onBack={() => this.props.navigation?.goBack?.()}
-          right={this.renderHeaderBadge()}
+          below={(
+            <View style={styles.hdrBelow}>
+              <View>
+                <Text style={styles.hdrBelowLbl}>UNREAD</Text>
+                <Text style={styles.hdrBelowAmt}>{unread}</Text>
+              </View>
+              {unread > 0 ? (
+                <TouchableOpacity style={styles.hdrMarkBtn} activeOpacity={0.85} onPress={this.markAllRead}>
+                  <MaterialCommunityIcons name="check-all" size={16} color={HEADER.brand} />
+                  <Text style={styles.hdrMarkT}>Mark all read</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.hdrClearPill}>
+                  <Text style={styles.hdrClearT}>All caught up</Text>
+                </View>
+              )}
+            </View>
+          )}
         />
 
         <SafeAreaView edges={Platform.OS === 'ios' ? [] : safeBottomEdges()} style={styles.body}>
@@ -297,9 +413,10 @@ class Notifications extends Component {
             </View>
           ) : (
             <FlatList
-              data={notifications}
+              data={list}
               keyExtractor={(item, i) => String(item?.id || i)}
               renderItem={this.renderItem}
+              ListHeaderComponent={this.renderListHeader}
               ListEmptyComponent={this.renderEmpty}
               ListFooterComponent={this.renderFooter}
               contentContainerStyle={styles.listContent}
@@ -317,96 +434,167 @@ class Notifications extends Component {
   }
 }
 
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: S.BG },
+  root: { flex: 1, backgroundColor: '#EBE7F5' },
   body: { flex: 1 },
 
-  listContent: { flexGrow: 1, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 16 },
-
-  cardWrap: { marginBottom: 5 },
-  card: {
+  hdrBelow: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    position: 'relative',
-    backgroundColor: S.CARD,
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: S.BORDER,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#64748B',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 3,
-      },
-      android: { elevation: 1 },
-    }),
-  },
-  cardUnread: { borderColor: S.P_GLOW, backgroundColor: '#FDFBFF' },
-  accent: { width: 4 },
-
-  iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    marginLeft: 8,
-    marginTop: 8,
-    flexShrink: 0,
-    alignSelf: 'flex-start',
-  },
-  iconImg: { width: 18, height: 18 },
-
-  inner: { flex: 1, minWidth: 0, paddingTop: 8, paddingBottom: 8, paddingRight: 8 },
-
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
+  hdrBelowLbl: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  hdrBelowAmt: { color: '#FFF', fontSize: 28, fontWeight: '800', marginTop: 2, letterSpacing: -0.5 },
+  hdrMarkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  hdrMarkT: { color: HEADER.brand, fontSize: 12, fontWeight: '800' },
+  hdrClearPill: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  hdrClearT: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
     gap: 8,
   },
-  title: { flex: 1, fontSize: 13, fontWeight: '600', color: S.TXT, lineHeight: 17 },
-  titleUnread: { fontWeight: '600', color: S.TXT },
-  time: { fontSize: 10, fontWeight: '500', color: S.MUTED, marginTop: 2, flexShrink: 0 },
-  body: { fontSize: 12, fontWeight: '400', color: S.SUB, lineHeight: 16, marginTop: 3 },
-  bodyRead: { color: S.MUTED },
-  typeChip: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  tabRow: { flexDirection: 'row', gap: 8, flex: 1 },
+  tabChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  typeText: { fontSize: 10, fontWeight: '500', letterSpacing: 0.2 },
+  tabChipOn: { backgroundColor: '#EDE9FE', borderColor: P },
+  tabChipT: { fontSize: 12.5, fontWeight: '700', color: '#64748B' },
+  tabChipTOn: { color: P },
+  markAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#EDE9FE',
+  },
+  markAllT: { fontSize: 11.5, fontWeight: '800', color: P },
+  markAllBtnGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  markAllGhostT: { fontSize: 11.5, fontWeight: '700', color: '#94A3B8' },
 
-  unreadDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+  listContent: { flexGrow: 1, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 28 },
+
+  cardWrap: { marginBottom: 10 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(93,63,211,0.08)',
+    gap: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  cardUnread: {
+    backgroundColor: '#FBF9FF',
+    borderColor: 'rgba(93,63,211,0.22)',
+  },
+
+  iconRing: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconImg: { width: 22, height: 22 },
+  iconBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 1,
+    right: 1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#FFF',
   },
 
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 60 },
+  inner: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { flex: 1, fontSize: 14.5, fontWeight: '700', color: '#1E293B', lineHeight: 20 },
+  titleUnread: { color: '#0F172A', fontWeight: '800' },
+  time: { fontSize: 11, fontWeight: '600', color: '#94A3B8' },
+  body: { fontSize: 13, fontWeight: '500', color: '#64748B', lineHeight: 18, marginTop: 4 },
+  bodyRead: { color: '#94A3B8' },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  typeDot: { width: 6, height: 6, borderRadius: 3 },
+  typeText: { fontSize: 11, fontWeight: '700' },
+  unreadLbl: { fontSize: 11, fontWeight: '800', color: P },
+
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingTop: 48 },
   emptyIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
   emptyIcon: { width: 28, height: 28, resizeMode: 'contain' },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: S.TXT, marginBottom: 6 },
-  emptySub: { fontSize: 13, color: S.MUTED, textAlign: 'center', lineHeight: 18 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
+  emptySub: { fontSize: 13, color: '#94A3B8', textAlign: 'center', lineHeight: 18 },
 
   loaderWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  footerLoader: { paddingVertical: 12, alignItems: 'center' },
-  footerSpacer: { height: 4 },
+  footerLoader: { paddingVertical: 14, alignItems: 'center' },
+  footerSpacer: { height: 8 },
 });
 
 export default withV4Navigation(Notifications);

@@ -19,6 +19,8 @@ import {
   UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import ImagePicker from 'react-native-image-crop-picker';
 import Toast from 'react-native-simple-toast';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -103,19 +105,7 @@ const Chip = ({ label, active, onPress }) => (
 );
 
 const Header = ({ farmer, onBack, initials, maskPhone }) => (
-  <View style={styles.headerWrap}>
-    <SafeAreaView edges={['top']} style={styles.headerSafe}>
-      <View style={styles.headerRowNew}>
-        <TouchableOpacity onPress={onBack} style={styles.headerBackBtn} activeOpacity={0.85}>
-          <Image source={require('./assets/back.png')} style={styles.backImg} resizeMode="contain" />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Farmer Survey</Text>
-
-        <View style={{ width: 42 }} />
-      </View>
-    </SafeAreaView>
-  </View>
+  <ScreenHeader bg={HEADER.farmers} title="Farmer Survey" onBack={onBack} />
 );
 
 const SeasonCropRow = ({ item, onChangeAcres, onChangeStage, onRemove }) => (
@@ -829,7 +819,7 @@ goToDashboardAndReset = () => {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={THEME.primary} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.farmers} />
 
         <Header farmer={s.farmer} onBack={this.goBack} initials={this.initials} maskPhone={this.maskPhone} />
 

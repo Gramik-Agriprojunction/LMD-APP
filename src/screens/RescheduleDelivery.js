@@ -12,6 +12,7 @@ import moment from 'moment';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import { getStatus } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 
@@ -270,7 +271,7 @@ class RescheduleDelivery extends Component {
       <View style={$.root}>
         <StatusBar barStyle="light-content" backgroundColor={P} />
 
-        <ScreenHeader bg={P} title="Re-schedule Delivery" onBack={this.goBack} />
+        <ScreenHeader bg={HEADER.orders} title="Re-schedule Delivery" onBack={this.goBack} />
 
         <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {!details ? (

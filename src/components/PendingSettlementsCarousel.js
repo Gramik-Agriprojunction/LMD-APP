@@ -6,13 +6,12 @@ import { getStatus } from '../utils/statusColors';
 import { isReadOnly } from '../utils/lmdViewMode';
 
 const { width: SW } = Dimensions.get('window');
-const OUTER_PAD = 8;
+const OUTER_PAD = 12;
 const CARD_W = SW - OUTER_PAD * 2;
 const SLIDE_MS = 4500;
 const GREEN = '#16A34A';
 const GREEN_DARK = '#15803D';
-const GREEN_BG = '#F0FDF4';
-const SECTION_ICON = 22;
+const GREEN_SOFT = '#ECFDF5';
 
 const maskMobile = (p) => {
   if (!p) return '';
@@ -76,7 +75,7 @@ export default class PendingSettlementsCarousel extends Component {
     Animated.loop(
       Animated.sequence([
         Animated.timing(this.arrowX, {
-          toValue: 6,
+          toValue: 5,
           duration: 650,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
@@ -191,62 +190,26 @@ export default class PendingSettlementsCarousel extends Component {
     if (onNavigate) onNavigate();
   };
 
-  renderChip = (label, tone) => {
-    if (!label) return null;
-    const tones = {
-      warn: { bg: '#FFF7ED', text: '#EA580C', border: '#FED7AA' },
-      ok: { bg: '#ECFDF5', text: GREEN_DARK, border: '#A7F3D0' },
-      muted: { bg: '#F1F5F9', text: '#64748B', border: '#E2E8F0' },
-    };
-    const t = tones[tone] || tones.muted;
-    return (
-      <View style={[$.chip, { backgroundColor: t.bg, borderColor: t.border }]}>
-        <Text style={[$.chipT, { color: t.text }]}>{label}</Text>
-      </View>
-    );
-  };
-
   renderCard = (item, index) => {
     const d = this.resolveItem(item);
     const orderSt = getStatus(d.status);
     const unpaid = d.payStatus.toLowerCase() !== 'paid';
+    const meta = [d.payMode, unpaid ? 'Unpaid' : 'Paid', orderSt.label].filter(Boolean).join('  ·  ');
 
     return (
       <View key={`${item?.order_id || item?.id || index}-${index}`} style={[$.slide, { width: CARD_W }]}>
-        <View style={$.card}>
-          <View style={$.cardBody}>
-            <View style={$.topRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={$.code} numberOfLines={1}>{d.code}</Text>
-                <Text style={$.farmerLine} numberOfLines={1}>
-                  {d.farmer}{d.mobile ? ` · ${d.mobile}` : ''}
-                </Text>
-                {!!d.shortLoc && (
-                  <Text style={$.locLine} numberOfLines={1}>{d.shortLoc}</Text>
-                )}
-              </View>
-              <Text style={$.amtVal}>₹{d.amount}</Text>
-            </View>
-
-            <View style={$.chipRow}>
-              {this.renderChip(d.payMode, 'muted')}
-              {this.renderChip(unpaid ? 'Unpaid' : 'Paid', unpaid ? 'warn' : 'ok')}
-              {this.renderChip(orderSt.label, 'ok')}
-            </View>
+        <View style={$.rowTop}>
+          <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+            <Text style={$.code} numberOfLines={1}>{d.code}</Text>
+            <Text style={$.farmer} numberOfLines={1}>
+              {d.farmer}{d.mobile ? ` · ${d.mobile}` : ''}
+            </Text>
+            {!!d.shortLoc && (
+              <Text style={$.loc} numberOfLines={1}>{d.shortLoc}</Text>
+            )}
+            {!!meta && <Text style={$.meta} numberOfLines={1}>{meta}</Text>}
           </View>
-
-          {!isReadOnly() ? (
-          <TouchableOpacity style={$.settleBtn} activeOpacity={0.88} onPress={this.onSettle}>
-            <View style={$.settleBadge}>
-              <Text style={$.settleBadgeT}>₹</Text>
-            </View>
-            <Text style={$.settleBtnT}>Abhi settle karien</Text>
-            <Animated.Image
-              source={require('../screens/assets/arrow.png')}
-              style={[$.settleArrow, { transform: [{ translateX: this.arrowX }] }]}
-            />
-          </TouchableOpacity>
-          ) : null}
+          <Text style={$.amt}>₹{d.amount}</Text>
         </View>
       </View>
     );
@@ -264,18 +227,10 @@ export default class PendingSettlementsCarousel extends Component {
     return (
       <View style={$.wrap}>
         <View style={$.head}>
-          <View style={$.headLeft}>
-            <View style={$.headIcoBox}>
-              <Image source={require('../screens/assets/money.png')} style={$.headIco} resizeMode="contain" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={$.title}>Pending Settlement</Text>
-              <Text style={$.sub}>{count} order{count === 1 ? '' : 's'} · Total ₹ {total}</Text>
-            </View>
-          </View>
-          <View style={$.pill}>
-            <View style={$.pillDot} />
-            <Text style={$.pillT}>Pending</Text>
+          <Image source={require('../screens/assets/money.png')} style={$.headIco} resizeMode="contain" />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={$.title}>Pending Settlement</Text>
+            <Text style={$.sub}>{count} order{count === 1 ? '' : 's'} · Total ₹{total}</Text>
           </View>
         </View>
 
@@ -302,6 +257,16 @@ export default class PendingSettlementsCarousel extends Component {
             ))}
           </View>
         ) : null}
+
+        {!isReadOnly() ? (
+          <TouchableOpacity style={$.settleBtn} activeOpacity={0.88} onPress={this.onSettle}>
+            <Text style={$.settleBtnT}>Abhi settle karien</Text>
+            <Animated.Image
+              source={require('../screens/assets/arrow.png')}
+              style={[$.settleArrow, { transform: [{ translateX: this.arrowX }] }]}
+            />
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
@@ -309,97 +274,60 @@ export default class PendingSettlementsCarousel extends Component {
 
 const $ = StyleSheet.create({
   wrap: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    marginBottom: 10,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E8ECF1',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
+    backgroundColor: GREEN_SOFT,
+    borderRadius: 18,
+    marginBottom: 4,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
     overflow: 'hidden',
   },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    marginBottom: 8,
-    gap: 8,
+    gap: 10,
+    marginBottom: 10,
   },
-  headLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headIcoBox: { width: SECTION_ICON, height: SECTION_ICON, alignItems: 'center', justifyContent: 'center' },
-  headIco: { width: SECTION_ICON, height: SECTION_ICON },
-  title: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  headIco: { width: 28, height: 28 },
+  title: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
   sub: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 1 },
-  pill: {
+
+  slide: { paddingRight: 4 },
+  rowTop: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: GREEN_BG,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
+    alignItems: 'flex-start',
   },
-  pillDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: GREEN },
-  pillT: { fontSize: 10, fontWeight: '700', color: GREEN_DARK },
-
-  slide: { paddingHorizontal: 10 },
-  card: {
-    backgroundColor: GREEN_BG,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    overflow: 'hidden',
+  code: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: GREEN_DARK,
+    marginBottom: 3,
   },
-  cardBody: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8 },
-  topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  code: { fontSize: 11, fontWeight: '700', color: GREEN_DARK, letterSpacing: 0.2 },
-  farmerLine: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginTop: 3 },
-  locLine: { fontSize: 10.5, fontWeight: '400', color: '#64748B', marginTop: 2 },
-  amtVal: { fontSize: 18, fontWeight: '800', color: GREEN, letterSpacing: -0.3 },
-
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 },
-  chip: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 5,
-    borderWidth: 1,
+  farmer: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  loc: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 2 },
+  meta: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 5 },
+  amt: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: GREEN,
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
-  chipT: { fontSize: 9.5, fontWeight: '600' },
 
   settleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: GREEN,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    marginHorizontal: 8,
-    marginBottom: 8,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginTop: 12,
+    gap: 6,
   },
-  settleBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
-  },
-  settleBadgeT: { color: '#FFF', fontSize: 12, fontWeight: '800' },
-  settleBtnT: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '700' },
-  settleArrow: { width: 12, height: 12, tintColor: '#FFF', resizeMode: 'contain', marginLeft: 4 },
+  settleBtnT: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  settleArrow: { width: 12, height: 12, tintColor: '#FFF', resizeMode: 'contain' },
 
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8, gap: 5 },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#D1FAE5' },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#A7F3D0' },
   dotOn: { width: 14, backgroundColor: GREEN },
 });

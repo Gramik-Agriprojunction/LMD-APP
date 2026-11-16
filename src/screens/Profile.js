@@ -25,6 +25,9 @@ import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Co
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import { stopBackgroundLocationTracker } from '../utils/locationTracker';
 import NotificationBellButton from '../components/NotificationBellButton';
+import ScreenHeader from '../components/ScreenHeader';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { HEADER } from '../theme/headerColors';
 import { clearViewPartner } from '../utils/lmdViewMode';
 
 const resetAction = StackActions.reset({
@@ -66,7 +69,12 @@ class Profile extends Component {
       nav.goBack();
       return;
     }
-    nav?.navigate?.('LMDDashboard');
+    nav?.navigate?.('Home');
+  };
+
+  isTabRoot = () => {
+    const state = this.props?.navigation?.getState?.();
+    return state?.type === 'tab' || !!state?.routeNames?.includes?.('Home');
   };
 
   goToSettlementHistory = () => {
@@ -75,7 +83,7 @@ class Profile extends Component {
 
   goToCashSettlement = () => {
     // this.props?.navigation?.navigate('CashSettlement');
-    this.props?.navigation?.navigate('SettlementList');
+    this.props?.navigation?.navigate('MainTabs', { screen: 'Cash' });
 
   };
 
@@ -93,7 +101,7 @@ class Profile extends Component {
 
   // ✅ Navigate to TrackOrders with selected delivery status
   onPressStatus = (statusKey) => {
-    this.props?.navigation?.navigate('TrackOrders', { selectedStatus: statusKey });
+    this.props?.navigation?.navigate('Orders', { selectedStatus: statusKey });
   };
 
   // ✅ PROFILE API (GET) - your API returns object directly
@@ -179,41 +187,32 @@ class Profile extends Component {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={THEME.green} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.profile} />
         <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.profileApi()} />
 
-        {/* ✅ Header (same as other screens) */}
-        <View style={styles.headerWrap}>
-          <SafeAreaView edges={['top']} style={styles.headerSafe}>
-            <View style={styles.headerRow}>
-              {this.props?.navigation?.canGoBack?.() ? (
-                <TouchableOpacity onPress={this.goBack} style={styles.headerIconBtn} activeOpacity={0.8}>
-                  <Image style={styles.backImg} source={require('./assets/back.png')} />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.headerIconBtn} />
-              )}
-
-              <View style={styles.profileRow}>
-                <View style={styles.avatar}>
-                  <Image source={require('./assets/logo.png')} style={styles.avatarFallbackImg} />
-                </View>
-                {(!!name || !!phone) ? (
-                  <View style={styles.nameCol}>
-                    {!!name && (
-                      <Text style={styles.name} numberOfLines={1}>{name}</Text>
-                    )}
-                    {!!phone && (
-                      <Text style={styles.phoneText} numberOfLines={1}>{phone}</Text>
-                    )}
-                  </View>
-                ) : null}
+        <ScreenHeader
+          bg={HEADER.profile}
+          title="Profile"
+          onBack={this.isTabRoot() ? undefined : this.goBack}
+          right={<NotificationBellButton navigation={this.props.navigation} />}
+          below={(
+            <View style={styles.profileRow}>
+              <View style={styles.avatar}>
+                <Image source={require('./assets/logo.png')} style={styles.avatarFallbackImg} />
               </View>
-
-              <NotificationBellButton navigation={this.props.navigation} />
+              {(!!name || !!phone) ? (
+                <View style={styles.nameCol}>
+                  {!!name && (
+                    <Text style={styles.name} numberOfLines={1}>{name}</Text>
+                  )}
+                  {!!phone && (
+                    <Text style={styles.phoneText} numberOfLines={1}>{phone}</Text>
+                  )}
+                </View>
+              ) : null}
             </View>
-          </SafeAreaView>
-        </View>
+          )}
+        />
 
         <ScrollView
           contentContainerStyle={styles.container}
@@ -256,7 +255,7 @@ class Profile extends Component {
               <Text style={styles.sectionTitle}>Live Orders</Text>
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => this.props?.navigation?.navigate('TrackOrders')}
+                onPress={() => this.props?.navigation?.navigate('Orders')}
                 style={styles.viewBtn}
               >
                 <Text style={styles.viewBtnText}>View</Text>
@@ -269,80 +268,95 @@ class Profile extends Component {
             </View>
           </View>
 
-          {/* ✅ Finance buttons */}
-          <View style={styles.actionList}>
-          <TouchableOpacity style={styles.actionCard} activeOpacity={0.92} onPress={this.goToSettlementHistory}>
-            <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/flow.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Settlement History</Text>
-              <Text style={styles.actionSub}>Saare settlements aur status dekhein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard} activeOpacity={0.92} onPress={this.goToCashSettlement}>
-             <Image style={{height:30,width:30,marginRight:20,resizeMode:'contain'}} source={require('./assets/purse.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Cash Settlement</Text>
-              <Text style={styles.actionSub}>Proof upload karein aur verify ke liye bhejein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            activeOpacity={0.92}
-            onPress={() => {
-              prefetchSoilOrderPincode();
-              this.props?.navigation?.navigate('SoilOrders');
-            }}
-          >
-            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/soil.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Soil Testing</Text>
-              <Text style={styles.actionSub}>Mitti jaanch orders dekhein aur track karein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            activeOpacity={0.92}
-            onPress={() => {
-              prefetchSoilOrderPincode();
-              this.props?.navigation?.navigate('CreateSoilOrder');
-            }}
-          >
-            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/fertilizer.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Create Soil Order</Text>
-              <Text style={styles.actionSub}>Naya soil test package book karein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            activeOpacity={0.92}
-            onPress={() => this.props?.navigation?.navigate('FarmerList')}
-          >
-            <Image style={{ height: 30, width: 30, marginRight: 20, resizeMode: 'contain' }} source={require('./assets/farmernew.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Add Farmer</Text>
-              <Text style={styles.actionSub}>Naya kisan jodein aur added list dekhein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-           <TouchableOpacity onPress={()=> this.setState({show_login : true})} style={styles.actionCard} activeOpacity={0.92}>
-                <Image style={{height:35,width:38,marginRight:20,resizeMode:'contain'}} source={require('./assets/exit.png')} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>Logout</Text>
-              <Text style={styles.actionSub}>Account se logout karein</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
+          <Text style={styles.menuSectionLbl}>More options</Text>
+          <View style={styles.menuCard}>
+            {[
+              {
+                key: 'hist',
+                title: 'Settlement History',
+                sub: 'Saare settlements dekhein',
+                icon: 'history',
+                tint: '#E0F2FE',
+                accent: '#0284C7',
+                onPress: this.goToSettlementHistory,
+              },
+              {
+                key: 'cash',
+                title: 'Cash Settlement',
+                sub: 'Proof upload aur settle',
+                icon: 'cash-multiple',
+                tint: '#CCFBF1',
+                accent: '#0D9488',
+                onPress: this.goToCashSettlement,
+              },
+              {
+                key: 'soil',
+                title: 'Soil Testing',
+                sub: 'Mitti jaanch orders',
+                icon: 'sprout',
+                tint: '#DCFCE7',
+                accent: '#16A34A',
+                onPress: () => {
+                  prefetchSoilOrderPincode();
+                  this.props?.navigation?.navigate('SoilOrders');
+                },
+              },
+              {
+                key: 'createSoil',
+                title: 'Create Soil Order',
+                sub: 'Naya soil test book karein',
+                icon: 'plus-box-outline',
+                tint: '#EDE9FE',
+                accent: '#5D3FD3',
+                onPress: () => {
+                  prefetchSoilOrderPincode();
+                  this.props?.navigation?.navigate('CreateSoilOrder');
+                },
+              },
+              {
+                key: 'farmer',
+                title: 'Add Farmer',
+                sub: 'Naya kisan jodein',
+                icon: 'account-plus',
+                tint: '#DCFCE7',
+                accent: '#15803D',
+                onPress: () => this.props?.navigation?.navigate('MainTabs', { screen: 'Farmers' }),
+              },
+            ].map((item, idx, arr) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.menuRow, idx < arr.length - 1 && styles.menuRowBorder]}
+                activeOpacity={0.85}
+                onPress={item.onPress}
+              >
+                <View style={[styles.menuIco, { backgroundColor: item.tint }]}>
+                  <MaterialCommunityIcons name={item.icon} size={20} color={item.accent} />
+                </View>
+                <View style={styles.menuText}>
+                  <Text style={styles.menuTitle}>{item.title}</Text>
+                  <Text style={styles.menuSub}>{item.sub}</Text>
+                </View>
+                <View style={styles.menuChevron}>
+                  <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
+
+          <TouchableOpacity
+            style={styles.logoutCard}
+            activeOpacity={0.88}
+            onPress={() => this.setState({ show_login: true })}
+          >
+            <View style={styles.logoutIco}>
+              <MaterialCommunityIcons name="logout" size={20} color="#DC2626" />
+            </View>
+            <View style={styles.menuText}>
+              <Text style={styles.logoutTitle}>Logout</Text>
+              <Text style={styles.logoutSub}>Account se bahar niklein</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color="#F87171" />
+          </TouchableOpacity>
 
 
           <View style={{ height: 16 }} />
@@ -396,31 +410,46 @@ class Profile extends Component {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#E8ECF4' },
+  root: { flex: 1, backgroundColor: '#EBE7F5' },
 
-  headerWrap: { backgroundColor: '#5D3FD3' },
+  headerWrap: {
+    backgroundColor: '#5D3FD3',
+    paddingBottom: 10,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
   headerSafe: { backgroundColor: '#5D3FD3' },
   headerRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', width: '100%' },
-  headerIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
   backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 14, fontWeight: '800' },
 
-  container: { padding:8, paddingBottom: 20 },
+  container: { padding: 10, paddingBottom: 28 },
 
-  earnRow: { flexDirection: 'row', marginBottom: 12 },
+  earnRow: { flexDirection: 'row', marginBottom: 12, gap: 10 },
   earnCard: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 16,
     paddingHorizontal: 14,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
-  earnLbl: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '500' },
-  earnVal: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 3 },
+  earnLbl: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
+  earnVal: { color: '#FFF', fontSize: 22, fontWeight: '800', marginTop: 4, letterSpacing: -0.3 },
   penCard: { flexDirection: 'row', alignItems: 'center' },
   penArrow: {
     width: 22,
@@ -442,7 +471,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignSelf:'center'
   },
-  profileRow: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 10, minWidth: 0 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0, paddingBottom: 4 },
   nameCol: { flex: 1, marginLeft: 12, justifyContent: 'center' },
 
   avatar: {
@@ -450,7 +479,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     overflow: 'hidden',
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -459,50 +488,100 @@ const styles = StyleSheet.create({
   avatarFallbackImg: { width: 38, height: 38, borderRadius: 19, resizeMode: 'contain' },
   avatarFallbackText: { fontSize: 18, fontWeight: '900', color: '#111827' },
 
-  name: { fontSize: 15, fontWeight: '700', color: '#FFF' },
+  name: { fontSize: 16, fontWeight: '800', color: '#FFF' },
   role: { marginTop: 4, fontSize: 12, fontWeight: '700', color: '#fff' },
-  phoneText: { marginTop: 1, fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
+  phoneText: { marginTop: 2, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
 
   sectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: '#F7F5FC',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E6EAF0',
+    borderColor: '#E2E5F0',
+    elevation: 0,
   },
   sectionTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { fontSize: 14, fontWeight: '800', color: '#434445' },
+  sectionTitle: { fontSize: 15.5, fontWeight: '700', color: '#171A2A' },
 
-  viewBtn: { flexDirection: 'row', alignItems: 'center' },
-  viewBtnText: { color: '#1C5D9E', fontSize: 13, fontWeight: '700' },
-  viewBtnArrow: { color: '#1C5D9E', fontSize: 18, marginLeft: 6, marginTop: -2,fontWeight:'bold' },
+  viewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingLeft: 8,
+  },
+  viewBtnText: { color: '#5D3FD3', fontSize: 12.5, fontWeight: '600' },
+  viewBtnArrow: { color: '#5D3FD3', fontSize: 18, marginLeft: 2, marginTop: -1, fontWeight: '600' },
 
   tilesGrid: { marginTop: 12 },
 
-  actionList: { gap: 6, marginTop: 2 },
-  actionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
+  menuSectionLbl: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.3,
+    marginBottom: 8,
+    marginLeft: 4,
+    marginTop: 4,
+  },
+  menuCard: {
+    backgroundColor: '#F7F5FC',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E6EAF0',
-    padding: 12,
+    borderColor: '#E2E5F0',
+    paddingVertical: 4,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
-  actionIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#E7FAF3',
+  menuRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E6E0F2',
+  },
+  menuIco: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
   },
-  actionTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
-  actionSub: { marginTop: 4, fontSize: 12, fontWeight: '400', color: '#6B7280' },
-  actionArrow: { fontSize: 22, fontWeight: '400', color: '#000', paddingLeft: 8 },
+  menuText: { flex: 1, marginLeft: 12, marginRight: 8 },
+  menuTitle: { fontSize: 14.5, fontWeight: '700', color: '#0F172A' },
+  menuSub: { marginTop: 2, fontSize: 12, fontWeight: '500', color: '#64748B' },
+  menuChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  logoutIco: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutTitle: { fontSize: 14.5, fontWeight: '700', color: '#B91C1C' },
+  logoutSub: { marginTop: 2, fontSize: 12, fontWeight: '500', color: '#F87171' },
 
   loaderOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -511,7 +590,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loaderBox: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F7F5FC',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E6EAF0',

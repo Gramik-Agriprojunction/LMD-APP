@@ -39,6 +39,7 @@ const SWAP_ANIM = {
   delete: { type: 'easeInEaseOut', property: 'opacity' },
 };
 import { SafeAreaView, SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Clipboard from '@react-native-clipboard/clipboard';
 import constants from '../utils/constants';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -67,6 +68,7 @@ import {
 } from '../utils/orderGrouping';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import { isReadOnly } from '../utils/lmdViewMode';
+import { HEADER } from '../theme/headerColors';
 
 // Best-effort: walk an order tree and yank any http(s) image URLs we'd render.
 const extractImageUrls = (orders) => {
@@ -550,7 +552,7 @@ class TrackOrders extends Component {
 
     return (
       <View style={s.root}>
-        <StatusBar barStyle="light-content" backgroundColor={P} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.orders} />
         <NavigationEvents onWillFocus={() => {}} onDidFocus={() => {
           if (this._skipNextFocusReload) {
             this._skipNextFocusReload = false;
@@ -560,46 +562,50 @@ class TrackOrders extends Component {
         }} />
 
         <View style={s.hdr}>
+          <View style={s.hdrBlobA} />
+          <View style={s.hdrBlobB} />
           <SafeAreaView edges={['top']}>
-            <View style={s.hdrRow}>
-              {this.props.navigation?.canGoBack?.() ? (
-                <TouchableOpacity onPress={() => this.props.navigation.goBack()} style={s.hdrBtn} activeOpacity={0.7} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
-                  <Image source={require('./assets/back.png')} style={s.hdrIco} />
-                </TouchableOpacity>
-              ) : (
-                <View style={s.hdrBtn} />
-              )}
-              <View style={s.searchBar}>
-                <Image source={require('./assets/search.png')} style={s.searchBarIco} />
-                <TextInput
-                  value={query}
-                  onChangeText={this.onQueryChange}
-                  placeholder="Orders dhoondein..."
-                  placeholderTextColor="rgba(255,255,255,0.5)"
-                  style={s.searchBarInput}
-                  returnKeyType="search"
-                  onSubmitEditing={() => {
-                    if (this._searchTimer) clearTimeout(this._searchTimer);
-                    this.reloadOrders();
-                  }}
-                />
-                {searchLoading ? (
-                  <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" style={s.searchBarLoader} />
-                ) : query.length > 0 ? (
-                  <TouchableOpacity onPress={this.clearQuery} activeOpacity={0.7} style={s.clearIco}>
-                    <Image source={require('./assets/cross.png')} style={s.clearIcoImg} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+            <View style={s.hdrTopRow}>
+              <TouchableOpacity
+                onPress={() => (this.props.navigation?.canGoBack?.() ? this.props.navigation.goBack() : this.props.navigation?.navigate?.('Home'))}
+                style={s.hdrBtn}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
+              </TouchableOpacity>
+              <Text style={s.hdrTitle}>Orders</Text>
               <TouchableOpacity onPress={this.openFilters} activeOpacity={0.85} style={[s.filterBtn, filtersActive && s.filterBtnOn]}>
-                <Image source={require('./assets/filter.png')} style={s.filterBtnIco} />
+                <Image source={require('./assets/filter.png')} style={s.filterIco} />
                 {filtersActive ? <View style={s.filterDot} /> : null}
               </TouchableOpacity>
+            </View>
+            <View style={s.searchBar}>
+              <MaterialCommunityIcons name="magnify" size={18} color="rgba(255,255,255,0.7)" />
+              <TextInput
+                value={query}
+                onChangeText={this.onQueryChange}
+                placeholder="Orders dhoondein..."
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                style={s.searchBarInput}
+                returnKeyType="search"
+                onSubmitEditing={() => {
+                  if (this._searchTimer) clearTimeout(this._searchTimer);
+                  this.reloadOrders();
+                }}
+              />
+              {searchLoading ? (
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" style={s.searchBarLoader} />
+              ) : query.length > 0 ? (
+                <TouchableOpacity onPress={this.clearQuery} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialCommunityIcons name="close-circle" size={18} color="rgba(255,255,255,0.55)" />
+                </TouchableOpacity>
+              ) : null}
             </View>
           </SafeAreaView>
         </View>
 
-        <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+        <View style={{ flex: 1, backgroundColor: '#EBE7F5' }}>
           {loading && !refreshing ? <ShimmerLoader /> : (
             <FlatList
               data={rows}
@@ -701,47 +707,91 @@ class TrackOrders extends Component {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#E8ECF4' },
+  root: { flex: 1, backgroundColor: '#EBE7F5' },
 
-  hdr: { backgroundColor: P, paddingBottom: 8 },
-  hdrRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  hdrBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  hdrIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
-
-  searchBar: { flex: 1, height: 38, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 10, marginLeft: 10, paddingHorizontal: 10 },
-  searchBarIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.5)', marginRight: 8 },
-  searchBarInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0, letterSpacing: 0 },
-  clearIco: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
-  clearIcoImg: { width: 8, height: 8, resizeMode: 'contain', tintColor: '#FFF' },
-  searchBarLoader: { marginLeft: 6, width: 20, height: 20 },
-  filterBtn: {
-    width: 38, height: 38, borderRadius: 10, marginLeft: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+  hdr: {
+    backgroundColor: HEADER.orders,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    overflow: 'hidden',
   },
-  filterBtnOn: { backgroundColor: 'rgba(255,255,255,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
-  filterBtnIco: { width: 16, height: 16, resizeMode: 'contain', tintColor: '#FFF' },
+  hdrBlobA: {
+    position: 'absolute', width: 190, height: 190, borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.10)', right: -50, top: -60,
+  },
+  hdrBlobB: {
+    position: 'absolute', width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(0,0,0,0.08)', left: -40, bottom: -50,
+  },
+  hdrTopRow: {
+    height: 52, paddingHorizontal: 14, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'space-between',
+  },
+  hdrBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hdrTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  searchBar: {
+    marginTop: 8, marginHorizontal: 14, height: 44, borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)',
+  },
+  searchBarInput: { flex: 1, fontSize: 14, color: '#FFF', paddingVertical: 0, fontWeight: '500' },
+  searchBarLoader: { width: 20, height: 20 },
+  filterBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.20)', alignItems: 'center', justifyContent: 'center',
+  },
+  filterBtnOn: { backgroundColor: 'rgba(255,255,255,0.32)' },
+  filterIco: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FFF' },
   filterDot: {
-    position: 'absolute', top: 7, right: 7, width: 7, height: 7, borderRadius: 4,
+    position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4,
     backgroundColor: '#FCD34D', borderWidth: 1, borderColor: P,
   },
 
-  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 28 },
+  scroll: { paddingHorizontal: 10, paddingTop: 12, paddingBottom: 28 },
 
-  card: { backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 10, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8 },
+  card: {
+    backgroundColor: '#F7F5FC',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E5F0',
+    elevation: 0,
+  },
+  cardTitle: { fontSize: 15.5, fontWeight: '700', color: '#171A2A', marginBottom: 12 },
 
-  secRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, marginBottom: 8 },
-  secTitle: { fontSize: 12, fontWeight: '700', color: '#475569', letterSpacing: 0.3 },
+  secRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 10 },
+  secTitle: { fontSize: 15.5, fontWeight: '700', color: '#171A2A' },
   secFilterNote: { fontSize: 10.5, fontWeight: '600', color: P, marginTop: 2 },
   selCountChip: { backgroundColor: STATUS.PICKUP.bg, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
   selCountChipT: { color: '#FFF', fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
-  selHint: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#EDE9FE', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: P },
+  selHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#EDE9FE',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: P,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#C4B5FD',
+  },
   selHintIco: { fontSize: 14, color: P, marginRight: 8, marginTop: 0 },
-  selHintT: { flex: 1, fontSize: 11.5, fontWeight: '500', color: '#4C1D95', lineHeight: 16 },
+  selHintT: { flex: 1, fontSize: 12, fontWeight: '600', color: '#4C1D95', lineHeight: 17 },
 
   // Delivery card
   dlv: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
@@ -765,12 +815,12 @@ const s = StyleSheet.create({
   chipT: { fontSize: 9, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
   priorityChip: { marginRight: 6 },
 
-  checkBox: { marginLeft: 10, width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  checkBox: { marginLeft: 10, width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', backgroundColor: '#F7F5FC', alignItems: 'center', justifyContent: 'center' },
   // Visible 26 × 26 checkbox chip — sits on the LEFT of the payment pills.
   // The Pressable wrapper around it provides the actual tap zone via internal
   // padding (16 × 10) plus hitSlop (16), so the touch area is generous while
   // the visual stays compact in the slim footer.
-  checkBoxFoot: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  checkBoxFoot: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, borderColor: '#CBD5E1', backgroundColor: '#F7F5FC', alignItems: 'center', justifyContent: 'center' },
   // Padded press surface around the checkbox — also the responder owner.
   checkBoxHit: { paddingHorizontal: 16, paddingVertical: 10, marginLeft: -8, marginRight: -2, alignItems: 'center', justifyContent: 'center' },
   checkBoxOn: { backgroundColor: '#08081c', borderColor: '#08081c' },

@@ -4,6 +4,7 @@ import {
   FlatList, ScrollView, Linking, Image, Animated, RefreshControl, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import constants from '../utils/constants';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -37,23 +38,31 @@ import {
   listRowsWithoutGroupHeaders,
 } from '../utils/orderGrouping';
 
-const P = '#5D3FD3';
-const SECTION_ICON = 24;
+import { COLORS, FONT, RADIUS, SPACING, flatCard } from '../theme/tokens';
+
+const P = COLORS.primary;
+const SECTION_ICON = 22;
 
 const QUICK_ACTIONS = [
   {
     l: 'Jama Karein',
+    sub: 'Cash settle',
+    icon: 'cash-multiple',
+    tile: '#EFEAFE',
     ico: require('./assets/money.png'),
-    bg: '#EDE9FE',
-    border: '#C4B5FD',
-    accent: '#5D3FD3',
+    bg: COLORS.tintPurple,
+    bubble: '#EDE9FE',
+    accent: COLORS.primary,
     nav: 'SettlementList',
   },
   {
     l: 'Mitti Jaanch',
+    sub: 'Soil orders',
+    icon: 'sprout',
+    tile: '#E3F6EC',
     ico: require('./assets/soil.png'),
-    bg: '#DCFCE7',
-    border: '#86EFAC',
+    bg: COLORS.tintGreen,
+    bubble: '#E8F8EE',
     accent: '#059669',
     countBg: '#EF4444',
     nav: 'SoilOrders',
@@ -61,9 +70,12 @@ const QUICK_ACTIONS = [
   },
   {
     l: 'Madad',
+    sub: 'Support call',
+    icon: 'headset',
+    tile: '#E1ECFB',
     ico: require('./assets/consultation.png'),
-    bg: '#DBEAFE',
-    border: '#93C5FD',
+    bg: COLORS.tintBlue,
+    bubble: '#E1ECFB',
     accent: '#2563EB',
     nav: 'support',
   },
@@ -138,7 +150,7 @@ class LMDDashboard extends Component {
     this.setState({ refreshing: true }, () => this.load(true));
   };
 
-  go = (s) => this.props.navigation.navigate('TrackOrders', {
+  go = (s) => this.props.navigation.navigate('Orders', {
     selectedStatus: s || 'ALL',
     groupStack: this.state.groupStack,
   });
@@ -225,16 +237,27 @@ class LMDDashboard extends Component {
   a = (i) => ({ opacity: this.anims[Math.min(i,4)].o, transform: [{ translateY: this.anims[Math.min(i,4)].y }] });
 
   goSettlements = () => {
-    this.props.navigation.navigate('SettlementList', { initialTab: 'pending' });
+    this.props.navigation.navigate('Cash', { initialTab: 'pending' });
   };
 
-  renderSectionHead = (icon, title, iconSize = SECTION_ICON) => (
+  renderSectionHead = (icon, title) => (
     <View style={$.sectionHeadLeft}>
-      <View style={[$.sectionIcoBox, { width: iconSize, height: iconSize }]}>
-        <Image source={icon} style={{ width: iconSize, height: iconSize }} resizeMode="contain" />
+      <View style={[$.sectionIcoBubble, { width: 30, height: 30, borderRadius: 10 }]}>
+        <MaterialCommunityIcons
+          name={typeof icon === 'string' ? icon : 'view-grid-outline'}
+          size={17}
+          color={P}
+        />
       </View>
       <Text style={$.sectionTitle}>{title}</Text>
     </View>
+  );
+
+  renderSectionLink = (label, onPress) => (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={$.sectionLink}>
+      <Text style={$.sectionLinkT}>{label}</Text>
+      <Text style={$.sectionLinkChevron}>›</Text>
+    </TouchableOpacity>
   );
 
   render() {
@@ -268,29 +291,33 @@ class LMDDashboard extends Component {
         <NavigationEvents onWillFocus={() => {}} onDidFocus={() => { requestStatusLocationAccess('delivery'); startBackgroundLocationTracker(); this.load(true); }} />
 
         <View style={$.hdr}>
+          <View style={$.hdrBlobA} />
+          <View style={$.hdrBlobB} />
           <SafeAreaView edges={['top']}>
-            <View style={$.hdrRow}>
-              {/* Profile chip + welcome name together = one big tap target */}
-              <TouchableOpacity
-                style={$.hdrLeft}
-                onPress={() => this.props.navigation.navigate('Profile')}
-                activeOpacity={0.7}
-                hitSlop={{ top: 6, bottom: 6 }}
-              >
-                <View style={$.hdrBtn}>
-                  <Image source={require('./assets/logo.png')} style={$.profIco} />
-                </View>
-                <View style={$.hdrInfo}>
-                  <Text style={$.hdrSub}>Swagat</Text>
-                  <Text style={$.hdrName} numberOfLines={1}>{name || '-'}</Text>
-                </View>
-              </TouchableOpacity>
+            <View style={$.brandRow}>
+              <View style={$.brandLeft}>
+                <Image source={require('./assets/logo.png')} style={$.brandLogo} />
+                <Text style={$.brandName}>LMD</Text>
+              </View>
               <NotificationBellButton navigation={this.props.navigation} />
+            </View>
+            <View style={$.hdrProfile}>
+              <View style={$.hdrInfo}>
+                <Text style={$.hdrHello} numberOfLines={1}>
+                  Namaste 👋 <Text style={$.hdrName}>{name || 'Partner'}</Text>
+                </Text>
+                <View style={$.pillRow}>
+                  <View style={[$.rolePill, $.rolePillAccent]}>
+                    <MaterialCommunityIcons name="lightning-bolt" size={11} color="#FFF" />
+                    <Text style={$.rolePillT}>LMD Partner</Text>
+                  </View>
+                </View>
+              </View>
             </View>
           </SafeAreaView>
         </View>
 
-        <View style={{ flex: 1, backgroundColor: '#E8ECF4' }}>
+        <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
           <ReadOnlyBanner navigation={this.props.navigation} />
           {this.state.loading && !this.state.refreshing ? <ShimmerLoader /> : (
             <ScrollView contentContainerStyle={$.scroll} showsVerticalScrollIndicator={false}
@@ -298,28 +325,38 @@ class LMDDashboard extends Component {
 
               {rule ? (
                 <Animated.View style={[$.ruleCard, this.a(0)]}>
-                  <View style={$.ruleDot} />
-                  <Text style={$.ruleT}>{rule}</Text>
+                  <View style={$.ruleIcoWrap}>
+                    <MaterialCommunityIcons name="truck-fast-outline" size={16} color="#C2410C" />
+                  </View>
+                  <Text style={$.ruleT} numberOfLines={2}>{rule}</Text>
+                  <Text style={$.ruleChev}>›</Text>
                 </Animated.View>
               ) : null}
 
               <Animated.View style={[$.earnRow, this.a(1)]}>
-                <View style={[$.earnCard, { backgroundColor: '#16A34A' }]}>
-                  <Text style={$.earnLbl}>Kamai</Text>
-                  <Text style={$.earnVal}>₹ {fmt(earn)}</Text>
+                <View style={[$.earnCard, $.earnKamai]}>
+                  <View style={$.earnIcoBubble}>
+                    <MaterialCommunityIcons name="wallet-outline" size={16} color="#FFF" />
+                  </View>
+                  <View style={$.earnTextCol}>
+                    <Text style={$.earnLbl}>KAMAI</Text>
+                    <Text style={$.earnVal} numberOfLines={1}>₹ {fmt(earn)}</Text>
+                  </View>
                 </View>
-                <View style={{ width: 8 }} />
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => this.props.navigation.navigate('PenaltyOrders')}
-                  style={[$.earnCard, $.penCard, { backgroundColor: '#EF4444' }]}
+                  style={[$.earnCard, $.earnPen]}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={$.earnLbl}>Penalty</Text>
-                    <Text style={$.earnVal}>₹ {fmt(pen)}</Text>
+                  <View style={$.earnIcoBubble}>
+                    <MaterialCommunityIcons name="gift-outline" size={16} color="#FFF" />
+                  </View>
+                  <View style={$.earnTextCol}>
+                    <Text style={$.earnLbl}>PENALTY</Text>
+                    <Text style={$.earnVal} numberOfLines={1}>₹ {fmt(pen)}</Text>
                   </View>
                   <View style={$.penArrow}>
-                    <Image source={require('./assets/arrow.png')} style={$.penArrowIco} />
+                    <MaterialCommunityIcons name="chevron-right" size={16} color="#E53935" />
                   </View>
                 </TouchableOpacity>
               </Animated.View>
@@ -335,24 +372,20 @@ class LMDDashboard extends Component {
                 </Animated.View>
               ) : null}
 
-              <Animated.View style={[$.card, this.a(2)]}>
-                <View style={$.cardH}>
+              <Animated.View style={this.a(2)}>
+                <View style={$.sectionRow}>
                   {this.renderSectionHead(
-                    require('./assets/reward.png'),
-                    `Live Orders (${this.n(live?.all_orders ?? allCount(live))})`,
-                    20,
+                    'chart-box-outline',
+                    `Live Orders (${this.n(live?.all_orders ?? allCount(live)).toLocaleString('en-IN')})`,
                   )}
-                  <TouchableOpacity onPress={() => this.go('ALL')} activeOpacity={0.7}><View style={$.viewAllWrap}><Text style={$.viewAll}>Sabhi Dekhein ›</Text></View></TouchableOpacity>
+                  {this.renderSectionLink('Sabhi Dekhein', () => this.go('ALL'))}
                 </View>
                 <LiveOrdersGrid live={live} onPress={this.go} />
               </Animated.View>
 
-              <Animated.View style={[$.card, this.a(3), hasToday ? { paddingBottom: 4 } : null]}>
-                <View style={[$.cardH, $.todayCardH]}>
-                  {this.renderSectionHead(
-                    require('./assets/truck.png'),
-                    'Aaj Ki Deliveries',
-                  )}
+              <Animated.View style={this.a(3)}>
+                <View style={$.sectionRow}>
+                  {this.renderSectionHead('truck-fast-outline', 'Aaj Ki Deliveries')}
                   <TouchableOpacity
                     onPress={this.openFilters}
                     activeOpacity={0.85}
@@ -362,62 +395,71 @@ class LMDDashboard extends Component {
                     {filtersActive ? <View style={$.filterDot} /> : null}
                   </TouchableOpacity>
                 </View>
-                {hasToday && filtersActive && (
-                  <ActiveFiltersSummary
-                    groupBy={levels[0]}
-                    subGroupBy={levels[1]}
-                    groupStack={levels}
-                    pickReadyFilter={pickReadyFilter}
-                    rescheduleDateFilter={rescheduleDateFilter}
-                    priorityFilter={priorityFilter}
-                    entityFilters={entityFilters}
-                  />
-                )}
-                {hasToday ? (
-                  <FlatList
-                    data={todayRows}
-                    keyExtractor={(row) => row.key || `${row?.item?.order_id}`}
-                    renderItem={this.renderTodayItem}
-                    scrollEnabled={false}
-                    extraData={todayRows}
-                  />
-                ) : (
-                  <View style={$.emptyWrap}>
-                    <Image source={require('./assets/dlh.png')} style={$.emptyImg} />
-                    <Text style={$.empty}>No deliveries for today</Text>
-                  </View>
-                )}
+                <View style={[$.card, hasToday ? { paddingBottom: 6 } : null]}>
+                  {hasToday && filtersActive && (
+                    <ActiveFiltersSummary
+                      groupBy={levels[0]}
+                      subGroupBy={levels[1]}
+                      groupStack={levels}
+                      pickReadyFilter={pickReadyFilter}
+                      rescheduleDateFilter={rescheduleDateFilter}
+                      priorityFilter={priorityFilter}
+                      entityFilters={entityFilters}
+                    />
+                  )}
+                  {hasToday ? (
+                    <FlatList
+                      data={todayRows}
+                      keyExtractor={(row) => row.key || `${row?.item?.order_id}`}
+                      renderItem={this.renderTodayItem}
+                      scrollEnabled={false}
+                      extraData={todayRows}
+                    />
+                  ) : (
+                    <View style={$.emptyWrap}>
+                      <Image source={require('./assets/dlh.png')} style={$.emptyImg} />
+                      <Text style={$.empty}>No deliveries for today</Text>
+                    </View>
+                  )}
+                </View>
               </Animated.View>
 
-              <Animated.View style={[$.card, this.a(4), { paddingBottom: 14 }]}>
-                <Text style={$.cardT}>Quick Actions</Text>
-                <View style={$.actRow}>
+              <Animated.View style={this.a(4)}>
+                <View style={$.sectionRow}>
+                  <Text style={$.sectionTitleAlone}>Quick Actions</Text>
+                </View>
+                <View style={$.qaGrid}>
                   {QUICK_ACTIONS.map((q) => {
                     const count = q.countKey ? Number(this.state.data?.[q.countKey] || 0) : 0;
                     return (
-                    <TouchableOpacity
-                      key={q.l}
-                      style={[$.qa, { backgroundColor: q.bg, borderColor: q.border }]}
-                      activeOpacity={0.85}
-                      onPress={() => (
-                        q.nav === 'support'
-                          ? this.dial(this.state.data?.Support)
-                          : this.props.navigation.navigate(q.nav)
-                      )}
-                    >
-                      {count > 0 ? (
-                        <View style={[$.qaBadge, { backgroundColor: q.countBg || q.accent }]}>
-                          <Text style={$.qaBadgeT}>{count}</Text>
+                      <TouchableOpacity
+                        key={q.l}
+                        style={[$.qaTile, { backgroundColor: q.tile }]}
+                        activeOpacity={0.85}
+                        onPress={() => (
+                          q.nav === 'support'
+                            ? this.dial(this.state.data?.Support)
+                            : this.props.navigation.navigate(
+                                q.nav === 'SettlementList' ? 'Cash' : q.nav,
+                              )
+                        )}
+                      >
+                        <View style={[$.qaBubble, { backgroundColor: q.accent }]}>
+                          <MaterialCommunityIcons name={q.icon} size={22} color="#FFF" />
                         </View>
-                      ) : null}
-                      <Image source={q.ico} style={$.qaImg} resizeMode="contain" />
-                      <Text style={[$.qaL, { color: q.accent }]}>{q.l}</Text>
-                    </TouchableOpacity>
+                        <Text style={[$.qaL, { color: COLORS.textPrimary }]} numberOfLines={1}>{q.l}</Text>
+                        <Text style={$.qaHint} numberOfLines={1}>{q.sub}</Text>
+                        {count > 0 ? (
+                          <View style={[$.qaBadge, { backgroundColor: q.countBg || q.accent }]}>
+                            <Text style={$.qaBadgeT}>{count}</Text>
+                          </View>
+                        ) : null}
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
               </Animated.View>
-              <View style={{ height: 8 }} />
+              <View style={{ height: 16 }} />
             </ScrollView>
           )}
         </View>
@@ -431,29 +473,140 @@ function fmt(n) { try { return Number(n).toLocaleString('en-IN'); } catch(e) { r
 
 
 const $ = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#E8ECF4' },
+  root: { flex: 1, backgroundColor: COLORS.bg },
 
-  hdr: { backgroundColor: P, paddingBottom: 4 },
-  hdrRow: { height: 56, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
-  hdrBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  hdrIco: { width: 17, height: 17, tintColor: '#FFF', resizeMode: 'contain' },
-  profIco: { width: 36, height: 36, borderRadius: 18, resizeMode: 'contain' },
-  hdrLeft: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  hdrInfo: { flex: 1, marginLeft: 12 },
-  hdrSub: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.6)' },
-  hdrName: { fontSize: 15, fontWeight: '600', color: '#FFF' },
+  hdr: {
+    backgroundColor: P,
+    paddingBottom: 18,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
+  },
+  hdrBlobA: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    right: -60,
+    top: -70,
+  },
+  hdrBlobB: {
+    position: 'absolute',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(0,0,0,0.10)',
+    left: -45,
+    bottom: -55,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  brandLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  brandLogo: { width: 30, height: 30, borderRadius: 8, resizeMode: 'contain' },
+  avatarChar: { color: '#FFF', fontSize: 22, fontWeight: '800' },
+  brandName: { fontSize: 20, fontWeight: '800', color: '#FFF', letterSpacing: 0.4 },
+  hdrProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  avatarRing: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profIco: { width: 44, height: 44, borderRadius: 22, resizeMode: 'contain' },
+  hdrInfo: { flex: 1 },
+  hdrHello: { fontSize: 15, fontWeight: '500', color: 'rgba(255,255,255,0.92)' },
+  hdrName: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  rolePillAccent: { backgroundColor: 'rgba(255,255,255,0.26)' },
+  rolePillT: { fontSize: 11, fontWeight: '700', color: '#FFF' },
 
-  scroll: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 28 },
+  scroll: {
+    paddingHorizontal: SPACING.screen,
+    paddingTop: SPACING.sm,
+    paddingBottom: 32,
+    gap: SPACING.sm,
+  },
 
-  ruleCard: { backgroundColor: '#FFFBEB', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
-  ruleDot: { display: 'none' },
-  ruleT: { flex: 1, fontSize: 12, fontWeight: '500', color: '#475569', lineHeight: 17 },
+  ruleCard: {
+    backgroundColor: '#FFF4E8',
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F5D9B0',
+  },
+  ruleIcoWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#FFEDD5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ruleT: { flex: 1, fontSize: FONT.body, fontWeight: '600', color: '#7C2D12', lineHeight: 18 },
+  ruleChev: { fontSize: 20, fontWeight: '700', color: '#C2410C', marginLeft: 6, opacity: 0.7 },
 
-  earnRow: { flexDirection: 'row', marginBottom: 8 },
-  earnCard: { flex: 1, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3 },
-  earnLbl: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '500' },
-  earnVal: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 3 },
-  penCard: { flexDirection: 'row', alignItems: 'center' },
+  earnRow: { flexDirection: 'row', gap: 8 },
+  earnCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    minHeight: 58,
+    overflow: 'hidden',
+  },
+  earnKamai: { backgroundColor: '#0D9488' },
+  earnPen: { backgroundColor: '#E11D48' },
+  earnIcoBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  earnTextCol: { flex: 1, minWidth: 0 },
+  earnLbl: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  earnVal: { color: '#FFF', fontSize: 16, fontWeight: '800', marginTop: 1, letterSpacing: -0.3 },
   penArrow: {
     width: 22,
     height: 22,
@@ -461,97 +614,94 @@ const $ = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
-  penArrowIco: { width: 9, height: 9, resizeMode: 'contain', tintColor: '#EF4444' },
 
-  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2 },
-  cardH: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  todayCardH: { marginBottom: 2 },
-  cardT: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
-  filterBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#E2E8F0',
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
-  filterBtnOn: { backgroundColor: '#EDE9FE', borderColor: '#C4B5FD' },
-  filterIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: P },
-  filterDot: {
-    position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: 3,
-    backgroundColor: '#FCD34D', borderWidth: 1, borderColor: P,
-  },
-  groupNote: { fontSize: 10.5, fontWeight: '600', color: P, marginBottom: 6, marginTop: -2 },
   sectionHeadLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 8 },
-  sectionIcoBox: { width: SECTION_ICON, height: SECTION_ICON, alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1E293B' },
-  viewAll: { color: P, fontSize: 11, fontWeight: '600' },
-  viewAllWrap: { backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-
-  emptyWrap: { alignItems: 'center', paddingVertical: 14 },
-  emptyImg: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 6 },
-  dlv: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-
-  dlvHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, marginBottom: 2 },
-  dlvOid: { fontSize: 11, fontWeight: '600', color: P },
-  chip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  chipT: { fontSize: 8, fontWeight: '600', color: '#FFF' },
-
-  dlvPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10 },
-  dlvAvt: { width: 34, height: 34, borderRadius: 17, resizeMode: 'cover', marginRight: 10 },
-  dlvName: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  dlvPhone: { fontSize: 11, fontWeight: '400', color: '#94A3B8', marginTop: 1 },
-  ico: { width: 26, height: 26, resizeMode: 'contain' },
-
-  routeWrap: { marginHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  routeRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  routeTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  routeLine: { width: 1.5, flex: 1, minHeight: 10, backgroundColor: '#D1D5DB', marginVertical: 3 },
-  routeBody: { flex: 1, paddingBottom: 10 },
-  routeLbl: { fontSize: 9, fontWeight: '600', letterSpacing: 0.3, marginBottom: 3 },
-  routeTitle: { fontSize: 12, fontWeight: '600', color: '#1E293B' },
-  routePhone: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
-  routeAddr: { fontSize: 11, fontWeight: '400', color: '#64748B', lineHeight: 16, marginTop: 1 },
-  dsCallBtn: { marginLeft: 6, alignSelf: 'flex-start', marginTop: 12 },
-  dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#EA580C' },
-
-  dlvFoot: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  pill: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4, marginRight: 4 },
-  pillT: { fontSize: 9, fontWeight: '500', color: '#64748B' },
-  dlvAmt: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
-
-  empty: { textAlign: 'center', color: '#475569', fontSize: 13, fontWeight: '500', paddingVertical: 4 },
-  actRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  qa: {
-    flex: 1,
-    borderRadius: 14,
+  sectionIcoBubble: {
+    borderRadius: RADIUS.icon,
+    backgroundColor: COLORS.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 6,
-    borderWidth: 1,
-    position: 'relative',
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
   },
+  sectionTitle: { flex: 1, fontSize: FONT.h3, fontWeight: '700', color: COLORS.textPrimary },
+  sectionTitleAlone: { fontSize: FONT.h3, fontWeight: '700', color: COLORS.textPrimary },
+  sectionLink: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingLeft: 8 },
+  sectionLinkT: { fontSize: FONT.body, fontWeight: '600', color: P },
+  sectionLinkChevron: { fontSize: 18, fontWeight: '600', color: P, marginLeft: 2, marginTop: -1 },
+
+  card: {
+    padding: 0,
+    marginBottom: 4,
+  },
+  filterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+  },
+  filterBtnOn: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primarySoftBorder },
+  filterIco: { width: 14, height: 14, resizeMode: 'contain', tintColor: P },
+  filterDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FCD34D',
+    borderWidth: 1,
+    borderColor: P,
+  },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: 18 },
+  emptyImg: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 8 },
+  empty: { textAlign: 'center', color: COLORS.textSecondary, fontSize: FONT.title, fontWeight: '600', paddingVertical: 4 },
+
+  qaGrid: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  qaTile: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+  },
+  qaBubble: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  qaL: { fontSize: 13, fontWeight: '800', letterSpacing: 0.1, textAlign: 'center' },
+  qaHint: { fontSize: 10.5, fontWeight: '600', color: COLORS.textMuted, marginTop: 2, textAlign: 'center' },
   qaBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 8,
+    right: 8,
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
   },
   qaBadgeT: { fontSize: 10, fontWeight: '800', color: '#FFF' },
-  qaImg: { width: 48, height: 48, marginBottom: 8 },
-  qaL: { fontSize: 11.5, fontWeight: '700', textAlign: 'center', letterSpacing: 0.1 },
 });
 
 export default withV4Navigation(LMDDashboard);

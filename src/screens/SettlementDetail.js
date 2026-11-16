@@ -9,6 +9,7 @@ import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import ProofImageViewer from '../components/ProofImageViewer';
 import OrderCard from '../components/OrderCard';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
@@ -457,7 +458,7 @@ class SettlementDetail extends Component {
       return (
         <View style={st.root}>
           <StatusBar barStyle="light-content" backgroundColor={P} />
-          <ScreenHeader bg={P} title="Settlement Detail" onBack={this.goBack} />
+          <ScreenHeader bg={HEADER.cash} title="Settlement Detail" onBack={this.goBack} />
           <View style={st.loader}><ActivityIndicator color={P} size="small" /></View>
         </View>
       );

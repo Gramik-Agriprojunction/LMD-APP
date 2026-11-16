@@ -10,6 +10,7 @@ import constants from '../utils/constants';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import { isReadOnly } from '../utils/lmdViewMode';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import Toast from 'react-native-simple-toast';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
@@ -290,12 +291,11 @@ class SoilOrders extends Component {
 
     return (
       <View style={st.root}>
-        <StatusBar barStyle="light-content" backgroundColor={S.P} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.soil} />
         <NavigationEvents onDidFocus={() => { this.onScreenFocus(); this.fetchOrders(); }} />
 
-        <View style={st.hdrWrap}>
-          <ScreenHeader
-            bg={S.P}
+        <ScreenHeader
+            bg={HEADER.soil}
             kicker="Soil test orders"
             title="Mitti Jaanch"
             onBack={this.goBack}
@@ -308,7 +308,6 @@ class SoilOrders extends Component {
               />
             )}
           />
-        </View>
 
         <View style={st.body}>
           {this.renderTabBar()}

@@ -17,7 +17,7 @@ export const STATUS = {
   DISPUTED:   { key: 'DISPUTED',   bg: '#CA8A04', tint: '#FEF3C7', accent: '#854D0E', label: 'Disputed' },
   CANCELLED:  { key: 'CANCELLED',  bg: '#F87171', tint: '#FEE2E2', accent: '#B91C1C', label: 'Cancelled' },
   REJECTED:   { key: 'REJECTED',   bg: '#FB7185', tint: '#FFE4E6', accent: '#9F1239', label: 'Rejected' },
-  RTO:        { key: 'RTO',        bg: '#EF4444', tint: '#FEF2F2', accent: '#991B1B', label: 'RTO' },
+  RTO:        { key: 'RTO',        bg: '#A78BFA', tint: '#EDE9FE', accent: '#5B21B6', label: 'RTO' },
 };
 
 // Display order for the Live Orders grid and Track Orders tabs.

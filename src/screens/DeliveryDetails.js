@@ -31,8 +31,12 @@ import { isReadOnly } from '../utils/lmdViewMode';
 import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import OrderCard from '../components/OrderCard';
 import QrPayModal from '../components/QrPayModal';
+import SwipeToConfirm from '../components/SwipeToConfirm';
+import { COLORS, SHADOW } from '../theme/tokens';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SummaryStatIcon, SummarySectionIcon } from '../components/SummaryStatIcons';
 import { initiateExotelCall } from '../utils/exotelCall';
 import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
@@ -862,7 +866,7 @@ class DeliveryDetails extends Component {
     const codAmount = this.toNum(details?.cod_amount);
 
     // Header tinted to match the current order's status (falls back to brand purple before data loads)
-    const headerColor = details?.order_status ? this.getStatusColors(details.order_status).bg : '#5D3FD3';
+    const headerColor = HEADER.brand;
 
     return (
       <View style={styles.root}>
@@ -882,9 +886,69 @@ class DeliveryDetails extends Component {
           }}
         />
 
-        <ScreenHeader bg={headerColor} title="Delivery Jaankari" onBack={this.goBack} />
+        {(() => {
+          const st = details?.order_status ? STATUS_COLORS.getStatus(details.order_status) : null;
+          const code = details?.order_code ? String(details.order_code).split(/\s+/)[0] : '';
+          const payStatus = String(details?.payment_status || '').toLowerCase();
+          const payMode = String(details?.payment_mode || '').toUpperCase();
+          return (
+            <View style={[styles.hdrSheet, { backgroundColor: headerColor }]}>
+              <View style={styles.hdrBlobA} />
+              <View style={styles.hdrBlobB} />
+              <SafeAreaView edges={['top']}>
+                <View style={styles.hdrTopRow}>
+                  <TouchableOpacity
+                    onPress={this.goBack}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={styles.hdrBack}
+                  >
+                    <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
+                  </TouchableOpacity>
+                  <Text style={styles.hdrTitle}>Delivery Jaankari</Text>
+                  <View style={[styles.hdrBack, { backgroundColor: 'transparent' }]} />
+                </View>
+
+                {details ? (
+                  <View style={styles.hdrHero}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.hdrHeroLbl}>
+                        {code ? `ORDER #${code}` : 'ORDER TOTAL'}
+                      </Text>
+                      <Text style={styles.hdrHeroAmt}>₹ {total}</Text>
+                      <View style={styles.hdrChipRow}>
+                        {!!payMode && (
+                          <View style={styles.hdrChip}>
+                            <MaterialCommunityIcons name="wallet-outline" size={12} color="#FFF" />
+                            <Text style={styles.hdrChipT}>{payMode}</Text>
+                          </View>
+                        )}
+                        {!!payStatus && (
+                          <View style={styles.hdrChip}>
+                            <MaterialCommunityIcons
+                              name={payStatus === 'paid' ? 'check-circle-outline' : 'clock-outline'}
+                              size={12}
+                              color="#FFF"
+                            />
+                            <Text style={styles.hdrChipT}>{payStatus.toUpperCase()}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    {st ? (
+                      <View style={styles.hdrStatus}>
+                        <Text style={[styles.hdrStatusT, { color: st.accent }]}>{st.label}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </SafeAreaView>
+            </View>
+          );
+        })()}
 
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />}>
+
           {isLoading && !details ? (
             <ShimmerLoader />
           ) : null}
@@ -910,7 +974,17 @@ class DeliveryDetails extends Component {
               {this.renderTopStatusCards(details)}
 
               {/* Items */}
-              <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}  <Text style={{ color: '#16A34A' }}>₹ {total}</Text></Text>
+              <View style={styles.ddSecRow}>
+                <View style={styles.ddSecLeft}>
+                  <View style={styles.ddSecIco}>
+                    <MaterialCommunityIcons name="package-variant-closed" size={16} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.ddSecTitle}>{`${totalItems || items.length || 0} Item(s)`}</Text>
+                </View>
+                <View style={styles.ddSecAmtPill}>
+                  <Text style={styles.ddSecAmt}>₹ {total}</Text>
+                </View>
+              </View>
               {items.length ? (
                 <View style={styles.itemsCard}>
                   {items.map((it, idx) => {
@@ -1345,7 +1419,7 @@ class DeliveryDetails extends Component {
           // already conveyed by the inline status badge inside the panel and
           // by the order card above. A solid colored panel reads too heavy.
           const onDark = false;
-          const panelBg = '#FFF';
+          const panelBg = COLORS.card;
           return (
             <SafeAreaView
               edges={safeBottomEdges()}
@@ -1392,45 +1466,48 @@ class DeliveryDetails extends Component {
               ) : null}
 
               {!readOnly && (details?.order_status === 'pending' || details?.order_status === 'reschedule') && (
-                <TouchableOpacity
-                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.PICKUP.bg }]}
-                  onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'pickup', order: details })}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.neutralPrimaryBtnT}>Order Pickup Karein</Text>
-                  <Animated.View style={{ marginLeft: 10, transform: [{ translateX: this.pickupPulse.interpolate({ inputRange: [1, 1.03], outputRange: [0, 6] }) }] }}>
-                    <Image source={require('./assets/arrow.png')} style={styles.neutralPrimaryBtnIco} />
-                  </Animated.View>
-                </TouchableOpacity>
+                <SwipeToConfirm
+                  label="Swipe to Pickup"
+                  color={STATUS_COLORS.STATUS.PICKUP.bg}
+                  resetKey={`pickup-${details?.id}-${details?.order_status}`}
+                  onConfirm={() =>
+                    this.props.navigation.navigate('OrderOtpVerify', {
+                      orderId: details?.id,
+                      actionType: 'pickup',
+                      order: details,
+                    })
+                  }
+                />
               )}
 
               {!readOnly && details?.order_status === 'pickup' && (
-                <TouchableOpacity
-                  onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'deliver', order: details })}
-                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.DELIVERED.bg }]}
-                  activeOpacity={0.85}
-                >
-                  <Image source={require('./assets/check.png')} style={[styles.neutralPrimaryBtnIco, { width: 16, height: 16, marginRight: 8 }]} />
-                  <Text style={styles.neutralPrimaryBtnT}>Order Deliver Karein</Text>
-                  <Animated.Image
-                    source={require('./assets/arrow.png')}
-                    style={[
-                      styles.neutralPrimaryBtnArrow,
-                      { transform: [{ translateX: this.pickupPulse.interpolate({ inputRange: [1, 1.03], outputRange: [0, 6] }) }] },
-                    ]}
-                  />
-                </TouchableOpacity>
+                <SwipeToConfirm
+                  label="Swipe to Deliver"
+                  color={STATUS_COLORS.STATUS.DELIVERED.bg}
+                  resetKey={`deliver-${details?.id}-${details?.order_status}`}
+                  onConfirm={() =>
+                    this.props.navigation.navigate('OrderOtpVerify', {
+                      orderId: details?.id,
+                      actionType: 'deliver',
+                      order: details,
+                    })
+                  }
+                />
               )}
 
               {!readOnly && isRto && (
-                <TouchableOpacity
-                  onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'rto', order: details })}
-                  style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.RTO.bg }]}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.neutralPrimaryBtnT, { marginRight: 8 }]}>↩</Text>
-                  <Text style={styles.neutralPrimaryBtnT}>Saaman Wapsi Confirm Karein</Text>
-                </TouchableOpacity>
+                <SwipeToConfirm
+                  label="Swipe to Confirm RTO"
+                  color={STATUS_COLORS.STATUS.RTO.bg}
+                  resetKey={`rto-${details?.id}-${details?.order_status}`}
+                  onConfirm={() =>
+                    this.props.navigation.navigate('OrderOtpVerify', {
+                      orderId: details?.id,
+                      actionType: 'rto',
+                      order: details,
+                    })
+                  }
+                />
               )}
 
               {!readOnly && s !== 'disputed' && (
@@ -1653,7 +1730,7 @@ class DeliveryDetails extends Component {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F0F3F8' },
+  root: { flex: 1, backgroundColor: COLORS.bg },
 
   headerWrap: { backgroundColor: '#5D3FD3' },
   headerSafe: { backgroundColor: '#5D3FD3' },
@@ -1662,18 +1739,17 @@ const styles = StyleSheet.create({
   backImg: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
   headerTitle: { flex: 1, textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '600' },
 
-  container: { paddingHorizontal: 8, paddingTop: 10, paddingBottom: 20 },
+  container: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 24 },
 
-  pageBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  pageBox: { backgroundColor: COLORS.card, borderRadius: 16, padding: 14, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.borderSoft },
   pageBoxText: { marginLeft: 10, fontSize: 12, fontWeight: '600', color: '#1E293B' },
   pageErrorText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
 
   // Detail card styles
-  ddCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
+  ddCard: { backgroundColor: COLORS.card, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderSoft, overflow: 'hidden' },
 
-  // Light-grey header band that wraps the order ID + status pill + farmer row
-  // (matches the order-card pattern used in TrackOrders & LMDDashboard lists).
-  ddTop: { backgroundColor: '#F1F5F9' },
+  // Soft purple header band — order ID + status + farmer
+  ddTop: { backgroundColor: COLORS.primarySoft },
   ddHero: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, paddingBottom: 6 },
   ddOid: { fontSize: 13, fontWeight: '700', color: '#5D3FD3' },
   ddDate: { fontSize: 11, fontWeight: '500', color: '#94A3B8', marginTop: 3 },
@@ -1714,11 +1790,106 @@ const styles = StyleSheet.create({
   ddSlot: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, marginRight: 6, marginBottom: 4 },
   ddSlotT: { fontSize: 11, fontWeight: '500', color: '#475569' },
 
-  ddSecTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B', marginBottom: 8, marginTop: 6 },
+  ddSecRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  ddSecLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ddSecIco: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ddSecTitle: { fontSize: 15.5, fontWeight: '700', color: '#171A2A' },
+  ddSecAmtPill: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  ddSecAmt: { fontSize: 14, fontWeight: '800', color: '#15803D' },
+
+  // Modern header sheet — back + title + order hero (amount / pay chips / status)
+  hdrSheet: {
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    paddingBottom: 20,
+    overflow: 'hidden',
+  },
+  hdrBlobA: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    right: -50,
+    top: -60,
+  },
+  hdrBlobB: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    left: -40,
+    bottom: -50,
+  },
+  hdrTopRow: {
+    height: 52,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hdrBack: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hdrTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  hdrHero: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 18,
+    paddingTop: 6,
+  },
+  hdrHeroLbl: { color: 'rgba(255,255,255,0.80)', fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  hdrHeroAmt: { color: '#FFF', fontSize: 32, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 },
+  hdrChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  hdrChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  hdrChipT: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  hdrStatus: {
+    backgroundColor: '#FFF',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  hdrStatusT: { fontSize: 12, fontWeight: '800' },
 
   topStatusCards: {
-    marginTop: 2,
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 6,
     gap: 8,
   },
 
@@ -1726,48 +1897,48 @@ const styles = StyleSheet.create({
 
   // Items card — single rounded container holding all line items, separated by an inner divider
   itemsCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
+    ...SHADOW.hairline,
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 8,
+    borderColor: COLORS.borderSoft,
+    marginBottom: 12,
     overflow: 'hidden',
   },
-  ddItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12 },
-  ddItemRowDivider: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  ddItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12 },
+  ddItemRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.divider },
   // Soft tinted container for the product image — gives the photo nicer framing
   ddItemImgWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    width: 60,
+    height: 60,
+    borderRadius: 14,
+    backgroundColor: COLORS.primarySoft,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.borderSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     overflow: 'hidden',
   },
-  ddProductImg: { width: 52, height: 52, resizeMode: 'contain' },
+  ddProductImg: { width: 54, height: 54, resizeMode: 'contain' },
   ddProductFallback: { width: 28, height: 28, resizeMode: 'contain', tintColor: '#94A3B8' },
-  ddItemName: { fontSize: 12, fontWeight: '600', color: '#1E293B', marginBottom: 6, lineHeight: 16 },
-  ddItemMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  ddItemName: { fontSize: 13.5, fontWeight: '600', color: '#171A2A', marginBottom: 6, lineHeight: 18 },
+  ddItemMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   // Variation pill (e.g. "100 ML")
-  ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, marginRight: 6, borderWidth: 1, borderColor: '#FED7AA' },
+  ddItemVarPill: { backgroundColor: '#FFF7ED', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: '#FED7AA' },
   ddItemVar: { fontSize: 11, fontWeight: '600', color: '#C2410C' },
   // Quantity pill (e.g. "× 1")
-  ddItemQtyPill: { backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, borderWidth: 1, borderColor: '#E2E8F0' },
-  ddItemQty: { fontSize: 11, fontWeight: '600', color: '#475569' },
+  ddItemQtyPill: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: '#E2E5F0' },
+  ddItemQty: { fontSize: 11, fontWeight: '700', color: '#475569' },
   // Price column on the right
-  ddItemPriceCol: { alignItems: 'flex-end', minWidth: 60 },
-  ddItemPrice: { fontSize: 15, fontWeight: '700', color: '#16A34A' },
-  ddItemUnit: { fontSize: 10, fontWeight: '500', color: '#94A3B8', marginTop: 2 },
+  ddItemPriceCol: { alignItems: 'flex-end', minWidth: 64 },
+  ddItemPrice: { fontSize: 15.5, fontWeight: '800', color: '#16A34A' },
+  ddItemUnit: { fontSize: 11, fontWeight: '500', color: '#8B93A7', marginTop: 2 },
   ddItemComboPill: {
     backgroundColor: '#EDE9FE',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 5,
-    marginRight: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#DDD6FE',
   },
@@ -1803,7 +1974,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     alignItems: 'center',
@@ -1826,7 +1997,7 @@ const styles = StyleSheet.create({
   orderMetaValue: { fontSize: 13, fontWeight: '700', color: '#111827' },
   cardLabel: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', marginBottom: 8 },
 
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  card: { backgroundColor: '#F7F5FC', borderRadius: 14, padding: 14, marginTop: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
 
   farmerRow: { flexDirection: 'row', alignItems: 'center', padding: 5 },
   farmerName: { fontSize: 14, fontWeight: '700', color: '#000' },
@@ -1855,26 +2026,28 @@ const styles = StyleSheet.create({
   itemQty: { fontSize: 12, color: '#000', fontWeight: '500', alignSelf: 'center' },
 
   bottomPanel: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    paddingHorizontal: 14,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
     // SafeAreaView adds the platform inset on top of this value:
     //   iOS adds ~34px (home indicator) — too much; we offset it back with a negative value.
     //   Android adds ~24px (gesture nav) — already comfortable, so we keep a small positive padding.
-    paddingBottom: Platform.OS === 'ios' ? -16 : 10,
-    paddingTop: 10,
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    paddingBottom: Platform.OS === 'ios' ? -16 : 12,
+    paddingTop: 14,
+    backgroundColor: COLORS.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.borderSoft,
+    shadowColor: '#1A1F3A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 0, marginTop: 2 },
-  totalLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
-  codValue: { fontSize: 19, fontWeight: '800', color: '#F37A20' },
-  totalWords: { fontSize: 11, fontWeight: '500', color: '#64748B', fontStyle: 'italic' },
+  totalLabel: { fontSize: 13, fontWeight: '600', color: '#5B6478' },
+  codValue: { fontSize: 22, fontWeight: '800', color: '#F37A20', letterSpacing: -0.4 },
+  totalWords: { fontSize: 11.5, fontWeight: '500', color: '#8B93A7', fontStyle: 'italic' },
 
   pickupBtn: { height: 42, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0891B2', marginTop: 6 },
   pickupBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
@@ -1908,7 +2081,7 @@ const styles = StyleSheet.create({
 
   // Invoice download progress overlay
   dlOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  dlCard: { width: '100%', maxWidth: 320, backgroundColor: '#FFF', borderRadius: 16, padding: 22, alignItems: 'center' },
+  dlCard: { width: '100%', maxWidth: 320, backgroundColor: '#F7F5FC', borderRadius: 16, padding: 22, alignItems: 'center' },
   dlIcoWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   dlIco: { width: 28, height: 28, resizeMode: 'contain', tintColor: '#5D3FD3' },
   dlTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
@@ -1948,9 +2121,19 @@ const styles = StyleSheet.create({
   // Outlined "More Options" button (kept, was already neutral).
   readOnlyNote: { marginTop: 10, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' },
   readOnlyNoteT: { color: '#92400E', fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  moreOptsBtn: { height: 44, marginTop: 8, borderRadius: 12, borderWidth: 1.2, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#475569', marginRight: 8, includeFontPadding: false, lineHeight: 22, textAlignVertical: 'center' },
-  moreOptsT: { color: '#334155', fontSize: 13.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },
+  moreOptsBtn: {
+    height: 42,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#5B6478', marginRight: 8, includeFontPadding: false, lineHeight: 22, textAlignVertical: 'center' },
+  moreOptsT: { color: COLORS.primary, fontSize: 14, fontWeight: '700', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },
+
 
   // More Options bottom-sheet — tile-based, taller, easier to scan.
   moreSheetWrap: { paddingHorizontal: 18, paddingTop: 4 },
@@ -1999,74 +2182,83 @@ const styles = StyleSheet.create({
 
   // Payment & Settlement summary card
   summaryCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
+    ...SHADOW.hairline,
+    backgroundColor: '#F7F5FC',
+    borderRadius: 18,
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-    marginBottom: 8,
+    paddingTop: 14,
+    paddingBottom: 8,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.borderSoft,
   },
   summaryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
     paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEEF5',
   },
   summarySubSection: {
     marginBottom: 10,
   },
   summarySubSectionSep: {
-    marginTop: 4,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    marginTop: 6,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EBEEF5',
   },
   summarySubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  summarySubTitle: { fontSize: 12.5, fontWeight: '700', color: '#334155' },
-  summaryTitle: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  summarySubTitle: { fontSize: 14.5, fontWeight: '700', color: '#171A2A', marginLeft: 2 },
+  summaryTitle: { fontSize: 14, fontWeight: '700', color: '#171A2A' },
 
   // 2-column grid of stat boxes — icons shown inline without background discs.
+  // Receipt-style rows: label on the left, value on the right.
   sumGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'column',
   },
   sumBox: {
-    width: '48.5%',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E6EBF1',
-    backgroundColor: '#FAFBFC',
-    paddingVertical: 9,
-    paddingHorizontal: 9,
+    width: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 2,
     flexDirection: 'row',
     alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.divider,
   },
   sumBoxFull: { width: '100%' },
   sumBoxAlignTop: { alignItems: 'flex-start' },
   sumBoxContent: {
     flex: 1,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginLeft: 10,
   },
   sumBoxLbl: {
-    fontSize: 9.5,
+    fontSize: 12.5,
     fontWeight: '500',
-    color: '#64748B',
-    marginBottom: 2,
-    letterSpacing: 0.2,
+    color: '#5B6478',
+    marginRight: 10,
   },
-  sumBoxVal: { fontSize: 12.5, fontWeight: '600', color: '#0F172A', lineHeight: 16 },
-  sumBoxValSm: { fontSize: 10.5, fontWeight: '500', color: '#0F172A', lineHeight: 14 },
+  sumBoxVal: { flexShrink: 1, textAlign: 'right', fontSize: 13.5, fontWeight: '700', color: '#171A2A', lineHeight: 18 },
+  sumBoxValSm: { flexShrink: 1, textAlign: 'right', fontSize: 12, fontWeight: '600', color: '#171A2A', lineHeight: 16 },
   sumBoxValMulti: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
-  sumBoxChipT: { fontSize: 11.5, fontWeight: '700', letterSpacing: 0.4 },
+  sumBoxChipT: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
 
   // Receipt-style list rows
   psRow: {
@@ -2122,13 +2314,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#FEF2F2',
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#FECACA',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     paddingLeft: 14,
-    marginBottom: 8,
+    marginBottom: 10,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -2158,11 +2350,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#F5F3FF',
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#DDD6FE',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     paddingLeft: 14,
     marginBottom: 0,
     position: 'relative',
@@ -2194,11 +2386,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#F0FDF4',
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#BBF7D0',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     paddingLeft: 14,
     marginBottom: 0,
     position: 'relative',
@@ -2208,11 +2400,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#FFF7ED',
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#FED7AA',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     paddingLeft: 14,
     marginBottom: 0,
     position: 'relative',
@@ -2279,7 +2471,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   slotChip: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     borderWidth: 1,
     borderColor: '#A5F3FC',
     paddingHorizontal: 10,
@@ -2294,75 +2486,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F5F3FF',
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#DDD6FE',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 10,
   },
   partnerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: '#5D3FD3',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  partnerAvatarChar: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-  partnerLbl: { fontSize: 10, fontWeight: '500', color: '#6B7280', marginBottom: 1 },
-  partnerName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  partnerPhone: { fontSize: 12, fontWeight: '500', color: '#64748B', marginTop: 1 },
+  partnerAvatarChar: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+  partnerLbl: { fontSize: 10.5, fontWeight: '600', color: '#8B93A7', marginBottom: 2 },
+  partnerName: { fontSize: 14.5, fontWeight: '700', color: '#171A2A' },
+  partnerPhone: { fontSize: 12.5, fontWeight: '500', color: '#5B6478', marginTop: 2 },
 
   // Support contacts (PP / BSO / DSO from API `partner_contacts`)
   contactsBlock: {
     marginTop: 10,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    backgroundColor: '#F8F9FC',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E6EBF1',
-    paddingHorizontal: 10,
-    paddingTop: 8,
+    borderColor: '#E2E5F0',
+    paddingHorizontal: 12,
+    paddingTop: 10,
     paddingBottom: 4,
   },
-  contactsTitle: { fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 0.4, marginBottom: 6, textTransform: 'uppercase' },
-  contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
-  contactRowDivider: { borderTopWidth: 1, borderTopColor: '#E6EBF1' },
-  contactRoleChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, minWidth: 38, alignItems: 'center' },
-  contactRoleChipT: { color: '#FFF', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
-  contactName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  contactRole: { fontSize: 10.5, fontWeight: '500', color: '#94A3B8', marginTop: 1 },
+  contactsTitle: { fontSize: 11, fontWeight: '700', color: '#8B93A7', letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' },
+  contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  contactRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#EBEEF5' },
+  contactRoleChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, minWidth: 40, alignItems: 'center' },
+  contactRoleChipT: { color: '#FFF', fontSize: 9.5, fontWeight: '800', letterSpacing: 0.5 },
+  contactName: { fontSize: 13.5, fontWeight: '700', color: '#171A2A' },
+  contactRole: { fontSize: 11, fontWeight: '500', color: '#8B93A7', marginTop: 2 },
 
   // Invoice card
   invoiceCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    marginBottom: 8,
+    ...SHADOW.hairline,
+    backgroundColor: '#F7F5FC',
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E2E5F0',
     overflow: 'hidden', // so the colored header band clips to the rounded corners
   },
   // Soft pastel indigo banner — much lighter than before, dark text for contrast
   invoiceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#E0E7FF',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primarySoft,
   },
   invoiceHeaderIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: '#4338CA',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
   invoiceHeaderIconChar: { color: '#FFF', fontSize: 18, fontWeight: '800', lineHeight: 20 },
-  invoiceHeaderTitle: { fontSize: 14, fontWeight: '700', color: '#3730A3' },
-  invoiceHeaderSub: { fontSize: 10, fontWeight: '500', color: '#4F46E5', marginTop: 1 },
+  invoiceHeaderTitle: { fontSize: 15, fontWeight: '700', color: '#3730A3' },
+  invoiceHeaderSub: { fontSize: 11, fontWeight: '500', color: '#4F46E5', marginTop: 2 },
 
   // Inline download progress (shown inside the Invoice card while downloading)
   invoiceProgressTrack: {
@@ -2384,7 +2577,7 @@ const styles = StyleSheet.create({
   invoiceActions: {
     flexDirection: 'row',
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 8,
   },
   invoicePill: {
@@ -2392,9 +2585,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
+    paddingVertical: 12,
     paddingHorizontal: 6,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
   invoicePillIcon: { width: 16, height: 16, resizeMode: 'contain', marginRight: 6 },
@@ -2481,7 +2674,7 @@ const styles = StyleSheet.create({
   },
   qrScroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, justifyContent: 'center' },
   qrCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     borderRadius: 20,
     padding: 16,
     alignItems: 'center',
@@ -2503,7 +2696,7 @@ const styles = StyleSheet.create({
   qrCardAmt: { fontSize: 26, fontWeight: '800', color: '#FCD34D', textAlign: 'center', marginTop: 14, marginBottom: 12 },
   qrOrderCard: {
     width: '100%',
-    backgroundColor: '#FFF',
+    backgroundColor: '#F7F5FC',
     borderRadius: 16,
     padding: 14,
     shadowColor: '#000',

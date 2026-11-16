@@ -18,6 +18,9 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { safeBottomEdges } from '../utils/safeAreaInsets';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
@@ -515,36 +518,33 @@ class SettlementHistory extends Component {
   renderHeaderBlock = () => {
     const { search } = this.state;
     return (
-      <View style={styles.headerBlock}>
-        <SafeAreaView edges={['top']} style={styles.headerSafe}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={this.goBack} style={styles.backBtn} activeOpacity={0.8}>
-              <Image source={require('./assets/back.png')} style={styles.backIco} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle} numberOfLines={1}>Settlement History</Text>
-            <View style={styles.headerSpacer} />
+      <ScreenHeader
+        bg={HEADER.cash}
+        title="Settlement History"
+        onBack={this.goBack}
+        below={(
+          <View>
+            <View style={styles.headerSearch}>
+              <MaterialCommunityIcons name="magnify" size={18} color="rgba(255,255,255,0.7)" />
+              <TextInput
+                value={search}
+                onChangeText={this.onSearchChange}
+                placeholder="Search ID or amount..."
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                style={styles.searchInput}
+                returnKeyType="search"
+                onSubmitEditing={this.fetchHistory}
+              />
+              {!!search ? (
+                <TouchableOpacity onPress={this.clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialCommunityIcons name="close-circle" size={18} color="rgba(255,255,255,0.55)" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {this.renderTabs()}
           </View>
-
-          <View style={styles.headerSearch}>
-            <Image style={styles.searchImg} source={require('./assets/search.png')} />
-            <TextInput
-              value={search}
-              onChangeText={this.onSearchChange}
-              placeholder="Search ID or amount..."
-              placeholderTextColor="rgba(255,255,255,0.55)"
-              style={styles.searchInput}
-              returnKeyType="search"
-              onSubmitEditing={this.fetchHistory}
-            />
-            {!!search ? (
-              <TouchableOpacity onPress={this.clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.clearSearch}>✕</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          {this.renderTabs()}
-        </SafeAreaView>
-      </View>
+        )}
+      />
     );
   };
 
@@ -689,23 +689,21 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', color: '#FFF', fontSize: 16, fontWeight: '600' },
   headerSpacer: { width: 44, height: 40 },
   headerSearch: {
-    marginHorizontal: 14,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.28)',
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
-  searchImg: { width: 15, height: 15, resizeMode: 'contain', marginRight: 8, tintColor: 'rgba(255,255,255,0.75)' },
-  searchInput: { flex: 1, fontSize: 13.5, fontWeight: '400', color: '#FFF', paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '500', color: '#FFF', paddingVertical: 0 },
   clearSearch: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: '500', paddingLeft: 6 },
 
   tabRow: {
     flexDirection: 'row',
-    paddingHorizontal: 14,
     paddingTop: 10,
     gap: 6,
   },

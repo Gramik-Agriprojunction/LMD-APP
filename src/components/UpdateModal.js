@@ -29,6 +29,12 @@ class UpdateModal extends Component {
   }
 
   runCheck = async () => {
+    // Skip force-update prompt when pointed at local backend.
+    try {
+      const { default: constants } = require('../utils/constants');
+      const base = String(constants?.login || '');
+      if (/localhost|127\.0\.0\.1|10\.0\.2\.2/.test(base)) return;
+    } catch (_e) {}
     const result = await checkForUpdate();
     if (result?.available) {
       this.setState({

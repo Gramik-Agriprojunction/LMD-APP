@@ -20,6 +20,7 @@ import ProofImageViewer from '../components/ProofImageViewer';
 
 import { STATUS } from '../utils/statusColors';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import { requestCameraOrPrompt } from '../utils/cameraHelper';
 
@@ -481,9 +482,9 @@ class OrderOtpVerify extends Component {
 
     return (
       <View style={[s.root, { backgroundColor: BG_T }]}>
-        <StatusBar barStyle="light-content" backgroundColor={BG_T} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.brand} />
         <NavigationEvents onDidFocus={this.startLocationPrefetch} />
-        <ScreenHeader bg={BG_T} title={theme.title} onBack={this.goBack} />
+        <ScreenHeader bg={HEADER.brand} title={theme.title} onBack={this.goBack} />
 
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: BG_T }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {verified ? (

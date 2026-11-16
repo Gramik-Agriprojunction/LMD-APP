@@ -11,6 +11,7 @@ import Toast from 'react-native-simple-toast';
 import constants from '../utils/constants';
 import { withV4Navigation } from '../utils/v4Compat';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import BottomSheet from '../components/BottomSheet';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { callFarmerExotel } from '../utils/exotelCall';
@@ -820,7 +821,7 @@ class SoilOrderDetail extends Component {
       <View style={st.root}>
         <StatusBar barStyle="light-content" backgroundColor={S.P} />
         <ScreenHeader
-          bg={S.P}
+          bg={HEADER.soil}
           title={`Order #${order?.id || ''}`}
           kicker="Mitti Jaanch"
           onBack={this.goBack}

@@ -22,6 +22,7 @@ import DatePicker from 'react-native-date-picker';
 import Toast from 'react-native-simple-toast';
 import { overlayBottomPadding } from '../utils/safeAreaInsets';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import constants from '../utils/constants';
 import { getCachedCoordsForApi, getLocationForForm } from '../utils/locationHelper';
 import {
@@ -640,7 +641,7 @@ export default function AddLand({ navigation, route }) {
 
       <View style={styles.topOverlay} pointerEvents="box-none">
         <ScreenHeader
-          bg={GREEN}
+          bg={HEADER.farmers}
           title="Khet ka naksha"
           kicker={tracing ? 'Khet ke kinare chaliye' : 'Seema banao'}
           onBack={() => navigation.goBack()}

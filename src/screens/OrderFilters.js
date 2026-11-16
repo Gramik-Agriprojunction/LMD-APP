@@ -7,6 +7,7 @@ import DatePicker from 'react-native-date-picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import moment from 'moment';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { screenFooterPadding } from '../utils/safeAreaInsets';
 import { consumePendingSelectedFarmer } from '../utils/pendingFarmer';
@@ -271,7 +272,7 @@ function OrderFilters({ navigation }) {
     <View style={st.root}>
       <NavigationEvents onDidFocus={applyPendingFarmer} />
       <StatusBar barStyle="light-content" backgroundColor={P} />
-      <ScreenHeader bg={P} title="Group & Filter" onBack={() => navigation.goBack()} />
+      <ScreenHeader bg={HEADER.filters} title="Group & Filter" onBack={() => navigation.goBack()} />
 
       <ScrollView
         style={st.scroll}

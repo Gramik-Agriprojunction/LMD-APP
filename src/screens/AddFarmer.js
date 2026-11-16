@@ -15,6 +15,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Toast from 'react-native-simple-toast';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import BottomSheet from '../components/BottomSheet';
 import constants from '../utils/constants';
 import { overlayBottomPadding } from '../utils/safeAreaInsets';
@@ -616,11 +617,14 @@ export default function AddFarmer({ navigation, route }) {
 
   return (
     <View style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor="#5D3FD3" />
+      <StatusBar barStyle="light-content" backgroundColor={HEADER.farmers} />
       <ScreenHeader
-        bg="#5D3FD3"
+        bg={HEADER.farmers}
         title={isEdit ? 'Kisan update karein' : 'Naya Kisan jodein'}
-        onBack={() => navigation.goBack()}
+        onBack={() => {
+          if (navigation?.canGoBack?.()) navigation.goBack();
+          else navigation?.navigate?.('MainTabs', { screen: 'Farmers' });
+        }}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>

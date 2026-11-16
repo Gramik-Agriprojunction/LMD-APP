@@ -17,6 +17,7 @@ import {
   coordsForStatusApi,
 } from '../utils/locationHelper';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 import VerifySuccessCheck from '../components/VerifySuccessCheck';
 import { STATUS } from '../utils/statusColors';
 
@@ -177,7 +178,7 @@ class BatchPickupOtp extends Component {
         <StatusBar barStyle="light-content" backgroundColor={BG} />
         <NavigationEvents onDidFocus={this.startLocationPrefetch} />
 
-        <ScreenHeader bg={BG} title="Multiple Orders Pickup Karein" onBack={this.goBack} />
+        <ScreenHeader bg={HEADER.orders} title="Multiple Orders Pickup Karein" onBack={this.goBack} />
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {verified ? (

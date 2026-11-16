@@ -25,6 +25,7 @@ import * as STATUS_COLORS from '../utils/statusColors';
 import OrderCard from '../components/OrderCard';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -354,7 +355,7 @@ class PenaltyOrders extends Component {
             {isPendingSettlement && (
               <TouchableOpacity
                 activeOpacity={0.85}
-                onPress={() => this.props.navigation.navigate('MainTabs', { screen: 'SettlementList' })}
+                onPress={() => this.props.navigation.navigate('MainTabs', { screen: 'Cash' })}
                 style={styles.settleBtn}
               >
                 <View style={styles.settleBtnBadge}>
@@ -436,9 +437,9 @@ class PenaltyOrders extends Component {
 
     return (
       <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={P} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.penalty} />
 
-        <ScreenHeader bg={P} title="Penalty Orders" onBack={this.goBack} />
+        <ScreenHeader bg={HEADER.penalty} title="Penalty Orders" onBack={this.goBack} />
 
         <View style={styles.tabBarWrap}>{this.renderHeader()}</View>
 

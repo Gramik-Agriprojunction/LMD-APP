@@ -26,6 +26,7 @@ import BottomSheet from '../components/BottomSheet';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess } from '../utils/locationHelper';
 import ScreenHeader from '../components/ScreenHeader';
+import { HEADER } from '../theme/headerColors';
 
 const OVERLAY_BOTTOM = overlayBottomPadding();
 import OrderCard from '../components/OrderCard';
@@ -409,8 +410,8 @@ class MarkDispute extends Component {
 
     return (
       <View style={s.root}>
-        <StatusBar barStyle="light-content" backgroundColor={theme.bg} />
-        <ScreenHeader bg={theme.bg} kicker="Action Zaroori" title="Dispute Lagayein" onBack={this.goBack} />
+        <StatusBar barStyle="light-content" backgroundColor={HEADER.brand} />
+        <ScreenHeader bg={HEADER.brand} kicker="Action Zaroori" title="Dispute Lagayein" onBack={this.goBack} />
 
         <ScrollView
           ref={this.scrollRef}
