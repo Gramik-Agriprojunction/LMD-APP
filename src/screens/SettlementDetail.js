@@ -12,6 +12,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import ProofImageViewer from '../components/ProofImageViewer';
 import OrderCard from '../components/OrderCard';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { isReadOnly } from '../utils/lmdViewMode';
 import { S } from '../utils/soilTheme';
 
 const P = S.P;
@@ -646,7 +647,7 @@ class SettlementDetail extends Component {
             )}
           </ScrollView>
 
-          {showSettleAgain ? (
+          {showSettleAgain && !isReadOnly() ? (
             <View style={st.footerWrap}>
               <TouchableOpacity style={st.settleAgainBtn} activeOpacity={0.9} onPress={this.settleAgain}>
                 <Text style={st.settleAgainBtnT}>Dobara Settle Karein</Text>

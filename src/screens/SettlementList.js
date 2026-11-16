@@ -12,6 +12,7 @@
 
 import React, { Component } from 'react';
 import { withV4Navigation } from "../utils/v4Compat";
+import { isReadOnly } from "../utils/lmdViewMode";
 import {
   View,
   Text,
@@ -382,7 +383,7 @@ class SettlementList extends Component {
 
   renderRow = ({ item }) => {
     const orderId = this.getOrderId(item);
-    const canSelect = this.isPendingItem(item);
+    const canSelect = !isReadOnly() && this.isPendingItem(item);
     const selected = !!this.state.selectedMap?.[orderId];
     const badge = this.settlementBadge(item);
 
@@ -557,6 +558,7 @@ class SettlementList extends Component {
                     <Text style={styles.footerSel}>{selectedCount} selected</Text>
                   ) : null}
                 </View>
+                {!isReadOnly() ? (
                 <TouchableOpacity
                   activeOpacity={0.9}
                   disabled={submitting || selectedCount === 0}
@@ -569,6 +571,7 @@ class SettlementList extends Component {
                     <Text style={styles.settleBtnText}>Settle Now · ₹ {this.money(totals.total) || '0'}</Text>
                   )}
                 </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           </View>

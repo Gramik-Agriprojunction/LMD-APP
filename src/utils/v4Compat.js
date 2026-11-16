@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import Toast from 'react-native-simple-toast';
+import { isReadOnlyActionRoute, READ_ONLY_MESSAGE } from './lmdViewMode';
 
 export const NavigationActions = {
   navigate: ({ routeName, params }) => ({ __v4: 'navigate', routeName, params }),
@@ -11,12 +13,18 @@ export const StackActions = {
   replace: ({ routeName, params }) => ({ __v4: 'replace', routeName, params }),
 };
 
+const blocked = (routeName) => {
+  if (!isReadOnlyActionRoute(routeName)) return false;
+  Toast.show(READ_ONLY_MESSAGE, Toast.SHORT);
+  return true;
+};
+
 function buildCompatNavigation(navigation, route) {
   return {
     ...navigation,
-    navigate: (routeName, params) => navigation.navigate(routeName, params),
-    push: (routeName, params) => navigation.push?.(routeName, params),
-    replace: (routeName, params) => navigation.replace?.(routeName, params),
+    navigate: (routeName, params) => { if (!blocked(routeName)) navigation.navigate(routeName, params); },
+    push: (routeName, params) => { if (!blocked(routeName)) navigation.push?.(routeName, params); },
+    replace: (routeName, params) => { if (!blocked(routeName)) navigation.replace?.(routeName, params); },
     goBack: () => navigation.goBack(),
     canGoBack: () => (typeof navigation.canGoBack === 'function' ? navigation.canGoBack() : false),
     getParam: (key, def) => {
@@ -33,6 +41,7 @@ function buildCompatNavigation(navigation, route) {
         });
         return;
       }
+      if (action?.__v4 && blocked(action.routeName)) return;
       if (action?.__v4 === 'navigate') {
         navigation.navigate(action.routeName, action.params);
         return;

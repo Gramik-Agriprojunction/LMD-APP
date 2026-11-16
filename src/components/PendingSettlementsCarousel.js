@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Animated, Image, Easing,
 } from 'react-native';
 import { getStatus } from '../utils/statusColors';
+import { isReadOnly } from '../utils/lmdViewMode';
 
 const { width: SW } = Dimensions.get('window');
 const OUTER_PAD = 8;
@@ -234,6 +235,7 @@ export default class PendingSettlementsCarousel extends Component {
             </View>
           </View>
 
+          {!isReadOnly() ? (
           <TouchableOpacity style={$.settleBtn} activeOpacity={0.88} onPress={this.onSettle}>
             <View style={$.settleBadge}>
               <Text style={$.settleBadgeT}>₹</Text>
@@ -244,6 +246,7 @@ export default class PendingSettlementsCarousel extends Component {
               style={[$.settleArrow, { transform: [{ translateX: this.arrowX }] }]}
             />
           </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     );

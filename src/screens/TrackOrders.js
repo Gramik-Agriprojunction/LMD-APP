@@ -66,6 +66,7 @@ import {
   listRowsWithoutGroupHeaders,
 } from '../utils/orderGrouping';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
+import { isReadOnly } from '../utils/lmdViewMode';
 
 // Best-effort: walk an order tree and yank any http(s) image URLs we'd render.
 const extractImageUrls = (orders) => {
@@ -512,7 +513,7 @@ class TrackOrders extends Component {
   };
 
   renderOrderCard = ({ item }) => {
-    const canSelect = isPendingOrder(item);
+    const canSelect = !isReadOnly() && isPendingOrder(item);
     const orderKey = this.getOrderKey(item);
     const isChecked = this.state.selectedIds.has(orderKey);
     const goToDetails = () => this.props.navigation.navigate('DeliveryDetails', { order: item });
@@ -544,7 +545,7 @@ class TrackOrders extends Component {
     const selectedCount = selectedIds.size;
     const pendingInView = (this.state.orders || []).filter(isPendingOrder).length;
     const showCta = selectedCount > 0;
-    const showSelectHint = pendingInView > 0;
+    const showSelectHint = !isReadOnly() && pendingInView > 0;
     const filtersActive = hasActiveFilters(levels[0], pickReadyFilter, rescheduleDateFilter, levels[1], levels, priorityFilter, entityFilters);
 
     return (

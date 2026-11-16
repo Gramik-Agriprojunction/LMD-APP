@@ -27,6 +27,7 @@ import BottomSheet from '../components/BottomSheet';
 import Toast from 'react-native-simple-toast';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
+import { isReadOnly } from '../utils/lmdViewMode';
 import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 import ScreenHeader from '../components/ScreenHeader';
@@ -1339,6 +1340,7 @@ class DeliveryDetails extends Component {
           const isCancelled = s === 'cancelled' || s === 'canceled';
           const isRto = s === 'rto';
           const isRejected = s === 'rejected' || s === 'reject';
+          const readOnly = isReadOnly();
           // Bottom panel stays neutral white for every status — the status is
           // already conveyed by the inline status badge inside the panel and
           // by the order card above. A solid colored panel reads too heavy.
@@ -1383,7 +1385,13 @@ class DeliveryDetails extends Component {
                 })()}
               </View>
 
-              {(details?.order_status === 'pending' || details?.order_status === 'reschedule') && (
+              {readOnly ? (
+                <View style={styles.readOnlyNote}>
+                  <Text style={styles.readOnlyNoteT}>View only — Super Admin is order par action nahi le sakte</Text>
+                </View>
+              ) : null}
+
+              {!readOnly && (details?.order_status === 'pending' || details?.order_status === 'reschedule') && (
                 <TouchableOpacity
                   style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.PICKUP.bg }]}
                   onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'pickup', order: details })}
@@ -1396,7 +1404,7 @@ class DeliveryDetails extends Component {
                 </TouchableOpacity>
               )}
 
-              {details?.order_status === 'pickup' && (
+              {!readOnly && details?.order_status === 'pickup' && (
                 <TouchableOpacity
                   onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'deliver', order: details })}
                   style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.DELIVERED.bg }]}
@@ -1414,7 +1422,7 @@ class DeliveryDetails extends Component {
                 </TouchableOpacity>
               )}
 
-              {isRto && (
+              {!readOnly && isRto && (
                 <TouchableOpacity
                   onPress={() => this.props.navigation.navigate('OrderOtpVerify', { orderId: details?.id, actionType: 'rto', order: details })}
                   style={[styles.neutralPrimaryBtn, { backgroundColor: STATUS_COLORS.STATUS.RTO.bg }]}
@@ -1425,7 +1433,7 @@ class DeliveryDetails extends Component {
                 </TouchableOpacity>
               )}
 
-              {s !== 'disputed' && (
+              {!readOnly && s !== 'disputed' && (
                 <TouchableOpacity
                   style={styles.moreOptsBtn}
                   onPress={() => this.setState({ show_more_options: true })}
@@ -1938,6 +1946,8 @@ const styles = StyleSheet.create({
   neutralPrimaryBtnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF', marginLeft: 10 },
 
   // Outlined "More Options" button (kept, was already neutral).
+  readOnlyNote: { marginTop: 10, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' },
+  readOnlyNoteT: { color: '#92400E', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   moreOptsBtn: { height: 44, marginTop: 8, borderRadius: 12, borderWidth: 1.2, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#475569', marginRight: 8, includeFontPadding: false, lineHeight: 22, textAlignVertical: 'center' },
   moreOptsT: { color: '#334155', fontSize: 13.5, fontWeight: '600', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },

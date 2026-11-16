@@ -8,6 +8,7 @@ import { screenFooterPadding } from '../utils/safeAreaInsets';
 import moment from 'moment';
 import constants from '../utils/constants';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
+import { isReadOnly } from '../utils/lmdViewMode';
 import ScreenHeader from '../components/ScreenHeader';
 import Toast from 'react-native-simple-toast';
 import { S, soilIcons as I } from '../utils/soilTheme';
@@ -332,15 +333,17 @@ class SoilOrders extends Component {
           )}
         </View>
 
-        <View style={[st.footerSafe, { paddingBottom: screenFooterPadding() }]}>
-          <View style={st.footer}>
-            <TouchableOpacity style={st.bookBtn} activeOpacity={0.88} onPress={this.onBook}>
-              <Image source={require('./assets/soil.png')} style={st.bookIco} />
-              <Text style={st.bookTxt}>Book Soil Test</Text>
-              <Image source={I.arrow} style={st.bookArrow} />
-            </TouchableOpacity>
+        {!isReadOnly() ? (
+          <View style={[st.footerSafe, { paddingBottom: screenFooterPadding() }]}>
+            <View style={st.footer}>
+              <TouchableOpacity style={st.bookBtn} activeOpacity={0.88} onPress={this.onBook}>
+                <Image source={require('./assets/soil.png')} style={st.bookIco} />
+                <Text style={st.bookTxt}>Book Soil Test</Text>
+                <Image source={I.arrow} style={st.bookArrow} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        ) : null}
       </View>
     );
   }

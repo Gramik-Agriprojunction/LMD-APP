@@ -15,6 +15,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import * as Animatable from 'react-native-animatable';
 import ScreenHeader from '../components/ScreenHeader';
 import { NavigationEvents, withV4Navigation } from '../utils/v4Compat';
+import { isReadOnly } from '../utils/lmdViewMode';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import {
   farmerDisplayAddress,
@@ -123,6 +124,7 @@ class FarmerList extends Component {
     const addr = farmerDisplayAddress(item);
     const crops = cropChips(item);
     const verified = isFarmerVerified(item);
+    const locked = verified || isReadOnly();
     const totalArea =
       item?.totalArea ?? item?.land?.area ?? item?.land?.sowingArea ?? '';
     const cattle = item?.cattleCount || {};
@@ -139,9 +141,9 @@ class FarmerList extends Component {
         useNativeDriver
       >
         <Pressable
-          onPress={verified ? undefined : () => this.goEdit(item)}
-          disabled={verified}
-          style={({ pressed }) => [st.card, !verified && pressed && st.cardPressed]}
+          onPress={locked ? undefined : () => this.goEdit(item)}
+          disabled={locked}
+          style={({ pressed }) => [st.card, !locked && pressed && st.cardPressed]}
         >
           <View style={st.cardTop}>
             <View style={st.avatar}>
@@ -150,7 +152,7 @@ class FarmerList extends Component {
             <View style={st.cardContent}>
               <View style={st.topRow}>
                 <Text style={st.name} numberOfLines={1}>{name}</Text>
-                {!verified ? (
+                {!locked ? (
                   <View style={st.editPill}>
                     <MaterialCommunityIcons name="pencil-outline" size={11} color={S.P} />
                     <Text style={st.editTxt}>Edit</Text>
@@ -211,11 +213,15 @@ class FarmerList extends Component {
         <MaterialCommunityIcons name="account-plus-outline" size={36} color={S.P} />
       </View>
       <Text style={st.emptyT}>Abhi koi kisan nahi hai</Text>
-      <Text style={st.emptyS}>Naya kisan jodne ke liye neeche button dabayein</Text>
-      <TouchableOpacity style={st.emptyBtn} activeOpacity={0.88} onPress={this.goAdd}>
-        <MaterialCommunityIcons name="plus" size={18} color="#FFF" />
-        <Text style={st.emptyBtnTxt}>Add Farmer</Text>
-      </TouchableOpacity>
+      {!isReadOnly() ? (
+        <>
+          <Text style={st.emptyS}>Naya kisan jodne ke liye neeche button dabayein</Text>
+          <TouchableOpacity style={st.emptyBtn} activeOpacity={0.88} onPress={this.goAdd}>
+            <MaterialCommunityIcons name="plus" size={18} color="#FFF" />
+            <Text style={st.emptyBtnTxt}>Add Farmer</Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
     </Animatable.View>
   );
 
@@ -237,11 +243,11 @@ class FarmerList extends Component {
           bg={S.P}
           title="Added Farmers"
           onBack={this.goBack}
-          right={
+          right={isReadOnly() ? null : (
             <TouchableOpacity onPress={this.goAdd} style={st.hdrAdd} activeOpacity={0.85}>
               <MaterialCommunityIcons name="plus" size={20} color="#FFF" />
             </TouchableOpacity>
-          }
+          )}
         />
 
         <View style={st.sheet}>
@@ -299,7 +305,7 @@ class FarmerList extends Component {
             onRefresh={this.loadFarmers}
           />
 
-          {this.state.farmers.length > 0 ? (
+          {this.state.farmers.length > 0 && !isReadOnly() ? (
             <View style={st.fabWrap}>
               <TouchableOpacity style={st.fab} activeOpacity={0.9} onPress={this.goAdd}>
                 <MaterialCommunityIcons name="plus" size={20} color="#FFF" />

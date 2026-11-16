@@ -18,6 +18,13 @@ export const getViewPartnerName = () => global.viewPartnerName || '';
 
 export const isReadOnly = () => isSuperAdmin();
 
+const ACTION_ROUTES = [
+  'OrderOtpVerify', 'BatchPickupOtp', 'DeliverToFarmer', 'RejectDelivery', 'RescheduleDelivery',
+  'MarkDispute', 'CashSettlement', 'Survey', 'CreateSoilOrder', 'AddFarmer', 'AddLand',
+];
+
+export const isReadOnlyActionRoute = (routeName) => isReadOnly() && ACTION_ROUTES.includes(routeName);
+
 export const needsPartnerSelection = () => isSuperAdmin() && !global.viewPartnerId;
 
 export async function loadViewPartner() {

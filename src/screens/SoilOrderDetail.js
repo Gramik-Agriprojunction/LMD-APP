@@ -14,6 +14,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import BottomSheet from '../components/BottomSheet';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { callFarmerExotel } from '../utils/exotelCall';
+import { isReadOnly } from '../utils/lmdViewMode';
 
 const PAD = 8;
 const FOOTER_PAD = 16;
@@ -907,7 +908,7 @@ class SoilOrderDetail extends Component {
             </Animated.View>
           )}
 
-          {showFooter && (
+          {showFooter && !isReadOnly() && (
             <SafeAreaView edges={safeBottomEdges()} style={st.footer}>
               {pending ? (
                 <View style={st.footerRow}>
