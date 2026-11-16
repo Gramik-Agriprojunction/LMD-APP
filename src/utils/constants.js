@@ -5,7 +5,7 @@
 // const baseurl = 'https://uat-crm-backend.gramik.in/api/v1/';
 
 /** Local Gramik-CRM-Backend (PORT=3000). Emulator/USB: adb reverse tcp:3000 tcp:3000 */
-const baseurl = 'http://localhost:3000/api/v1/';
+const baseurl = 'http://localhost:5000/api/v1/';
 
 const strings = { 
   login: baseurl + 'auth/lmd/login',
