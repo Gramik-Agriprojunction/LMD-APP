@@ -77,6 +77,8 @@ class DeliveryDetails extends Component {
       invoiceProgress: 0,
 
       callInitiating: false,
+      scrollEnabled: true,
+      swipeResetSeq: 0,
     };
 
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -847,6 +849,11 @@ class DeliveryDetails extends Component {
     );
   };
 
+  onSwipeDragActive = (active) => {
+    if (this.state.scrollEnabled === !active) return;
+    this.setState({ scrollEnabled: !active });
+  };
+
   render() {
     const { isLoading, details, hasError } = this.state;
 
@@ -874,6 +881,10 @@ class DeliveryDetails extends Component {
 
         <NavigationEvents
           onDidFocus={() => {
+            this.setState((s) => ({
+              swipeResetSeq: s.swipeResetSeq + 1,
+              scrollEnabled: true,
+            }));
             if (!this.state.details?.id) return;
             if (this._focusRefreshTimer) clearTimeout(this._focusRefreshTimer);
             this._focusRefreshTimer = setTimeout(() => {
@@ -947,7 +958,14 @@ class DeliveryDetails extends Component {
           );
         })()}
 
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />}>
+        <ScrollView
+          style={{ flex: 1 }}
+          scrollEnabled={this.state.scrollEnabled}
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />}
+        >
 
           {isLoading && !details ? (
             <ShimmerLoader />
@@ -1469,7 +1487,8 @@ class DeliveryDetails extends Component {
                 <SwipeToConfirm
                   label="Swipe to Pickup"
                   color={STATUS_COLORS.STATUS.PICKUP.bg}
-                  resetKey={`pickup-${details?.id}-${details?.order_status}`}
+                  resetKey={`pickup-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
+                  onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
                     this.props.navigation.navigate('OrderOtpVerify', {
                       orderId: details?.id,
@@ -1484,7 +1503,8 @@ class DeliveryDetails extends Component {
                 <SwipeToConfirm
                   label="Swipe to Deliver"
                   color={STATUS_COLORS.STATUS.DELIVERED.bg}
-                  resetKey={`deliver-${details?.id}-${details?.order_status}`}
+                  resetKey={`deliver-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
+                  onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
                     this.props.navigation.navigate('OrderOtpVerify', {
                       orderId: details?.id,
@@ -1499,7 +1519,8 @@ class DeliveryDetails extends Component {
                 <SwipeToConfirm
                   label="Swipe to Confirm RTO"
                   color={STATUS_COLORS.STATUS.RTO.bg}
-                  resetKey={`rto-${details?.id}-${details?.order_status}`}
+                  resetKey={`rto-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
+                  onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
                     this.props.navigation.navigate('OrderOtpVerify', {
                       orderId: details?.id,

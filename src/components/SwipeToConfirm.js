@@ -1,18 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-  PanResponder,
-  Easing,
-  Platform,
-  UIManager,
-} from 'react-native';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 const THUMB = 50;
 const TRACK_H = 58;
@@ -20,7 +18,7 @@ const PAD = 4;
 const COMPLETE_AT = 0.78;
 
 /**
- * Zomato / Swiggy style left → right swipe confirm.
+ * Zomato / Swiggy style left → right swipe confirm (RNGH — no scroll steal mid-drag).
  */
 export default function SwipeToConfirm({
   label = 'Swipe to confirm',
@@ -29,119 +27,114 @@ export default function SwipeToConfirm({
   disabledHint,
   resetKey,
   onConfirm,
+  onDragActiveChange,
 }) {
   const [trackW, setTrackW] = useState(0);
   const maxX = Math.max(0, trackW - THUMB - PAD * 2);
-  const x = useRef(new Animated.Value(0)).current;
-  const thumbPad = useRef(new Animated.Value(THUMB + PAD)).current;
-  const shimmer = useRef(new Animated.Value(0)).current;
-  const done = useRef(false);
-  const maxXRef = useRef(0);
-  const dragStart = useRef(0);
-  maxXRef.current = maxX;
 
-  const resetThumb = () => {
-    done.current = false;
-    x.stopAnimation();
-    x.setValue(0);
-  };
+  const translateX = useSharedValue(0);
+  const startX = useSharedValue(0);
+  const maxXSv = useSharedValue(0);
+  const done = useSharedValue(false);
+  const shimmer = useSharedValue(0);
+
+  const setDragging = useCallback(
+    (active) => {
+      onDragActiveChange?.(active);
+    },
+    [onDragActiveChange],
+  );
+
+  const fireConfirm = useCallback(() => {
+    onConfirm?.();
+  }, [onConfirm]);
 
   useEffect(() => {
-    resetThumb();
+    maxXSv.value = maxX;
+  }, [maxX, maxXSv]);
+
+  useEffect(() => {
+    done.value = false;
+    translateX.value = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey, disabled]);
 
   useEffect(() => {
     if (disabled) {
-      shimmer.stopAnimation();
-      shimmer.setValue(0);
+      shimmer.value = 0;
       return undefined;
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 1100,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
+    shimmer.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1100 }),
+        withTiming(0, { duration: 1100 }),
+      ),
+      -1,
+      false,
     );
-    loop.start();
-    return () => loop.stop();
+    return undefined;
   }, [disabled, shimmer]);
 
-  const snapBack = () => {
-    Animated.spring(x, {
-      toValue: 0,
-      friction: 6,
-      tension: 70,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => !disabled && !done.current,
-      onMoveShouldSetPanResponder: (_, g) =>
-        !disabled && !done.current && Math.abs(g.dx) > 3,
-      onPanResponderGrant: () => {
-        x.stopAnimation((value) => {
-          dragStart.current = typeof value === 'number' ? value : 0;
+  const pan = Gesture.Pan()
+    .enabled(!disabled)
+    .activeOffsetX([-6, 6])
+    .failOffsetY([-14, 14])
+    .shouldCancelWhenOutside(false)
+    .onBegin(() => {
+      if (done.value) return;
+      startX.value = translateX.value;
+      runOnJS(setDragging)(true);
+    })
+    .onUpdate((e) => {
+      if (done.value || disabled) return;
+      const cap = maxXSv.value;
+      const next = Math.max(0, Math.min(cap, startX.value + e.translationX));
+      translateX.value = next;
+    })
+    .onFinalize(() => {
+      runOnJS(setDragging)(false);
+    })
+    .onEnd(() => {
+      if (done.value || disabled) return;
+      const cur = translateX.value;
+      const cap = maxXSv.value;
+      if (cap > 0 && cur >= cap * COMPLETE_AT) {
+        done.value = true;
+        translateX.value = withTiming(cap, { duration: 120 }, (finished) => {
+          if (finished) runOnJS(fireConfirm)();
         });
-      },
-      onPanResponderMove: (_, g) => {
-        if (done.current || disabled) return;
-        const next = Math.max(0, Math.min(maxXRef.current, dragStart.current + g.dx));
-        x.setValue(next);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (done.current || disabled) return;
-        const cur = Math.max(0, Math.min(maxXRef.current, dragStart.current + g.dx));
-        if (maxXRef.current > 0 && cur >= maxXRef.current * COMPLETE_AT) {
-          done.current = true;
-          Animated.timing(x, {
-            toValue: maxXRef.current,
-            duration: 120,
-            useNativeDriver: false,
-          }).start(({ finished }) => {
-            if (finished) onConfirm?.();
-          });
-        } else {
-          snapBack();
-        }
-      },
-      onPanResponderTerminate: () => {
-        if (!done.current) snapBack();
-      },
-    }),
-  ).current;
+      } else {
+        translateX.value = withSpring(0, { damping: 16, stiffness: 180 });
+      }
+    });
 
-  const fillW = Animated.add(x, thumbPad);
-  const labelOpacity = x.interpolate({
-    inputRange: [0, Math.max(48, maxX * 0.5)],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
+  const fillStyle = useAnimatedStyle(() => ({
+    width: translateX.value + THUMB + PAD,
+  }));
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: disabled ? 0.7 : 1,
+  }));
+
+  const labelStyle = useAnimatedStyle(() => {
+    const cap = Math.max(maxXSv.value, 48);
+    return {
+      opacity: disabled
+        ? 1
+        : interpolate(translateX.value, [0, cap * 0.5], [1, 0], 'clamp'),
+    };
   });
-  const chevronShift = shimmer.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 8],
-  });
-  const chevronOpacity = shimmer.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.35, 1, 0.35],
-  });
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(shimmer.value, [0, 0.5, 1], [0.35, 1, 0.35]),
+    transform: [{ translateX: interpolate(shimmer.value, [0, 1], [0, 8]) }],
+  }));
 
   const showLabel = disabled && disabledHint ? disabledHint : label;
 
-  return (
-    <View
+  const track = (
+    <Animated.View
       style={[
         styles.track,
         { backgroundColor: disabled ? '#94A3B8' : color },
@@ -151,45 +144,32 @@ export default function SwipeToConfirm({
       {!disabled && (
         <Animated.View
           pointerEvents="none"
-          style={[styles.fill, { backgroundColor: 'rgba(255,255,255,0.18)', width: fillW }]}
+          style={[styles.fill, { backgroundColor: 'rgba(255,255,255,0.18)' }, fillStyle]}
         />
       )}
 
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.labelWrap, { opacity: disabled ? 1 : labelOpacity }]}
-      >
+      <Animated.View pointerEvents="none" style={[styles.labelWrap, labelStyle]}>
         <Text style={styles.label} numberOfLines={1}>
           {showLabel}
         </Text>
         {!disabled && (
-          <Animated.Text
-            style={[
-              styles.chevrons,
-              { opacity: chevronOpacity, transform: [{ translateX: chevronShift }] },
-            ]}
-          >
+          <Animated.Text style={[styles.chevrons, chevronStyle]}>
             {' ›››'}
           </Animated.Text>
         )}
       </Animated.View>
 
-      <Animated.View
-        style={[
-          styles.thumb,
-          {
-            transform: [{ translateX: x }],
-            opacity: disabled ? 0.7 : 1,
-          },
-        ]}
-        {...(disabled ? {} : pan.panHandlers)}
-      >
+      <Animated.View pointerEvents="none" style={[styles.thumb, thumbStyle]}>
         <Text style={[styles.thumbArrow, { color: disabled ? '#64748B' : color }]}>
           ››
         </Text>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
+
+  if (disabled) return track;
+
+  return <GestureDetector gesture={pan}>{track}</GestureDetector>;
 }
 
 const styles = StyleSheet.create({

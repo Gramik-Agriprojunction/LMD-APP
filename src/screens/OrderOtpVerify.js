@@ -9,6 +9,7 @@ import { safeBottomEdges, overlayBottomPadding } from '../utils/safeAreaInsets';
 import OTPInputView from '@twotalltotems/react-native-otp-input';
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import { invalidateOrderRelated } from '../utils/dataCache';
 import { prefetchVerifyLocation, resolveCoordsForStatusUpdate, requestStatusLocationAccess, coordsForStatusApi, appendCoordsToFormData } from '../utils/locationHelper';
@@ -61,6 +62,8 @@ class OrderOtpVerify extends Component {
       pendingProof: null,
       previewUri: null,
       payment_type: 'cash',
+      orderData: null,
+      hintOtp: '',
     };
     this.pickLock = false;
     this.iconScale = new Animated.Value(0.5);
@@ -75,7 +78,61 @@ class OrderOtpVerify extends Component {
 
   getOrderId = () => this.props?.navigation?.getParam('orderId', null);
   getActionType = () => this.props?.navigation?.getParam('actionType', 'pickup');
-  getOrder = () => this.props?.navigation?.getParam('order', null);
+  getOrder = () => this.state.orderData || this.props?.navigation?.getParam('order', null);
+
+  extractHintOtp = (actionType, order) => {
+    if (!order) return '';
+    if (actionType === 'pickup') {
+      return String(order.pickup_otp ?? order.pickupOtp ?? '').trim();
+    }
+    if (actionType === 'deliver') {
+      return String(order.deliver_otp ?? order.deliverOtp ?? order.otp ?? '').trim();
+    }
+    if (actionType === 'rto') {
+      return String(order.rto_return_otp ?? order.return_otp ?? order.returnOtp ?? '').trim();
+    }
+    return '';
+  };
+
+  hintOtpLabel = (actionType) => {
+    if (actionType === 'pickup') return 'Warehouse OTP';
+    if (actionType === 'deliver') return 'Farmer OTP';
+    return 'Return OTP';
+  };
+
+  loadOrderDetails = () => {
+    const orderId = this.getOrderId();
+    const actionType = this.getActionType();
+    const fromNav = this.props?.navigation?.getParam('order', null);
+    const navOtp = this.extractHintOtp(actionType, fromNav);
+    if (fromNav && navOtp) {
+      this.setState({ orderData: fromNav, hintOtp: navOtp });
+    }
+    if (!orderId) return;
+    fetch(constants.orderDetails, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ order_id: String(orderId) }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json?.status || !json?.order) return;
+        const otp = this.extractHintOtp(actionType, json.order);
+        this.setState({ orderData: json.order, hintOtp: otp });
+      })
+      .catch(() => {});
+  };
+
+  copyHintOtp = () => {
+    const { hintOtp } = this.state;
+    if (!hintOtp) return;
+    Clipboard.setString(hintOtp);
+    Toast.show('OTP copy ho gaya', Toast.SHORT);
+  };
   goBack = () => { if (this.props?.navigation?.goBack) this.props.navigation.goBack(); };
 
   mask = (p) => {
@@ -128,6 +185,7 @@ class OrderOtpVerify extends Component {
     }, 400);
 
     this.startPulse();
+    this.loadOrderDetails();
   }
 
   startLocationPrefetch = () => {
@@ -472,9 +530,12 @@ class OrderOtpVerify extends Component {
   render() {
     const actionType = this.getActionType();
     const order = this.getOrder();
+    const { hintOtp } = this.state;
     const theme = THEMES[actionType] || THEMES.pickup;
     const BG_T = theme.bg;
     const isDeliver = actionType === 'deliver';
+    const isPickup = actionType === 'pickup';
+    const hideOtpEntryAndVerify = isPickup;
     const { verified, deliveryProofs } = this.state;
     const hasOtp = this.state.otp.length >= 5;
     const hasProof = deliveryProofs.length > 0;
@@ -501,7 +562,10 @@ class OrderOtpVerify extends Component {
           ) : null}
 
           <ScrollView
-            contentContainerStyle={[s.scroll, !verified && { paddingBottom: 72 + (Platform.OS === 'android' ? 0 : OVERLAY_BOTTOM) }]}
+            contentContainerStyle={[
+              s.scroll,
+              !verified && !hideOtpEntryAndVerify && { paddingBottom: 72 + (Platform.OS === 'android' ? 0 : OVERLAY_BOTTOM) },
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             clipToPadding={false}
@@ -519,18 +583,28 @@ class OrderOtpVerify extends Component {
                   </Text>
                 </Animated.View>
 
+                {hintOtp ? (
+                  <TouchableOpacity activeOpacity={0.88} onPress={this.copyHintOtp} style={s.otpShowCard}>
+                    <Text style={s.otpShowLbl}>{this.hintOtpLabel(actionType)}</Text>
+                    <Text style={s.otpShowVal}>{hintOtp}</Text>
+                    <Text style={s.otpShowCopy}>Copy</Text>
+                  </TouchableOpacity>
+                ) : null}
+
                 <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
-                  <OTPInputView
-                    style={s.otpView}
-                    pinCount={5}
-                    autoFocusOnLoad={false}
-                    codeInputFieldStyle={[s.otpField, { color: BG_T }]}
-                    codeInputHighlightStyle={s.otpActive}
-                    onCodeChanged={(code) => this.setState({ otp: code })}
-                    onCodeFilled={(code) => {
-                      this.setState({ otp: code }, () => this.verifyOtp(code));
-                    }}
-                  />
+                  {!hideOtpEntryAndVerify ? (
+                    <OTPInputView
+                      style={s.otpView}
+                      pinCount={5}
+                      autoFocusOnLoad={false}
+                      codeInputFieldStyle={[s.otpField, { color: BG_T }]}
+                      codeInputHighlightStyle={s.otpActive}
+                      onCodeChanged={(code) => this.setState({ otp: code })}
+                      onCodeFilled={(code) => {
+                        this.setState({ otp: code }, () => this.verifyOtp(code));
+                      }}
+                    />
+                  ) : null}
 
                   {isDeliver ? (
                     <>
@@ -564,7 +638,7 @@ class OrderOtpVerify extends Component {
 
           </ScrollView>
 
-          {!verified ? (
+          {!verified && !hideOtpEntryAndVerify ? (
             <View style={[s.bottomBar, { backgroundColor: BG_T, paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
               <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
                 style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
@@ -618,6 +692,22 @@ const s = StyleSheet.create({
   titleWrap: { alignItems: 'center', marginBottom: 4 },
   title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 4 },
   subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 10 },
+
+  otpShowCard: {
+    alignSelf: 'center',
+    width: 312,
+    marginBottom: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(252,211,77,0.45)',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  otpShowLbl: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.75)', marginBottom: 4 },
+  otpShowVal: { fontSize: 28, fontWeight: '900', color: '#FCD34D', letterSpacing: 6 },
+  otpShowCopy: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#FFF', textDecorationLine: 'underline' },
 
   formWrap: { alignItems: 'center' },
   otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 0 },
