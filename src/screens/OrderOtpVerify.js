@@ -19,7 +19,7 @@ import BottomSheet from '../components/BottomSheet';
 import VerifySuccessCheck from '../components/VerifySuccessCheck';
 import ProofImageViewer from '../components/ProofImageViewer';
 
-import { STATUS } from '../utils/statusColors';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import ScreenHeader from '../components/ScreenHeader';
 import { HEADER } from '../theme/headerColors';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
@@ -32,7 +32,8 @@ try {
   console.log('ImageCropPicker not available');
 }
 
-const BG = STATUS.ALL.bg;
+const BRAND = HEADER.brand;
+const PAGE_BG = '#EDE9FE';
 const MAX_PROOF = 6;
 const PROOF_GAP = 6;
 const PROOF_THUMB = 68;
@@ -41,13 +42,11 @@ const SECTION_GAP = 10;
 
 const apiPaymentType = (type) => (type === 'upi' || type === 'qr' ? 'upi' : 'cash');
 
-// Each verification screen uses the colour of the status it transitions the
-// order to — Pickup → cyan, Deliver → green, RTO → red. Pulled from the
-// canonical statusColors map so it matches buttons, pills, and grid tiles.
+// Soft purple page + brand header — matches Delivery Jaankari / app chrome.
 const THEMES = {
-  pickup:  { bg: STATUS.PICKUP.bg,    accent: '#FCD34D', title: 'Pickup Verify Karein',   helper: 'warehouse',  verifyLbl: 'PICKUP',         doneTitle: 'Verify Ho Gaya!',  doneSub: 'Pickup status update ho raha hai...' },
-  deliver: { bg: STATUS.DELIVERED.bg, accent: '#FCD34D', title: 'Delivery Verify Karein', helper: 'farmer',     verifyLbl: 'DELIVER',        doneTitle: 'Verify Ho Gaya!',  doneSub: 'Delivery confirm ho gayi...' },
-  rto:     { bg: STATUS.RTO.bg,       accent: '#FCD34D', title: 'Wapsi Verify Karein',    helper: 'warehouse',  verifyLbl: 'WAPSI CONFIRM',  doneTitle: 'Wapas Ho Gaya!',   doneSub: 'Product wapsi mark ho rahi hai...' },
+  pickup:  { bg: PAGE_BG, accent: BRAND, title: 'Pickup Verify Karein',   helper: 'darkstore', verifyLbl: 'PICKUP',         doneTitle: 'Verify Ho Gaya!',  doneSub: 'Pickup status update ho raha hai...' },
+  deliver: { bg: PAGE_BG, accent: BRAND, title: 'Delivery Verify Karein', helper: 'farmer',    verifyLbl: 'DELIVER',        doneTitle: 'Verify Ho Gaya!',  doneSub: 'Delivery confirm ho gayi...' },
+  rto:     { bg: PAGE_BG, accent: BRAND, title: 'Wapsi Verify Karein',    helper: 'darkstore', verifyLbl: 'WAPSI CONFIRM',  doneTitle: 'Wapas Ho Gaya!',   doneSub: 'Product wapsi mark ho rahi hai...' },
 };
 
 class OrderOtpVerify extends Component {
@@ -95,7 +94,7 @@ class OrderOtpVerify extends Component {
   };
 
   hintOtpLabel = (actionType) => {
-    if (actionType === 'pickup') return 'Warehouse OTP';
+    if (actionType === 'pickup') return 'Dark Store OTP';
     if (actionType === 'deliver') return 'Farmer OTP';
     return 'Return OTP';
   };
@@ -532,7 +531,6 @@ class OrderOtpVerify extends Component {
     const order = this.getOrder();
     const { hintOtp } = this.state;
     const theme = THEMES[actionType] || THEMES.pickup;
-    const BG_T = theme.bg;
     const isDeliver = actionType === 'deliver';
     const isPickup = actionType === 'pickup';
     const hideOtpEntryAndVerify = isPickup;
@@ -542,21 +540,21 @@ class OrderOtpVerify extends Component {
     const disabled = this.state.isLoading || (isDeliver ? (!hasOtp && !hasProof) : !hasOtp);
 
     return (
-      <View style={[s.root, { backgroundColor: BG_T }]}>
+      <View style={[s.root, { backgroundColor: PAGE_BG }]}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER.brand} />
         <NavigationEvents onDidFocus={this.startLocationPrefetch} />
         <ScreenHeader bg={HEADER.brand} title={theme.title} onBack={this.goBack} />
 
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: BG_T }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: PAGE_BG }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {verified ? (
             <View style={s.successLayer} pointerEvents="none">
               <VerifySuccessCheck
                 visible
                 title={theme.doneTitle}
                 subtitle={theme.doneSub}
-                circleBg="#FFF"
-                tickColor={BG_T}
-                ringColor="rgba(255,255,255,0.85)"
+                circleBg={BRAND}
+                tickColor="#FFF"
+                ringColor="rgba(93,63,211,0.25)"
               />
             </View>
           ) : null}
@@ -579,7 +577,9 @@ class OrderOtpVerify extends Component {
                   <Text style={s.subtitle}>
                     {isDeliver
                       ? 'OTP daalein ya delivery proof ki photo upload karein'
-                      : `${theme.helper === 'farmer' ? 'Farmer' : 'Warehouse'} ne jo 5-digit code diya hai, woh daalein`}
+                      : isPickup
+                        ? 'Dark Store ko yeh OTP bataein aur items pick karein'
+                        : 'Dark Store ko yeh OTP bataein'}
                   </Text>
                 </Animated.View>
 
@@ -587,7 +587,10 @@ class OrderOtpVerify extends Component {
                   <TouchableOpacity activeOpacity={0.88} onPress={this.copyHintOtp} style={s.otpShowCard}>
                     <Text style={s.otpShowLbl}>{this.hintOtpLabel(actionType)}</Text>
                     <Text style={s.otpShowVal}>{hintOtp}</Text>
-                    <Text style={s.otpShowCopy}>Copy</Text>
+                    <View style={s.otpShowCopyRow}>
+                      <MaterialCommunityIcons name="content-copy" size={15} color={BRAND} />
+                      <Text style={s.otpShowCopy}>Copy</Text>
+                    </View>
                   </TouchableOpacity>
                 ) : null}
 
@@ -597,7 +600,7 @@ class OrderOtpVerify extends Component {
                       style={s.otpView}
                       pinCount={5}
                       autoFocusOnLoad={false}
-                      codeInputFieldStyle={[s.otpField, { color: BG_T }]}
+                      codeInputFieldStyle={s.otpField}
                       codeInputHighlightStyle={s.otpActive}
                       onCodeChanged={(code) => this.setState({ otp: code })}
                       onCodeFilled={(code) => {
@@ -613,7 +616,7 @@ class OrderOtpVerify extends Component {
                       <View style={[s.proofWrap, s.sectionCard]}>
                         <CollectPaymentCard
                           order={order}
-                          variant="dark"
+                          variant="light"
                           paymentType={this.state.payment_type}
                           onChange={(payment_type) => this.setState({ payment_type })}
                         />
@@ -624,11 +627,10 @@ class OrderOtpVerify extends Component {
               </>
             ) : null}
 
-            {/* Order details card — shared OrderCard (theme="dark" for colored bg) */}
             <Animated.View style={{ opacity: this.formFade, marginTop: isDeliver ? SECTION_GAP : 16 }}>
               <OrderCard
                 order={order}
-                theme="dark"
+                theme="light"
                 hideFooter
                 onCall={(p, id) => this.callFarmer(p, id)}
                 onWhatsApp={(p) => this.whatsapp(p)}
@@ -639,26 +641,26 @@ class OrderOtpVerify extends Component {
           </ScrollView>
 
           {!verified && !hideOtpEntryAndVerify ? (
-            <View style={[s.bottomBar, { backgroundColor: BG_T, paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
+            <View style={[s.bottomBar, { paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
               <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
                 style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
                 {this.state.isLoading ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <ActivityIndicator size="small" color={BG_T} />
-                    <Text style={[s.btnT, isDeliver && s.btnTDeliver, { color: BG_T, marginLeft: 10 }]}>Verify ho raha hai...</Text>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={[s.btnT, isDeliver && s.btnTDeliver, { marginLeft: 10 }]}>Verify ho raha hai...</Text>
                   </View>
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={[s.btnT, isDeliver && s.btnTDeliver, { color: BG_T }]}>
+                    <Text style={[s.btnT, isDeliver && s.btnTDeliver]}>
                       {isDeliver ? 'Delivery Verify Karien' : `VERIFY & ${theme.verifyLbl} KAREIN`}
                     </Text>
-                    <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { tintColor: BG_T, transform: [{ translateX: this.arrowX }] }]} />
+                    <Animated.Image source={require('./assets/arrow.png')} style={[s.btnArrow, { transform: [{ translateX: this.arrowX }] }]} />
                   </View>
                 )}
               </TouchableOpacity>
             </View>
           ) : (
-            <SafeAreaView edges={safeBottomEdges()} style={{ backgroundColor: BG_T }} />
+            <SafeAreaView edges={safeBottomEdges()} style={{ backgroundColor: PAGE_BG }} />
           )}
         </KeyboardAvoidingView>
 
@@ -675,49 +677,66 @@ class OrderOtpVerify extends Component {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  root: { flex: 1, backgroundColor: PAGE_BG },
   scroll: { flexGrow: 1, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 24 },
   successLayer: { overflow: 'visible', zIndex: 2 },
 
-  // Align with the canonical screen header: 56-h row, no extra horizontal padding
-  // beyond the ScrollView's 12px so the chip sits at 12 + 4 = 16px from the
-  // screen edge (matches every other screen).
   topRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0, height: 56, marginBottom: 6 },
-  topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#FFF' },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  backIco: { width: 17, height: 17, resizeMode: 'contain', tintColor: '#FFF' },
+  topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(93,63,211,0.12)', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  backIco: { width: 17, height: 17, resizeMode: 'contain', tintColor: BRAND },
 
   infoCard: { display: 'none' },
 
   titleWrap: { alignItems: 'center', marginBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: '#FFF', textAlign: 'center', marginBottom: 4 },
-  subtitle: { fontSize: 13, fontWeight: '400', color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 19, marginBottom: 10 },
+  title: { fontSize: 22, fontWeight: '800', color: '#0F172A', textAlign: 'center', marginBottom: 4 },
+  subtitle: { fontSize: 13, fontWeight: '400', color: '#64748B', textAlign: 'center', lineHeight: 19, marginBottom: 10 },
 
   otpShowCard: {
     alignSelf: 'center',
     width: 312,
     marginBottom: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(252,211,77,0.45)',
-    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(93,63,211,0.28)',
+    paddingVertical: 14,
     paddingHorizontal: 14,
     alignItems: 'center',
   },
-  otpShowLbl: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.75)', marginBottom: 4 },
-  otpShowVal: { fontSize: 28, fontWeight: '900', color: '#FCD34D', letterSpacing: 6 },
-  otpShowCopy: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#FFF', textDecorationLine: 'underline' },
+  otpShowLbl: { fontSize: 12, fontWeight: '600', color: '#5B21B6', marginBottom: 4 },
+  otpShowVal: { fontSize: 28, fontWeight: '900', color: BRAND, letterSpacing: 6 },
+  otpShowCopyRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(93,63,211,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  otpShowCopy: { fontSize: 12, fontWeight: '700', color: BRAND },
 
   formWrap: { alignItems: 'center' },
   otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 0 },
-  otpField: { width: 56, height: 60, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 2, borderColor: 'transparent', color: BG, fontSize: 32, fontWeight: '800' },
-  otpActive: { borderColor: '#FCD34D', borderWidth: 2.5 },
+  otpField: {
+    width: 56,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(93,63,211,0.22)',
+    color: BRAND,
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  otpActive: { borderColor: BRAND, borderWidth: 2 },
 
   orDivider: {
     fontSize: 12,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.45)',
+    color: '#94A3B8',
     textAlign: 'center',
     marginVertical: 10,
     letterSpacing: 1.2,
@@ -725,60 +744,67 @@ const s = StyleSheet.create({
 
   bottomBar: {
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 8,
     alignItems: 'center',
+    backgroundColor: PAGE_BG,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
+    borderTopColor: 'rgba(93,63,211,0.12)',
   },
 
-  // Width matched to the OTP row above (5 × 56 + 4 × 8 gap = 312).
-  btn: { width: 312, height: 54, borderRadius: 14, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
-  btnT: { fontSize: 15, fontWeight: '700', color: BG, letterSpacing: 0.3 },
+  btn: {
+    width: 312,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: BRAND,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnT: { fontSize: 15, fontWeight: '700', color: '#FFF', letterSpacing: 0.3 },
   btnTDeliver: { fontSize: 14, fontWeight: '700', letterSpacing: 0.2 },
-  btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: BG, marginLeft: 8 },
+  btnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF', marginLeft: 8 },
 
   proofWrap: { alignSelf: 'stretch', width: '100%' },
   sectionCard: { marginTop: SECTION_GAP },
   proofSection: {
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(15,23,42,0.08)',
   },
   proofHead: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(93,63,211,0.06)',
   },
   proofHeadIco: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(252,211,77,0.18)',
+    backgroundColor: 'rgba(93,63,211,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
-  proofHeadIcoImg: { width: 18, height: 18, resizeMode: 'contain', tintColor: '#FCD34D' },
+  proofHeadIcoImg: { width: 18, height: 18, resizeMode: 'contain', tintColor: BRAND },
   proofBody: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
-  proofTitle: { fontSize: 13, fontWeight: '700', color: '#FFF' },
-  proofSub: { fontSize: 10, fontWeight: '400', color: 'rgba(255,255,255,0.55)', marginTop: 1 },
+  proofTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  proofSub: { fontSize: 10, fontWeight: '400', color: '#64748B', marginTop: 1 },
   proofCountPill: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(93,63,211,0.1)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(93,63,211,0.2)',
   },
-  proofCountT: { fontSize: 10, fontWeight: '700', color: '#FCD34D', letterSpacing: 0.3 },
+  proofCountT: { fontSize: 10, fontWeight: '700', color: BRAND, letterSpacing: 0.3 },
   proofGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -PROOF_GAP / 2 },
   proofThumbWrap: { margin: PROOF_GAP / 2, position: 'relative' },
   proofThumbBtn: { flex: 1, borderRadius: 8, overflow: 'hidden' },
-  proofThumb: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.2)' },
+  proofThumb: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: '#E2E8F0' },
   proofRemove: {
     position: 'absolute',
     top: -4,
@@ -798,15 +824,15 @@ const s = StyleSheet.create({
     margin: PROOF_GAP / 2,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(93,63,211,0.28)',
     borderStyle: 'dashed',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(93,63,211,0.04)',
     overflow: 'hidden',
   },
   proofAddInner: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  proofAddIco: { width: 20, height: 20, resizeMode: 'contain', tintColor: '#FFF', marginBottom: 2 },
-  proofAddT: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
-  proofHint: { fontSize: 9, fontWeight: '500', color: 'rgba(255,255,255,0.45)', marginTop: 6, textAlign: 'center' },
+  proofAddIco: { width: 20, height: 20, resizeMode: 'contain', tintColor: BRAND, marginBottom: 2 },
+  proofAddT: { fontSize: 10, fontWeight: '600', color: BRAND },
+  proofHint: { fontSize: 9, fontWeight: '500', color: '#94A3B8', marginTop: 6, textAlign: 'center' },
 
   confirmWrap: { paddingHorizontal: 18, paddingTop: 4 },
   confirmTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
@@ -834,36 +860,34 @@ const s = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#16A34A',
+    backgroundColor: BRAND,
   },
   confirmUseT: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 
-  // Order card (white on purple)
-  orderCard: { backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 12, marginTop: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  orderCard: { backgroundColor: '#FFFFFF', borderRadius: 12, marginTop: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)' },
   orderHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, paddingBottom: 8 },
-  orderOid: { fontSize: 14, fontWeight: '700', color: '#FFF' },
-  orderAmt: { fontSize: 16, fontWeight: '700', color: '#FCD34D' },
-  orderPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.14)' },
+  orderOid: { fontSize: 14, fontWeight: '700', color: BRAND },
+  orderAmt: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  orderPerson: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.08)' },
   orderAvt: { width: 28, height: 28, borderRadius: 14, resizeMode: 'cover', marginRight: 8 },
-  orderName: { fontSize: 14, fontWeight: '700', color: '#FFF' },
-  orderPhone: { fontSize: 11.5, fontWeight: '500', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
+  orderName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  orderPhone: { fontSize: 11.5, fontWeight: '500', color: '#64748B', marginTop: 1 },
   orderIco: { width: 30, height: 30, resizeMode: 'contain' },
   orderCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
   contactBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   contactIcoCall: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
   contactIcoWa: { width: 30, height: 30, resizeMode: 'contain' },
-  // Pickup darkstore call button — matches the orange call style used elsewhere.
   dsCallBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   dsCallIco: { width: 30, height: 30, resizeMode: 'contain', tintColor: '#F97316' },
   orderRoute: { paddingHorizontal: 12, paddingVertical: 10 },
   orderRouteR: { flexDirection: 'row', alignItems: 'flex-start' },
   orderTl: { width: 14, alignItems: 'center', marginRight: 8, paddingTop: 3 },
   orderDot: { width: 8, height: 8, borderRadius: 4 },
-  orderLine: { width: 1.5, flex: 1, minHeight: 8, backgroundColor: 'rgba(255,255,255,0.35)', marginVertical: 3 },
+  orderLine: { width: 1.5, flex: 1, minHeight: 8, backgroundColor: 'rgba(15,23,42,0.12)', marginVertical: 3 },
   orderRBody: { flex: 1, paddingBottom: 10 },
   orderRLbl: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3 },
-  orderRTitle: { fontSize: 13.5, fontWeight: '700', color: '#FFF' },
-  orderRSub: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.88)', lineHeight: 17, marginTop: 1 },
+  orderRTitle: { fontSize: 13.5, fontWeight: '700', color: '#0F172A' },
+  orderRSub: { fontSize: 12, fontWeight: '500', color: '#64748B', lineHeight: 17, marginTop: 1 },
 });
 
 export default withV4Navigation(OrderOtpVerify);

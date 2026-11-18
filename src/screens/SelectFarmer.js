@@ -12,6 +12,7 @@ import { withV4Navigation } from '../utils/v4Compat';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import { setPendingSelectedFarmer } from '../utils/pendingFarmer';
+import NotificationBellButton from '../components/NotificationBellButton';
 import {
   getCachedFarmers, parseFarmers, parseFarmerPagination, setCachedFarmers,
 } from '../utils/farmerCache';
@@ -222,6 +223,12 @@ class SelectFarmer extends Component {
               <Text style={st.hdrTitle}>Farmer chunein</Text>
               <Text style={st.hdrSub}>Soil test kis kisan ke liye?</Text>
             </View>
+            <NotificationBellButton
+              navigation={this.props.navigation}
+              size={38}
+              iconSize={17}
+              style={{ backgroundColor: 'rgba(255,255,255,0.20)', marginLeft: 0 }}
+            />
           </SafeAreaView>
         </View>
 

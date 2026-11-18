@@ -35,6 +35,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import OrderCard from '../components/OrderCard';
+import NotificationBellButton from '../components/NotificationBellButton';
 import { HEADER } from '../theme/headerColors';
 import { callFarmerExotel, dialDirect } from '../utils/exotelCall';
 
@@ -477,7 +478,12 @@ class SettlementList extends Component {
                 <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
               </TouchableOpacity>
               <Text style={styles.hdrTitle}>Cash Jama</Text>
-              <View style={[styles.hdrBack, { backgroundColor: 'transparent' }]} />
+              <NotificationBellButton
+                navigation={this.props.navigation}
+                size={38}
+                iconSize={17}
+                style={{ backgroundColor: 'rgba(255,255,255,0.20)', marginLeft: 0 }}
+              />
             </View>
 
             <View style={styles.hdrHero}>

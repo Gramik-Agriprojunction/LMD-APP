@@ -22,7 +22,7 @@ const COMPLETE_AT = 0.78;
  */
 export default function SwipeToConfirm({
   label = 'Swipe to confirm',
-  color = '#0891B2',
+  color = '#5D3FD3',
   disabled = false,
   disabledHint,
   resetKey,

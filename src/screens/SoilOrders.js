@@ -14,7 +14,6 @@ import { HEADER } from '../theme/headerColors';
 import Toast from 'react-native-simple-toast';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
-import NotificationBellButton from '../components/NotificationBellButton';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -299,14 +298,6 @@ class SoilOrders extends Component {
             kicker="Soil test orders"
             title="Mitti Jaanch"
             onBack={this.goBack}
-            right={(
-              <NotificationBellButton
-                navigation={this.props.navigation}
-                size={36}
-                iconSize={15}
-                style={{ backgroundColor: 'rgba(255,255,255,0.14)', marginLeft: 0 }}
-              />
-            )}
           />
 
         <View style={st.body}>

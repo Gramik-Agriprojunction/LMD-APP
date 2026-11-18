@@ -7,7 +7,10 @@ import { isReadOnly } from '../utils/lmdViewMode';
 
 const { width: SW } = Dimensions.get('window');
 const OUTER_PAD = 12;
-const CARD_W = SW - OUTER_PAD * 2;
+const GAP = 10;
+const FULL_W = SW - OUTER_PAD * 2;
+/** Multi: ~1 card + next peek */
+const PEEK_W = Math.round(SW * 0.78);
 const SLIDE_MS = 4500;
 const GREEN = '#16A34A';
 const GREEN_DARK = '#15803D';
@@ -32,7 +35,6 @@ export default class PendingSettlementsCarousel extends Component {
   }
 
   componentDidMount() {
-    this.resetToMiddle(false);
     this.startAutoSlide();
     this.startArrow();
   }
@@ -40,7 +42,8 @@ export default class PendingSettlementsCarousel extends Component {
   componentDidUpdate(prevProps) {
     if ((prevProps.items?.length || 0) !== (this.props.items?.length || 0)) {
       this.setState({ activeDot: 0 });
-      this.resetToMiddle(false);
+      this.scrollIdx = 0;
+      this.scrollRef.current?.scrollTo({ x: 0, animated: false });
       this.restartAutoSlide();
     }
   }
@@ -52,24 +55,11 @@ export default class PendingSettlementsCarousel extends Component {
 
   getItems = () => this.props.items || [];
 
-  getLoopItems = () => {
-    const items = this.getItems();
-    if (items.length <= 1) return items;
-    return [...items, ...items, ...items];
-  };
+  isMulti = () => this.getItems().length > 1;
 
-  resetToMiddle = (animated = false) => {
-    const items = this.getItems();
-    if (items.length <= 1) {
-      this.scrollIdx = 0;
-      return;
-    }
-    this.scrollIdx = items.length;
-    this.setState({ activeDot: 0 });
-    requestAnimationFrame(() => {
-      this.scrollRef.current?.scrollTo({ x: this.scrollIdx * CARD_W, animated });
-    });
-  };
+  cardW = () => (this.isMulti() ? PEEK_W : FULL_W);
+
+  step = () => this.cardW() + GAP;
 
   startArrow = () => {
     Animated.loop(
@@ -92,7 +82,7 @@ export default class PendingSettlementsCarousel extends Component {
 
   startAutoSlide = () => {
     this.stopAutoSlide();
-    if (this.getItems().length <= 1) return;
+    if (!this.isMulti()) return;
     this.timer = setInterval(this.advance, SLIDE_MS);
   };
 
@@ -109,51 +99,40 @@ export default class PendingSettlementsCarousel extends Component {
   };
 
   advance = () => {
-    if (this.dragging) return;
+    if (this.dragging || !this.isMulti()) return;
     const items = this.getItems();
-    if (items.length <= 1) return;
-    this.scrollToIndex(this.scrollIdx + 1, true);
+    const next = (this.scrollIdx + 1) % items.length;
+    this.scrollToIndex(next, true);
   };
 
   scrollToIndex = (index, animated = true) => {
     const items = this.getItems();
     if (!items.length) return;
-    this.scrollIdx = index;
-    this.scrollRef.current?.scrollTo({ x: index * CARD_W, animated });
-    if (items.length === 1) {
-      this.setState({ activeDot: 0 });
-      return;
-    }
-    this.setState({ activeDot: index % items.length });
+    const idx = Math.max(0, Math.min(index, items.length - 1));
+    this.scrollIdx = idx;
+    this.scrollRef.current?.scrollTo({ x: idx * this.step(), animated });
+    this.setState({ activeDot: idx });
   };
 
   onScrollEnd = (e) => {
     const items = this.getItems();
     if (!items.length) return;
-
+    const step = this.step();
     const x = e.nativeEvent.contentOffset.x;
-    let idx = Math.round(x / CARD_W);
-
-    if (items.length > 1) {
-      const n = items.length;
-      if (idx < n) {
-        idx += n;
-        this.scrollRef.current?.scrollTo({ x: idx * CARD_W, animated: false });
-      } else if (idx >= n * 2) {
-        idx -= n;
-        this.scrollRef.current?.scrollTo({ x: idx * CARD_W, animated: false });
-      }
-    }
-
+    const idx = Math.max(0, Math.min(Math.round(x / step), items.length - 1));
     this.scrollIdx = idx;
-    this.setState({ activeDot: items.length > 1 ? idx % items.length : 0 });
+    this.setState({ activeDot: idx });
     this.restartAutoSlide();
   };
 
   money = (v) => {
     if (v === undefined || v === null || v === '') return '0';
-    const s = String(v);
-    return s.endsWith('.00') ? s.replace('.00', '') : s;
+    const n = Number(v);
+    if (!Number.isFinite(n)) {
+      const s = String(v);
+      return s.endsWith('.00') ? s.replace('.00', '') : s;
+    }
+    return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
   };
 
   resolveItem = (item) => {
@@ -165,12 +144,19 @@ export default class PendingSettlementsCarousel extends Component {
       .filter(Boolean)
       .join(' · ');
 
+    const rawAmt =
+      item?.amount ??
+      item?.collected_amount ??
+      item?.order_grand_total ??
+      item?.deposited_amount ??
+      item?.order_amount;
+
     return {
       code: String(item?.order_code || item?.order_id || '—'),
       farmer: String(item?.farmer_name || item?.farmer?.name || 'Farmer').trim(),
       mobile: maskMobile(item?.farmer_mobile || item?.farmer?.mobile),
       shortLoc,
-      amount: this.money(item?.amount ?? item?.collected_amount ?? item?.deposited_amount ?? item?.order_amount),
+      amount: this.money(rawAmt),
       payMode: String(item?.payment_mode || '').trim(),
       payStatus: String(item?.payment_status || '').trim(),
       status: String(item?.status || '').trim(),
@@ -181,7 +167,10 @@ export default class PendingSettlementsCarousel extends Component {
     const { totalAmount } = this.props;
     const n = Number(totalAmount);
     if (Number.isFinite(n) && n > 0) return this.money(n);
-    const sum = this.getItems().reduce((acc, it) => acc + (Number(it?.amount) || 0), 0);
+    const sum = this.getItems().reduce((acc, it) => {
+      const raw = it?.amount ?? it?.collected_amount ?? it?.order_grand_total ?? 0;
+      return acc + (Number(raw) || 0);
+    }, 0);
     return this.money(sum);
   };
 
@@ -190,16 +179,23 @@ export default class PendingSettlementsCarousel extends Component {
     if (onNavigate) onNavigate();
   };
 
-  renderCard = (item, index) => {
+  renderCard = (item, index, cardW, isLast) => {
     const d = this.resolveItem(item);
     const orderSt = getStatus(d.status);
     const unpaid = d.payStatus.toLowerCase() !== 'paid';
-    const meta = [d.payMode, unpaid ? 'Unpaid' : 'Paid', orderSt.label].filter(Boolean).join('  ·  ');
+    const metaBits = [
+      d.payMode,
+      unpaid ? 'Unpaid' : 'Paid',
+      orderSt.label || d.status,
+    ].filter(Boolean);
 
     return (
-      <View key={`${item?.order_id || item?.id || index}-${index}`} style={[$.slide, { width: CARD_W }]}>
-        <View style={$.rowTop}>
-          <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+      <View
+        key={`${item?.order_id || item?.id || index}-${index}`}
+        style={[$.slide, { width: cardW, marginRight: isLast ? 0 : GAP }]}
+      >
+        <View style={$.orderRow}>
+          <View style={$.orderLeft}>
             <Text style={$.code} numberOfLines={1}>{d.code}</Text>
             <Text style={$.farmer} numberOfLines={1}>
               {d.farmer}{d.mobile ? ` · ${d.mobile}` : ''}
@@ -207,9 +203,13 @@ export default class PendingSettlementsCarousel extends Component {
             {!!d.shortLoc && (
               <Text style={$.loc} numberOfLines={1}>{d.shortLoc}</Text>
             )}
-            {!!meta && <Text style={$.meta} numberOfLines={1}>{meta}</Text>}
+            {!!metaBits.length && (
+              <Text style={$.meta} numberOfLines={1}>{metaBits.join('  ·  ')}</Text>
+            )}
           </View>
-          <Text style={$.amt}>₹{d.amount}</Text>
+          <View style={$.amtCol}>
+            <Text style={$.amt} numberOfLines={1}>₹{d.amount}</Text>
+          </View>
         </View>
       </View>
     );
@@ -219,7 +219,8 @@ export default class PendingSettlementsCarousel extends Component {
     const items = this.getItems();
     if (!items.length) return null;
 
-    const loopItems = this.getLoopItems();
+    const multi = this.isMulti();
+    const cardW = this.cardW();
     const { totalCount } = this.props;
     const count = totalCount ?? items.length;
     const total = this.computedTotal();
@@ -228,31 +229,39 @@ export default class PendingSettlementsCarousel extends Component {
       <View style={$.wrap}>
         <View style={$.head}>
           <Image source={require('../screens/assets/money.png')} style={$.headIco} resizeMode="contain" />
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={$.headText}>
             <Text style={$.title}>Pending Settlement</Text>
-            <Text style={$.sub}>{count} order{count === 1 ? '' : 's'} · Total ₹{total}</Text>
+            <Text style={$.sub}>
+              {count} order{count === 1 ? '' : 's'} · Total ₹{total}
+            </Text>
           </View>
         </View>
 
-        <ScrollView
-          ref={this.scrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          decelerationRate="fast"
-          snapToInterval={CARD_W}
-          snapToAlignment="start"
-          contentContainerStyle={{ width: CARD_W * loopItems.length }}
-          onScrollBeginDrag={() => { this.dragging = true; this.stopAutoSlide(); }}
-          onScrollEndDrag={() => { this.dragging = false; }}
-          onMomentumScrollEnd={this.onScrollEnd}
-        >
-          {loopItems.map((item, i) => this.renderCard(item, i))}
-        </ScrollView>
+        {multi ? (
+          <ScrollView
+            ref={this.scrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            snapToInterval={this.step()}
+            snapToAlignment="start"
+            disableIntervalMomentum
+            contentContainerStyle={$.scrollInner}
+            onScrollBeginDrag={() => { this.dragging = true; this.stopAutoSlide(); }}
+            onScrollEndDrag={() => { this.dragging = false; }}
+            onMomentumScrollEnd={this.onScrollEnd}
+          >
+            {items.map((item, i) => this.renderCard(item, i, cardW, i === items.length - 1))}
+          </ScrollView>
+        ) : (
+          <View style={$.singlePad}>
+            {this.renderCard(items[0], 0, cardW, true)}
+          </View>
+        )}
 
-        {items.length > 1 ? (
+        {multi ? (
           <View style={$.dots}>
-            {items.map((_, i) => (
+            {items.slice(0, 8).map((_, i) => (
               <View key={i} style={[$.dot, i === this.state.activeDot && $.dotOn]} />
             ))}
           </View>
@@ -279,7 +288,6 @@ const $ = StyleSheet.create({
     marginBottom: 4,
     paddingTop: 12,
     paddingBottom: 12,
-    paddingHorizontal: 12,
     overflow: 'hidden',
   },
   head: {
@@ -287,31 +295,53 @@ const $ = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 10,
+    paddingHorizontal: OUTER_PAD,
   },
   headIco: { width: 28, height: 28 },
+  headText: { flex: 1, minWidth: 0 },
   title: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  sub: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 1 },
+  sub: { fontSize: 12, fontWeight: '600', color: GREEN_DARK, marginTop: 2 },
 
-  slide: { paddingRight: 4 },
-  rowTop: {
+  scrollInner: {
+    paddingHorizontal: OUTER_PAD,
+  },
+  singlePad: {
+    paddingHorizontal: OUTER_PAD,
+  },
+  slide: {},
+  orderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+  },
+  orderLeft: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
   },
   code: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: GREEN_DARK,
     marginBottom: 3,
   },
   farmer: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  loc: { fontSize: 11, fontWeight: '500', color: '#64748B', marginTop: 2 },
-  meta: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 5 },
+  loc: { fontSize: 11.5, fontWeight: '500', color: '#64748B', marginTop: 3 },
+  meta: { fontSize: 11, fontWeight: '600', color: '#475569', marginTop: 6 },
+  amtCol: {
+    flexShrink: 0,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: 2,
+  },
   amt: {
     fontSize: 20,
     fontWeight: '800',
     color: GREEN,
     letterSpacing: -0.3,
-    marginTop: 2,
   },
 
   settleBtn: {
@@ -322,12 +352,19 @@ const $ = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     marginTop: 12,
+    marginHorizontal: OUTER_PAD,
     gap: 6,
   },
   settleBtnT: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   settleArrow: { width: 12, height: 12, tintColor: '#FFF', resizeMode: 'contain' },
 
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8, gap: 5 },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 5,
+  },
   dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#A7F3D0' },
   dotOn: { width: 14, backgroundColor: GREEN },
 });

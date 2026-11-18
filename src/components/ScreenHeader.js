@@ -1,14 +1,17 @@
 /**
  * ScreenHeader — app-wide header matching Delivery Jaankari style.
+ * Notification bell shows by default on every screen (hide with showNotification={false}).
  *
- *   <ScreenHeader bg="#5D3FD3" title="Notifications" onBack={() => nav.goBack()} />
+ *   <ScreenHeader bg="#5D3FD3" title="Orders" onBack={() => nav.goBack()} />
  *   <ScreenHeader bg="#9333EA" kicker="Action Zaroori" title="Reject Delivery" onBack={…} />
  *   <ScreenHeader bg="#5D3FD3" onBack={…} below={<SearchBox … />} />
- *   <ScreenHeader bg="#5D3FD3" title="Cash" onBack={…} right={<Bell />} />
+ *   <ScreenHeader bg="#5D3FD3" title="Cash" onBack={…} right={<CallBtn />} />
  */
 import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import NotificationBellButton from './NotificationBellButton';
 
 const SIDE = 38;
 const BACK_ICON = require('../screens/assets/back.png');
@@ -35,12 +38,34 @@ export default function ScreenHeader({
   iconTint,
   titleColor,
   kickerColor,
+  showNotification = true,
 }) {
+  const navigation = useNavigation();
   const light = isLightHex(bg);
   const chipBg = iconChipBg || (light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.20)');
   const tint = iconTint || (light ? '#0F172A' : '#FFF');
   const tColor = titleColor || (light ? '#0F172A' : '#FFF');
   const kColor = kickerColor || (light ? 'rgba(15,23,42,0.6)' : 'rgba(255,255,255,0.70)');
+
+  const bell = showNotification ? (
+    <NotificationBellButton
+      navigation={navigation}
+      size={SIDE}
+      iconSize={17}
+      tint={tint}
+      style={{ backgroundColor: chipBg, marginLeft: 0 }}
+    />
+  ) : null;
+
+  const hasExtraRight = !!right;
+  const rightNode = (hasExtraRight || bell) ? (
+    <View style={[styles.rightRow, hasExtraRight && bell ? styles.rightRowWide : null]}>
+      {right || null}
+      {bell}
+    </View>
+  ) : (
+    <View style={[styles.chip, { backgroundColor: 'transparent' }]} />
+  );
 
   return (
     <View style={[styles.sheet, { backgroundColor: bg }, below ? styles.sheetWithBelow : null]}>
@@ -88,8 +113,8 @@ export default function ScreenHeader({
             )}
           </View>
 
-          <View style={styles.sideSlot}>
-            {right || <View style={[styles.chip, { backgroundColor: 'transparent' }]} />}
+          <View style={[styles.sideSlot, (hasExtraRight && bell) && styles.sideSlotWide]}>
+            {rightNode}
           </View>
         </View>
 
@@ -146,11 +171,20 @@ const styles = StyleSheet.create({
   kicker: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   title: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
   sideSlot: {
-    width: SIDE,
+    minWidth: SIDE,
     height: SIDE,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
+  sideSlotWide: {
+    minWidth: SIDE * 2 + 6,
+  },
+  rightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rightRowWide: {},
   below: {
     paddingHorizontal: 14,
     paddingTop: 4,

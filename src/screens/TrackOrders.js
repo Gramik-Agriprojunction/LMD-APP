@@ -49,6 +49,7 @@ import { get as cacheGet, set as cacheSet, has as cacheHas, subscribe as cacheSu
 import LiveOrdersGrid from '../components/LiveOrdersGrid';
 import OrderGroupHeader from '../components/OrderGroupHeader';
 import ActiveFiltersSummary from '../components/ActiveFiltersSummary';
+import NotificationBellButton from '../components/NotificationBellButton';
 import OrderCard from '../components/OrderCard';
 import { STATUS, STATUS_SEQUENCE, getStatus } from '../utils/statusColors';
 import { preloadImages } from '../components/CachedImage';
@@ -575,10 +576,18 @@ class TrackOrders extends Component {
                 <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
               </TouchableOpacity>
               <Text style={s.hdrTitle}>Orders</Text>
-              <TouchableOpacity onPress={this.openFilters} activeOpacity={0.85} style={[s.filterBtn, filtersActive && s.filterBtnOn]}>
-                <Image source={require('./assets/filter.png')} style={s.filterIco} />
-                {filtersActive ? <View style={s.filterDot} /> : null}
-              </TouchableOpacity>
+              <View style={s.hdrRightRow}>
+                <TouchableOpacity onPress={this.openFilters} activeOpacity={0.85} style={[s.filterBtn, filtersActive && s.filterBtnOn]}>
+                  <Image source={require('./assets/filter.png')} style={s.filterIco} />
+                  {filtersActive ? <View style={s.filterDot} /> : null}
+                </TouchableOpacity>
+                <NotificationBellButton
+                  navigation={this.props.navigation}
+                  size={38}
+                  iconSize={17}
+                  style={{ backgroundColor: 'rgba(255,255,255,0.16)', marginLeft: 0 }}
+                />
+              </View>
             </View>
             <View style={s.searchBar}>
               <MaterialCommunityIcons name="magnify" size={18} color="rgba(255,255,255,0.7)" />
@@ -733,7 +742,8 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center', justifyContent: 'center',
   },
-  hdrTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  hdrTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2, flex: 1, textAlign: 'center' },
+  hdrRightRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   searchBar: {
     marginTop: 8, marginHorizontal: 14, height: 44, borderRadius: 14,
     flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12,

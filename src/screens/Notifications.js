@@ -254,7 +254,8 @@ class Notifications extends Component {
     const time = item?.createdAt || item?.created_at || item?.date || '';
     const read = this.isRead(item);
     const evt = this.eventStyle(item);
-    const typeText = this.typeLabel(item?.type);
+    // Status chip: Cancelled / Order Placed — not always "Delivery" from type
+    const statusText = evt?.label || this.typeLabel(item?.type);
 
     return (
       <TouchableOpacity
@@ -283,10 +284,10 @@ class Notifications extends Component {
             ) : null}
 
             <View style={styles.footerRow}>
-              {!!typeText ? (
+              {!!statusText ? (
                 <View style={[styles.typeChip, { backgroundColor: evt.bg || '#F1F5F9' }]}>
                   <View style={[styles.typeDot, { backgroundColor: evt.color || P }]} />
-                  <Text style={[styles.typeText, { color: evt.color || P }]}>{typeText}</Text>
+                  <Text style={[styles.typeText, { color: evt.color || P }]}>{statusText}</Text>
                 </View>
               ) : <View />}
               {!read ? (
@@ -386,6 +387,7 @@ class Notifications extends Component {
           bg={HEADER.brand}
           title="Notifications"
           onBack={() => this.props.navigation?.goBack?.()}
+          showNotification={false}
           below={(
             <View style={styles.hdrBelow}>
               <View>

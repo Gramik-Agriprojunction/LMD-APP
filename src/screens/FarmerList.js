@@ -158,6 +158,10 @@ class FarmerList extends Component {
     this.goStack('AddFarmer', { farmer, mode: 'edit' });
   };
 
+  goSales = (farmer) => {
+    this.goStack('FarmerSales', { farmer });
+  };
+
   renderItem = ({ item, index }) => {
     const name = farmerDisplayName(item);
     const phone = farmerDisplayPhone(item);
@@ -182,9 +186,8 @@ class FarmerList extends Component {
         useNativeDriver
       >
         <Pressable
-          onPress={locked ? undefined : () => this.goEdit(item)}
-          disabled={locked}
-          style={({ pressed }) => [st.card, !locked && pressed && st.cardPressed]}
+          onPress={() => this.goSales(item)}
+          style={({ pressed }) => [st.card, pressed && st.cardPressed]}
         >
           <View style={st.cardTop}>
             <View style={st.avatar}>
@@ -210,10 +213,22 @@ class FarmerList extends Component {
                   )}
                 </View>
                 {!locked ? (
-                  <View style={st.editBtn}>
+                  <TouchableOpacity
+                    style={st.editBtn}
+                    activeOpacity={0.85}
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      this.goEdit(item);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
                     <MaterialCommunityIcons name="pencil" size={15} color={HEADER.brand} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={st.chevWrap}>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
                   </View>
-                ) : null}
+                )}
               </View>
 
               {!!phone && (
@@ -554,6 +569,12 @@ const st = StyleSheet.create({
     height: 34,
     borderRadius: 17,
     backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chevWrap: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -31,6 +31,7 @@ import { isReadOnly } from '../utils/lmdViewMode';
 import * as STATUS_COLORS from '../utils/statusColors';
 import CachedImage from '../components/CachedImage';
 import ScreenHeader from '../components/ScreenHeader';
+import NotificationBellButton from '../components/NotificationBellButton';
 import { HEADER } from '../theme/headerColors';
 import OrderCard from '../components/OrderCard';
 import QrPayModal from '../components/QrPayModal';
@@ -917,7 +918,12 @@ class DeliveryDetails extends Component {
                     <MaterialCommunityIcons name="arrow-left" size={20} color="#FFF" />
                   </TouchableOpacity>
                   <Text style={styles.hdrTitle}>Delivery Jaankari</Text>
-                  <View style={[styles.hdrBack, { backgroundColor: 'transparent' }]} />
+                  <NotificationBellButton
+                    navigation={this.props.navigation}
+                    size={38}
+                    iconSize={17}
+                    style={{ backgroundColor: 'rgba(255,255,255,0.20)', marginLeft: 0 }}
+                  />
                 </View>
 
                 {details ? (
@@ -948,7 +954,7 @@ class DeliveryDetails extends Component {
                     </View>
                     {st ? (
                       <View style={styles.hdrStatus}>
-                        <Text style={[styles.hdrStatusT, { color: st.accent }]}>{st.label}</Text>
+                        <Text style={styles.hdrStatusT}>{st.label}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -1486,7 +1492,7 @@ class DeliveryDetails extends Component {
               {!readOnly && (details?.order_status === 'pending' || details?.order_status === 'reschedule') && (
                 <SwipeToConfirm
                   label="Swipe to Pickup"
-                  color={STATUS_COLORS.STATUS.PICKUP.bg}
+                  color={HEADER.brand}
                   resetKey={`pickup-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
                   onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
@@ -1502,7 +1508,7 @@ class DeliveryDetails extends Component {
               {!readOnly && details?.order_status === 'pickup' && (
                 <SwipeToConfirm
                   label="Swipe to Deliver"
-                  color={STATUS_COLORS.STATUS.DELIVERED.bg}
+                  color={HEADER.brand}
                   resetKey={`deliver-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
                   onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
@@ -1518,7 +1524,7 @@ class DeliveryDetails extends Component {
               {!readOnly && isRto && (
                 <SwipeToConfirm
                   label="Swipe to Confirm RTO"
-                  color={STATUS_COLORS.STATUS.RTO.bg}
+                  color={HEADER.brand}
                   resetKey={`rto-${details?.id}-${details?.order_status}-${this.state.swipeResetSeq}`}
                   onDragActiveChange={this.onSwipeDragActive}
                   onConfirm={() =>
@@ -1531,7 +1537,7 @@ class DeliveryDetails extends Component {
                 />
               )}
 
-              {!readOnly && s !== 'disputed' && (
+              {!readOnly && (s === 'pending' || s === 'reschedule' || s === 'pickup' || s === 'picked_up' || s === 'in_transit') && (
                 <TouchableOpacity
                   style={styles.moreOptsBtn}
                   onPress={() => this.setState({ show_more_options: true })}
@@ -1906,7 +1912,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginTop: 4,
   },
-  hdrStatusT: { fontSize: 12, fontWeight: '800' },
+  hdrStatusT: { fontSize: 12, fontWeight: '800', color: '#5D3FD3' },
 
   topStatusCards: {
     marginTop: 8,
@@ -2139,21 +2145,45 @@ const styles = StyleSheet.create({
   neutralPrimaryBtnIco: { width: 12, height: 12, resizeMode: 'contain', tintColor: 'rgba(255,255,255,0.85)' },
   neutralPrimaryBtnArrow: { width: 14, height: 14, resizeMode: 'contain', tintColor: '#FFF', marginLeft: 10 },
 
-  // Outlined "More Options" button (kept, was already neutral).
   readOnlyNote: { marginTop: 10, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' },
   readOnlyNoteT: { color: '#92400E', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   moreOptsBtn: {
-    height: 42,
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
+    height: 48,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(93,63,211,0.35)',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#5D3FD3',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: { elevation: 1 },
+    }),
   },
-  moreOptsDots: { fontSize: 20, fontWeight: '700', color: '#5B6478', marginRight: 8, includeFontPadding: false, lineHeight: 22, textAlignVertical: 'center' },
-  moreOptsT: { color: COLORS.primary, fontSize: 14, fontWeight: '700', letterSpacing: 0.2, includeFontPadding: false, lineHeight: 22 },
+  moreOptsDots: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#5D3FD3',
+    marginRight: 8,
+    includeFontPadding: false,
+    lineHeight: 24,
+    textAlignVertical: 'center',
+  },
+  moreOptsT: {
+    color: '#5D3FD3',
+    fontSize: 14.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    includeFontPadding: false,
+    lineHeight: 22,
+  },
 
 
   // More Options bottom-sheet — tile-based, taller, easier to scan.

@@ -18,6 +18,7 @@ import { withV4Navigation, NavigationEvents } from '../utils/v4Compat';
 import CachedImage, { preloadImages } from '../components/CachedImage';
 import SoilOrderSkeleton from '../components/SoilOrderSkeleton';
 import PaymentResultModal from '../components/PaymentResultModal';
+import NotificationBellButton from '../components/NotificationBellButton';
 import { S, soilIcons as I } from '../utils/soilTheme';
 import { getFreshCoords, lookupPincodeFromCoords, getCachedPrefetchedPincode, runSoilPinPrefill } from '../utils/locationHelper';
 import { consumePendingSelectedFarmer } from '../utils/pendingFarmer';
@@ -953,6 +954,12 @@ class CreateSoilOrder extends Component {
                 <Text style={$.stickyTitle} numberOfLines={1}>मिट्टी जांच</Text>
               </View>
             </View>
+            <NotificationBellButton
+              navigation={this.props.navigation}
+              size={36}
+              iconSize={15}
+              style={{ backgroundColor: 'rgba(255,255,255,0.14)', marginLeft: 0 }}
+            />
           </View>
         </SafeAreaView>
       </Animated.View>

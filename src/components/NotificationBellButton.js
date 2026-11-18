@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, Platform } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { subscribe as cacheSubscribe, KEYS } from '../utils/dataCache';
 import { getNotificationCount, notificationBadgeMeta } from '../utils/notificationCount';
 
@@ -27,11 +28,14 @@ function Badge({ count, floating = false, large = false }) {
 }
 
 export default function NotificationBellButton({
-  navigation,
+  navigation: navigationProp,
   size = 40,
   iconSize = 17,
+  tint = '#FFF',
   style,
 }) {
+  const navHook = useNavigation();
+  const navigation = navigationProp || navHook;
   const [count, setCount] = useState(getNotificationCount);
 
   useEffect(() => {
@@ -50,7 +54,7 @@ export default function NotificationBellButton({
     >
       <Image
         source={BELL}
-        style={{ width: iconSize, height: iconSize, tintColor: '#FFF', resizeMode: 'contain' }}
+        style={{ width: iconSize, height: iconSize, tintColor: tint, resizeMode: 'contain' }}
       />
       <Badge count={count} floating />
     </TouchableOpacity>

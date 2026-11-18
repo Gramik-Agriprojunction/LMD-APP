@@ -24,7 +24,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Compat';
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import { stopBackgroundLocationTracker } from '../utils/locationTracker';
-import NotificationBellButton from '../components/NotificationBellButton';
 import ScreenHeader from '../components/ScreenHeader';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { HEADER } from '../theme/headerColors';
@@ -194,7 +193,6 @@ class Profile extends Component {
           bg={HEADER.profile}
           title="Profile"
           onBack={this.isTabRoot() ? undefined : this.goBack}
-          right={<NotificationBellButton navigation={this.props.navigation} />}
           below={(
             <View style={styles.profileRow}>
               <View style={styles.avatar}>

@@ -26,6 +26,7 @@ import SoilOrderDetail from '../screens/SoilOrderDetail';
 import CreateSoilOrder from '../screens/CreateSoilOrder';
 import SelectFarmer from '../screens/SelectFarmer';
 import FarmerList from '../screens/FarmerList';
+import FarmerSales from '../screens/FarmerSales';
 import AddFarmer from '../screens/AddFarmer';
 import AddLand from '../screens/AddLand';
 import ChooseLmdPartner from '../screens/ChooseLmdPartner';
@@ -77,6 +78,7 @@ export default function AppNavigator() {
         <Stack.Screen name="CreateSoilOrder" component={CreateSoilOrder} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
         <Stack.Screen name="SelectFarmer" component={SelectFarmer} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
         <Stack.Screen name="FarmerList" component={FarmerList} options={{ contentStyle: { backgroundColor: '#5D3FD3' } }} />
+        <Stack.Screen name="FarmerSales" component={FarmerSales} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
         <Stack.Screen name="AddFarmer" component={AddFarmer} options={{ contentStyle: { backgroundColor: '#F4F6FB' } }} />
         <Stack.Screen name="AddLand" component={AddLand} options={{ contentStyle: { backgroundColor: '#5D3FD3' } }} />
       </Stack.Navigator>
