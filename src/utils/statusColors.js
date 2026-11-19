@@ -18,11 +18,12 @@ export const STATUS = {
   CANCELLED:  { key: 'CANCELLED',  bg: '#F87171', tint: '#FEE2E2', accent: '#B91C1C', label: 'Cancelled' },
   REJECTED:   { key: 'REJECTED',   bg: '#FB7185', tint: '#FFE4E6', accent: '#9F1239', label: 'Rejected' },
   RTO:        { key: 'RTO',        bg: '#A78BFA', tint: '#EDE9FE', accent: '#5B21B6', label: 'RTO' },
+  RTO_IN:     { key: 'RTO_IN',     bg: '#0D9488', tint: '#CCFBF1', accent: '#115E59', label: 'RTO IN' },
 };
 
 // Display order for the Live Orders grid and Track Orders tabs.
 // `In-Transit` is intentionally dropped from this surface.
-export const STATUS_SEQUENCE = ['ALL', 'PENDING', 'REJECTED', 'RESCHEDULE', 'PICKUP', 'DELIVERED', 'DISPUTED', 'CANCELLED', 'RTO'];
+export const STATUS_SEQUENCE = ['ALL', 'PENDING', 'REJECTED', 'RESCHEDULE', 'PICKUP', 'DELIVERED', 'DISPUTED', 'CANCELLED', 'RTO', 'RTO_IN'];
 
 // Maps the various raw status strings returned by the backend / used in routing
 // (lowercase, snake_case, abbreviated) to the canonical STATUS key.
@@ -58,6 +59,10 @@ const ALIAS = {
   reject: 'REJECTED',
 
   rto: 'RTO',
+
+  rto_in: 'RTO_IN',
+  rto_delivered: 'RTO_IN',
+  rto_delivered_at: 'RTO_IN',
 };
 
 export const normalizeStatus = (s) => {

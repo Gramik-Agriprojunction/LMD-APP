@@ -12,7 +12,8 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { safeBottomEdges } from '../utils/safeAreaInsets';
+import { safeBottomEdges, screenFooterPadding } from '../utils/safeAreaInsets';
+import MainTabBar, { MAIN_TAB_BAR_CORE_HEIGHT } from '../components/MainTabBar';
 import constants from '../utils/constants';
 import { applyNotificationNavigation } from '../utils/notificationNavigation';
 import { withV4Navigation } from '../utils/v4Compat';
@@ -20,6 +21,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { HEADER } from '../theme/headerColors';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { S, soilIcons as I } from '../utils/soilTheme';
+import { get as cacheGet, set as cacheSet, KEYS } from '../utils/dataCache';
 
 const P = S.P;
 const PAGE_LIMIT = 20;
@@ -95,16 +97,25 @@ class Notifications extends Component {
         const total = Number(meta?.total ?? list.length) || list.length;
         const hasMore = currentPage < totalPages;
 
+        const merged = append ? [...this.state.notifications, ...list] : list;
+        const unreadInList = merged.filter((n) => {
+          const read =
+            n?.isRead === true || n?.read === true || n?.is_read === true || n?.status === 'read';
+          return !read;
+        }).length;
+
         this.setState({
           isLoading: false,
           refreshing: false,
           loadingMore: false,
-          notifications: append ? [...this.state.notifications, ...list] : list,
+          notifications: merged,
           page: currentPage,
           totalPages,
           total,
           hasMore,
         });
+
+        if (!append) this.syncBellUnreadCount(unreadInList);
       })
       .catch((e) => {
         if (seq !== this._seq) return;
@@ -190,30 +201,47 @@ class Notifications extends Component {
 
   unreadCount = () => (this.state.notifications || []).filter((n) => !this.isRead(n)).length;
 
+  syncBellUnreadCount = (unread) => {
+    const n = unread != null ? Number(unread) : this.unreadCount();
+    const dash = cacheGet(KEYS.DASHBOARD);
+    if (dash) {
+      cacheSet(KEYS.DASHBOARD, { ...dash, notification_count: Math.max(0, n) });
+    }
+  };
+
   markItemRead = (item) => {
     const id = item?.id;
     if (id == null) return;
-    this.setState((prev) => ({
-      notifications: (prev.notifications || []).map((n) =>
-        String(n?.id) === String(id)
-          ? { ...n, isRead: true, read: true, is_read: true, status: 'read' }
-          : n,
-      ),
-    }));
+    const wasUnread = !this.isRead(item);
+    this.setState(
+      (prev) => ({
+        notifications: (prev.notifications || []).map((n) =>
+          String(n?.id) === String(id)
+            ? { ...n, isRead: true, read: true, is_read: true, status: 'read' }
+            : n,
+        ),
+      }),
+      () => {
+        if (wasUnread) this.syncBellUnreadCount();
+      },
+    );
   };
 
   markAllRead = () => {
     const unread = this.unreadCount();
     if (!unread) return;
-    this.setState((prev) => ({
-      notifications: (prev.notifications || []).map((n) => ({
-        ...n,
-        isRead: true,
-        read: true,
-        is_read: true,
-        status: 'read',
-      })),
-    }));
+    this.setState(
+      (prev) => ({
+        notifications: (prev.notifications || []).map((n) => ({
+          ...n,
+          isRead: true,
+          read: true,
+          is_read: true,
+          status: 'read',
+        })),
+      }),
+      () => this.syncBellUnreadCount(0),
+    );
   };
 
   filteredList = () => {
@@ -421,7 +449,10 @@ class Notifications extends Component {
               ListHeaderComponent={this.renderListHeader}
               ListEmptyComponent={this.renderEmpty}
               ListFooterComponent={this.renderFooter}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: MAIN_TAB_BAR_CORE_HEIGHT + screenFooterPadding() + 16 },
+              ]}
               showsVerticalScrollIndicator={false}
               onEndReached={this.handleEndReached}
               onEndReachedThreshold={0.35}
@@ -431,6 +462,8 @@ class Notifications extends Component {
             />
           )}
         </SafeAreaView>
+
+        <MainTabBar navigation={this.props.navigation} />
       </View>
     );
   }

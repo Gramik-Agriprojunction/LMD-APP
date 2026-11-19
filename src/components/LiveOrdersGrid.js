@@ -18,6 +18,7 @@ const LIVE_KEY = {
   CANCELLED: 'cancelled',
   REJECTED: 'rejected',
   RTO: 'rto',
+  RTO_IN: 'rto_delivered',
 };
 
 const ICONS = {
@@ -30,6 +31,7 @@ const ICONS = {
   DISPUTED: 'alert-circle-outline',
   CANCELLED: 'cancel',
   RTO: 'backup-restore',
+  RTO_IN: 'archive-arrow-down-outline',
 };
 
 const LABELS = {
@@ -42,6 +44,7 @@ const LABELS = {
   DISPUTED: 'Disputed',
   CANCELLED: 'Cancelled',
   RTO: 'RTO',
+  RTO_IN: 'RTO IN',
 };
 
 const STATS = STATUS_SEQUENCE.map((k) => {
@@ -67,6 +70,7 @@ const SUM_KEYS = [
   'cancelled',
   'rejected',
   'rto',
+  'rto_delivered',
 ];
 
 const toNum = (v) => {
@@ -90,16 +94,14 @@ function StatTile({ st, value, isSel, onPress }) {
         ]}
       >
         <View style={[s.iconWrap, { backgroundColor: isSel ? '#FFFFFF' : st.tint }]}>
-          <MaterialCommunityIcons name={st.icon} size={15} color={st.bg} />
+          <MaterialCommunityIcons name={st.icon} size={14} color={st.bg} />
         </View>
-        <View style={s.txtCol}>
-          <Text style={[s.count, isSel && { color: st.accent }]} numberOfLines={1}>
-            {Number(value).toLocaleString('en-IN')}
-          </Text>
-          <Text style={[s.label, isSel && { color: st.accent }]} numberOfLines={1}>
-            {st.l}
-          </Text>
-        </View>
+        <Text style={[s.count, isSel && { color: st.accent }]} numberOfLines={1}>
+          {Number(value).toLocaleString('en-IN')}
+        </Text>
+        <Text style={[s.label, isSel && { color: st.accent }]} numberOfLines={2}>
+          {st.l}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -141,20 +143,21 @@ const s = StyleSheet.create({
     marginHorizontal: -G / 2,
   },
   cell: {
-    width: '33.333%',
+    width: '25%',
     paddingHorizontal: G / 2,
     marginBottom: G,
   },
   tile: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    minHeight: 56,
-    borderRadius: 14,
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    minHeight: 72,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: 'transparent',
-    gap: 7,
+    gap: 4,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
@@ -169,28 +172,27 @@ const s = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
   },
   iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  txtCol: {
-    flex: 1,
-    minWidth: 0,
-  },
   count: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#0F172A',
     includeFontPadding: false,
     letterSpacing: -0.2,
+    textAlign: 'center',
   },
   label: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: '#64748B',
-    marginTop: 2,
+    marginTop: 0,
     includeFontPadding: false,
+    textAlign: 'center',
+    lineHeight: 11,
   },
 });

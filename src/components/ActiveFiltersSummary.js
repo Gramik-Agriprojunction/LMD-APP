@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { buildActiveFilterSummary } from '../utils/orderGrouping';
 
 const P = '#5D3FD3';
 
-function Chip({ chip }) {
+function Chip({ chip, onClear }) {
   const accent = chip.accent || P;
+  const clearable = typeof onClear === 'function';
   return (
     <View style={[st.chip, { backgroundColor: chip.tint || '#EDE9FE', borderColor: `${accent}33` }]}>
       {chip.imageIcon ? (
@@ -18,6 +19,17 @@ function Chip({ chip }) {
         <MaterialCommunityIcons name={chip.icon} size={11} color={accent} />
       ) : null}
       <Text style={[st.chipT, { color: accent }]} numberOfLines={1}>{chip.label}</Text>
+      {clearable ? (
+        <TouchableOpacity
+          onPress={() => onClear(chip)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${chip.label} filter hataao`}
+        >
+          <MaterialCommunityIcons name="close-circle" size={15} color={accent} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -31,6 +43,8 @@ export default function ActiveFiltersSummary({
   priorityFilter,
   entityFilters,
   compact,
+  onClearChip,
+  onClearGroup,
 }) {
   const { groupPath, chips } = useMemo(
     () => buildActiveFilterSummary(
@@ -54,10 +68,21 @@ export default function ActiveFiltersSummary({
           <View style={[st.chip, st.groupChip]}>
             <MaterialCommunityIcons name="layers-triple-outline" size={12} color={P} />
             <Text style={st.groupT} numberOfLines={1}>{groupPath}</Text>
+            {typeof onClearGroup === 'function' ? (
+              <TouchableOpacity
+                onPress={onClearGroup}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Group filter hataao"
+              >
+                <MaterialCommunityIcons name="close-circle" size={15} color={P} />
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
         {chips.map((chip) => (
-          <Chip key={chip.id} chip={chip} />
+          <Chip key={chip.id} chip={chip} onClear={onClearChip} />
         ))}
       </View>
     </View>

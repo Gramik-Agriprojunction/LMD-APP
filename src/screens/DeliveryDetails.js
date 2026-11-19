@@ -1645,7 +1645,6 @@ class DeliveryDetails extends Component {
           const st = String(d?.order_status || '').toLowerCase();
           const isPending = st === 'pending';
           const isReschedule = st === 'reschedule';
-          const isPickedUp = st === 'pickup' || st === 'picked_up' || st === 'in_transit';
           const closeAnd = (fn) => {
             this.moreSheetRef?.close();
             // give the close animation a beat before triggering navigation/popup
@@ -1653,7 +1652,7 @@ class DeliveryDetails extends Component {
           };
           const actionCount =
             ((isPending || isReschedule) ? 1 : 0) +
-            ((isPending || isPickedUp) ? 1 : 0) +
+            ((isPending || isReschedule) ? 1 : 0) +
             (st !== 'disputed' ? 1 : 0);
           const safeBottom = overlayBottomPadding();
           const sheetMax = Math.min(
@@ -1701,7 +1700,7 @@ class DeliveryDetails extends Component {
                     </TouchableOpacity>
                   ) : null}
 
-                  {(isPending || isPickedUp) ? (
+                  {(isPending || isReschedule) ? (
                     <TouchableOpacity
                       activeOpacity={0.85}
                       style={[styles.moreSheetTile, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}

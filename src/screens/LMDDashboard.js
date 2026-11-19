@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import {
   View, Text, StatusBar, TouchableOpacity, StyleSheet,
   FlatList, ScrollView, Linking, Image, Animated, RefreshControl, Alert,
+  Modal, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -95,6 +96,9 @@ class LMDDashboard extends Component {
       rescheduleDateFilter: null,
       priorityFilter: null,
       entityFilters: null,
+      showRtoOverdueModal: false,
+      rtoOverdueCount: 0,
+      rtoOverdueDismissedFor: null,
     };
     this.anims = [0,1,2,3,4].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
   }
@@ -109,6 +113,7 @@ class LMDDashboard extends Component {
     this.unsubscribe = cacheSubscribe(cacheKey, (data) => {
       if (!data) return;
       this.setState({ data });
+      this.syncRtoOverdueAlert(data);
     });
     this.load(cacheHas(cacheKey));
     flushPendingNotificationNavigation();
@@ -119,6 +124,34 @@ class LMDDashboard extends Component {
   }
 
   animate = () => {};
+
+  syncRtoOverdueAlert = (data) => {
+    const count = Math.max(0, Number(data?.rto_overdue_count || 0));
+    if (count <= 0) {
+      if (this.state.showRtoOverdueModal) {
+        this.setState({ showRtoOverdueModal: false, rtoOverdueCount: 0 });
+      }
+      return;
+    }
+    if (this.state.rtoOverdueDismissedFor === count) return;
+    this.setState({ showRtoOverdueModal: true, rtoOverdueCount: count });
+  };
+
+  dismissRtoOverdueModal = () => {
+    this.setState((prev) => ({
+      showRtoOverdueModal: false,
+      rtoOverdueDismissedFor: prev.rtoOverdueCount || prev.rtoOverdueDismissedFor,
+    }));
+  };
+
+  openRtoFromAlert = () => {
+    const count = this.state.rtoOverdueCount;
+    this.setState({
+      showRtoOverdueModal: false,
+      rtoOverdueDismissedFor: count,
+    });
+    this.go('RTO');
+  };
 
   // silent=true → background refresh, no shimmer flicker
   load = (silent = false) => {
@@ -140,7 +173,7 @@ class LMDDashboard extends Component {
             (o?.order_items || []).forEach((it) => { if (typeof it?.image === 'string') urls.push(it.image); });
           });
           preloadImages(urls);
-          this.setState({ loading: false, refreshing: false, data });
+          this.setState({ loading: false, refreshing: false, data }, () => this.syncRtoOverdueAlert(data));
         } else this.setState({ loading: false, refreshing: false });
       })
       .catch(() => this.setState({ loading: false, refreshing: false }));
@@ -153,6 +186,11 @@ class LMDDashboard extends Component {
   go = (s) => this.props.navigation.navigate('Orders', {
     selectedStatus: s || 'ALL',
     groupStack: this.state.groupStack,
+    pickReadyFilter: this.state.pickReadyFilter,
+    rescheduleDateFilter: this.state.rescheduleDateFilter,
+    priorityFilter: this.state.priorityFilter,
+    entityFilters: this.state.entityFilters,
+    filtersAppliedAt: Date.now(),
   });
 
   openFilters = () => {
@@ -166,6 +204,64 @@ class LMDDashboard extends Component {
     });
   };
 
+  applyFiltersLocally = ({
+    groupStack = this.state.groupStack,
+    pickReadyFilter = this.state.pickReadyFilter,
+    rescheduleDateFilter = this.state.rescheduleDateFilter,
+    priorityFilter = this.state.priorityFilter,
+    entityFilters = this.state.entityFilters,
+  }) => {
+    const nextStack = dedupeGroupStack(groupStack);
+    const nextPickReady = pickReadyFilter === true ? true : null;
+    const nextReschedule = rescheduleDateFilter || null;
+    const nextPriority = priorityFilter || null;
+    const nextEntity = entityFilters || null;
+    if (this.unsubscribe) this.unsubscribe();
+    this.setState({
+      groupStack: nextStack,
+      pickReadyFilter: nextPickReady,
+      rescheduleDateFilter: nextReschedule,
+      priorityFilter: nextPriority,
+      entityFilters: nextEntity,
+    }, () => {
+      const cacheKey = this.dashboardCacheKey(nextStack, nextPickReady, nextReschedule, nextPriority, nextEntity);
+      this.unsubscribe = cacheSubscribe(cacheKey, (data) => {
+        if (!data) return;
+        this.setState({ data });
+        this.syncRtoOverdueAlert(data);
+      });
+      this.load(true);
+    });
+  };
+
+  clearFilterChip = (chip) => {
+    if (!chip?.id) return;
+    const id = String(chip.id);
+    if (id === 'delivery-date') {
+      this.applyFiltersLocally({ rescheduleDateFilter: null });
+      return;
+    }
+    if (id === 'pick-ready') {
+      this.applyFiltersLocally({ pickReadyFilter: null });
+      return;
+    }
+    if (id.startsWith('priority-')) {
+      const key = id.replace('priority-', '');
+      const next = (this.state.priorityFilter || []).filter((p) => p !== key);
+      this.applyFiltersLocally({ priorityFilter: next.length ? next : null });
+      return;
+    }
+    if (id.startsWith('entity-')) {
+      const field = id.replace('entity-', '');
+      const next = { ...(this.state.entityFilters || {}), [field]: field === 'farmer' ? null : '' };
+      this.applyFiltersLocally({ entityFilters: next });
+    }
+  };
+
+  clearGroupFilter = () => {
+    this.applyFiltersLocally({ groupStack: [DEFAULT_GROUP_BY] });
+  };
+
   handleFiltersApplied = ({
     groupStack,
     pickReadyFilter,
@@ -174,20 +270,35 @@ class LMDDashboard extends Component {
     entityFilters,
   }) => {
     const nextStack = dedupeGroupStack(groupStack);
+    const nextPickReady = pickReadyFilter === true ? true : null;
+    const nextReschedule = rescheduleDateFilter || null;
+    const nextPriority = priorityFilter || null;
+    const nextEntity = entityFilters || null;
     if (this.unsubscribe) this.unsubscribe();
     this.setState({
       groupStack: nextStack,
-      pickReadyFilter,
-      rescheduleDateFilter: rescheduleDateFilter || null,
-      priorityFilter: priorityFilter || null,
-      entityFilters: entityFilters || null,
+      pickReadyFilter: nextPickReady,
+      rescheduleDateFilter: nextReschedule,
+      priorityFilter: nextPriority,
+      entityFilters: nextEntity,
     }, () => {
-      const cacheKey = this.dashboardCacheKey(nextStack, pickReadyFilter, rescheduleDateFilter, priorityFilter, entityFilters);
+      const cacheKey = this.dashboardCacheKey(nextStack, nextPickReady, nextReschedule, nextPriority, nextEntity);
       this.unsubscribe = cacheSubscribe(cacheKey, (data) => {
         if (!data) return;
         this.setState({ data });
+        this.syncRtoOverdueAlert(data);
       });
       this.load(true);
+      // Orders list should reflect the same filters immediately.
+      this.props.navigation.navigate('Orders', {
+        selectedStatus: 'ALL',
+        groupStack: nextStack,
+        pickReadyFilter: nextPickReady,
+        rescheduleDateFilter: nextReschedule,
+        priorityFilter: nextPriority,
+        entityFilters: nextEntity,
+        filtersAppliedAt: Date.now(),
+      });
     });
   };
   callFarmer = (phone, orderId) => callFarmerExotel({ orderId, toPhone: phone, context: 'delivery' });
@@ -405,6 +516,8 @@ class LMDDashboard extends Component {
                       rescheduleDateFilter={rescheduleDateFilter}
                       priorityFilter={priorityFilter}
                       entityFilters={entityFilters}
+                      onClearChip={this.clearFilterChip}
+                      onClearGroup={this.clearGroupFilter}
                     />
                   )}
                   {hasToday ? (
@@ -464,6 +577,34 @@ class LMDDashboard extends Component {
           )}
         </View>
         <NetBanner />
+
+        <Modal
+          visible={this.state.showRtoOverdueModal}
+          transparent
+          animationType="fade"
+          onRequestClose={this.dismissRtoOverdueModal}
+        >
+          <Pressable style={$.rtoModalBackdrop} onPress={this.dismissRtoOverdueModal}>
+            <Pressable style={$.rtoModalCard} onPress={() => {}}>
+              <View style={$.rtoModalIconWrap}>
+                <MaterialCommunityIcons name="backup-restore" size={28} color="#5B21B6" />
+              </View>
+              <Text style={$.rtoModalTitle}>RTO pending</Text>
+              <Text style={$.rtoModalBody}>
+                Aapke {this.state.rtoOverdueCount} order abhi RTO delivered nahi hue hain.
+              </Text>
+              <Text style={$.rtoModalSub}>
+                1 din se zyada samay se RTO pending hai. Dark store par jaldi product wapas karein.
+              </Text>
+              <TouchableOpacity style={$.rtoModalPrimary} activeOpacity={0.88} onPress={this.openRtoFromAlert}>
+                <Text style={$.rtoModalPrimaryT}>RTO Orders Dekhein</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={$.rtoModalGhost} activeOpacity={0.85} onPress={this.dismissRtoOverdueModal}>
+                <Text style={$.rtoModalGhostT}>Baad mein</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
@@ -702,6 +843,60 @@ const $ = StyleSheet.create({
     justifyContent: 'center',
   },
   qaBadgeT: { fontSize: 10, fontWeight: '800', color: '#FFF' },
+
+  rtoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  rtoModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 18,
+    alignItems: 'center',
+  },
+  rtoModalIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  rtoModalTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  rtoModalBody: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  rtoModalSub: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  rtoModalPrimary: {
+    width: '100%',
+    backgroundColor: P,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  rtoModalPrimaryT: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  rtoModalGhost: { marginTop: 10, paddingVertical: 8 },
+  rtoModalGhostT: { color: '#64748B', fontSize: 13, fontWeight: '700' },
 });
 
 export default withV4Navigation(LMDDashboard);

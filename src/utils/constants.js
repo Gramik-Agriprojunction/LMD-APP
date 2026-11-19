@@ -34,6 +34,7 @@ const strings = {
   penaltyOrders : baseurl + 'lmd/penalty-orders',
   bulkPickupGenerateOtp : baseurl + 'lmd/bulk-pickup-generate-otp',
   bulkPickupOtpVerify : baseurl + 'lmd/bulk-pickup-otp-verify',
+  refreshOrderOtp : baseurl + 'lmd/refresh-order-otp',
   soilOrders : baseurl + 'soil-testing/soil-order',
   soilOrderDetail : baseurl + 'soil-testing/soil-order/',
   cancelSoilOrder : baseurl + 'soil-testing/soil-order-cancelled/',

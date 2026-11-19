@@ -129,7 +129,7 @@ class Profile extends Component {
           if (!p?.orders) missing.push('orders');
 
           const o = p?.orders || {};
-          ['picked_up', 'pending', 'delivered', 'in_transit', 'reschedule_order', 'rto'].forEach((k) => {
+          ['picked_up', 'pending', 'delivered', 'in_transit', 'reschedule_order', 'rto', 'rto_delivered'].forEach((k) => {
             if (o?.[k] === undefined || o?.[k] === null) missing.push(`orders.${k}`);
           });
 

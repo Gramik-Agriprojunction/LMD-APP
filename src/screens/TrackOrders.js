@@ -103,7 +103,11 @@ class TrackOrders extends Component {
         this.props?.navigation?.getParam('subGroupBy', null),
       );
     const levels = dedupeGroupStack(initGroupStack);
-    const cacheKey = `${KEYS.ORDERS}_${selected}${groupCacheSuffix(null, null, levels)}_`;
+    const initPickReady = this.props?.navigation?.getParam('pickReadyFilter', null) === true ? true : null;
+    const initReschedule = this.props?.navigation?.getParam('rescheduleDateFilter', null) || null;
+    const initPriority = this.props?.navigation?.getParam('priorityFilter', null) || null;
+    const initEntity = this.props?.navigation?.getParam('entityFilters', null) || null;
+    const cacheKey = `${KEYS.ORDERS}_${selected}${groupCacheSuffix(null, null, levels)}_${initPickReady ? 'ready' : ''}${rescheduleCacheSuffix(initReschedule)}${priorityCacheSuffix(initPriority)}${entityFilterCacheSuffix(initEntity)}_`;
     const cached = cacheGet(cacheKey);
     this.state = {
       loading: !cached,
@@ -124,14 +128,15 @@ class TrackOrders extends Component {
       totalPages: 1,
       hasMore: false,
       groupStack: levels,
-      pickReadyFilter: null,
-      rescheduleDateFilter: null,
-      priorityFilter: null,
-      entityFilters: null,
+      pickReadyFilter: initPickReady,
+      rescheduleDateFilter: initReschedule,
+      priorityFilter: initPriority,
+      entityFilters: initEntity,
     };
     this.fetchSeq = 0;
     this._searchTimer = null;
     this._skipNextFocusReload = true;
+    this._lastFiltersAppliedAt = this.props?.navigation?.getParam('filtersAppliedAt', null) || null;
     this.anims = [0,1,2].map(() => ({ o: new Animated.Value(1), y: new Animated.Value(0) }));
     this.ctaArrowX = new Animated.Value(0);
     this._ctaArrowLoop = null;
@@ -466,6 +471,36 @@ class TrackOrders extends Component {
     }, () => this.reloadOrders());
   };
 
+  clearFilterChip = (chip) => {
+    if (!chip?.id) return;
+    const id = String(chip.id);
+    LayoutAnimation.configureNext(SWAP_ANIM);
+    if (id === 'delivery-date') {
+      this.setState({ rescheduleDateFilter: null }, () => this.reloadOrders());
+      return;
+    }
+    if (id === 'pick-ready') {
+      this.setState({ pickReadyFilter: null }, () => this.reloadOrders());
+      return;
+    }
+    if (id.startsWith('priority-')) {
+      const key = id.replace('priority-', '');
+      const next = (this.state.priorityFilter || []).filter((p) => p !== key);
+      this.setState({ priorityFilter: next.length ? next : null }, () => this.reloadOrders());
+      return;
+    }
+    if (id.startsWith('entity-')) {
+      const field = id.replace('entity-', '');
+      const next = { ...(this.state.entityFilters || {}), [field]: field === 'farmer' ? null : '' };
+      this.setState({ entityFilters: next }, () => this.reloadOrders());
+    }
+  };
+
+  clearGroupFilter = () => {
+    LayoutAnimation.configureNext(SWAP_ANIM);
+    this.setState({ groupStack: [DEFAULT_GROUP_BY] }, () => this.reloadOrders());
+  };
+
   groupedRows = () => {
     let rows;
     if (this.state.listRows) rows = this.state.listRows;
@@ -555,6 +590,26 @@ class TrackOrders extends Component {
       <View style={s.root}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER.orders} />
         <NavigationEvents onWillFocus={() => {}} onDidFocus={() => {
+          const nav = this.props.navigation;
+          const appliedAt = nav?.getParam?.('filtersAppliedAt', null);
+          if (appliedAt && appliedAt !== this._lastFiltersAppliedAt) {
+            this._lastFiltersAppliedAt = appliedAt;
+            const nextStatus = nav.getParam('selectedStatus', this.state.selected);
+            const nextStack = dedupeGroupStack(
+              nav.getParam('groupStack')
+              || stackFromLegacy(nav.getParam('groupBy', DEFAULT_GROUP_BY), nav.getParam('subGroupBy', null)),
+            );
+            const nextSelected = STATUSES.includes(nextStatus) ? nextStatus : 'ALL';
+            this.setState({
+              selected: nextSelected,
+              groupStack: nextStack,
+              pickReadyFilter: nav.getParam('pickReadyFilter', null) === true ? true : null,
+              rescheduleDateFilter: nav.getParam('rescheduleDateFilter', null) || null,
+              priorityFilter: nav.getParam('priorityFilter', null) || null,
+              entityFilters: nav.getParam('entityFilters', null) || null,
+            }, () => this.reloadOrders());
+            return;
+          }
           if (this._skipNextFocusReload) {
             this._skipNextFocusReload = false;
             return;
@@ -656,6 +711,8 @@ class TrackOrders extends Component {
                       rescheduleDateFilter={rescheduleDateFilter}
                       priorityFilter={priorityFilter}
                       entityFilters={entityFilters}
+                      onClearChip={this.clearFilterChip}
+                      onClearGroup={this.clearGroupFilter}
                     />
                   )}
 

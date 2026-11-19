@@ -338,6 +338,12 @@ export const buildRescheduleDateApiParams = (filter) => {
     if (filter.to) params.delivery_on_to = filter.to;
     return params;
   }
+  if (filter.preset === 'this_week') {
+    return {
+      delivery_on: moment().startOf('isoWeek').format('YYYY-MM-DD'),
+      delivery_on_to: moment().endOf('isoWeek').format('YYYY-MM-DD'),
+    };
+  }
   const deliveryOn = deliveryOnDateFromFilter(filter);
   if (!deliveryOn) return {};
   return { delivery_on: deliveryOn };

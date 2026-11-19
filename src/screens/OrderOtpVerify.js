@@ -18,6 +18,7 @@ import CollectPaymentCard from '../components/CollectPaymentCard';
 import BottomSheet from '../components/BottomSheet';
 import VerifySuccessCheck from '../components/VerifySuccessCheck';
 import ProofImageViewer from '../components/ProofImageViewer';
+import OtpQrCode from '../components/OtpQrCode';
 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import ScreenHeader from '../components/ScreenHeader';
@@ -39,6 +40,9 @@ const PROOF_GAP = 6;
 const PROOF_THUMB = 68;
 const OVERLAY_BOTTOM = overlayBottomPadding();
 const SECTION_GAP = 10;
+/** Pickup / RTO QR window — always 30 seconds. */
+const OTP_QR_TTL_SEC = 30;
+const OTP_QR_TTL_MS = OTP_QR_TTL_SEC * 1000;
 
 const apiPaymentType = (type) => (type === 'upi' || type === 'qr' ? 'upi' : 'cash');
 
@@ -63,8 +67,15 @@ class OrderOtpVerify extends Component {
       payment_type: 'cash',
       orderData: null,
       hintOtp: '',
+      // DB `verify_otp` — do not name this `verifyOtp` (clashes with submit method)
+      darkStoreOtpVerified: false,
+      otpExpireAt: null,
+      otpSecondsLeft: 0,
+      isRefreshingOtp: false,
     };
     this.pickLock = false;
+    this._otpTick = null;
+    this._verifyPoll = null;
     this.iconScale = new Animated.Value(0.5);
     this.iconFade = new Animated.Value(0);
     this.titleFade = new Animated.Value(0);
@@ -99,13 +110,112 @@ class OrderOtpVerify extends Component {
     return 'Return OTP';
   };
 
+  parseOtpExpireAt = (order) => {
+    if (!order) return null;
+    const raw = order.otp_expire_at ?? order.otpExpireAt ?? null;
+    if (!raw) return null;
+    const ms = new Date(raw).getTime();
+    if (!Number.isFinite(ms)) return null;
+    // Guard timezone skew: QR window is never more than 30s from now
+    const left = ms - Date.now();
+    if (left > OTP_QR_TTL_MS) return Date.now() + OTP_QR_TTL_MS;
+    return ms;
+  };
+
+  parseVerifyOtp = (order) => {
+    if (!order) return false;
+    const v = order.verify_otp ?? order.verifyOtp;
+    return v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true';
+  };
+
+  applyOtpMeta = (order, otpOverride) => {
+    const actionType = this.getActionType();
+    const otp =
+      otpOverride != null
+        ? String(otpOverride).trim()
+        : this.extractHintOtp(actionType, order);
+    const otpExpireAt = this.parseOtpExpireAt(order);
+    const darkStoreOtpVerified = this.parseVerifyOtp(order);
+    this.setState(
+      {
+        orderData: order || this.state.orderData,
+        hintOtp: otp || this.state.hintOtp,
+        darkStoreOtpVerified,
+        otpExpireAt,
+      },
+      () => this.syncOtpCountdown(),
+    );
+  };
+
+  syncOtpCountdown = () => {
+    const { otpExpireAt } = this.state;
+    if (!otpExpireAt) {
+      this.setState({ otpSecondsLeft: 0 });
+      return;
+    }
+    const left = Math.max(
+      0,
+      Math.min(OTP_QR_TTL_SEC, Math.ceil((otpExpireAt - Date.now()) / 1000)),
+    );
+    this.setState({ otpSecondsLeft: left });
+  };
+
+  startOtpTicker = () => {
+    if (this._otpTick) clearInterval(this._otpTick);
+    this.syncOtpCountdown();
+    this._otpTick = setInterval(() => {
+      if (this._unmounted) return;
+      this.syncOtpCountdown();
+    }, 1000);
+  };
+
+  startVerifyOtpPoll = () => {
+    const actionType = this.getActionType();
+    if (actionType !== 'pickup' && actionType !== 'rto') return;
+    if (this._verifyPoll) clearInterval(this._verifyPoll);
+    this.pollOrderVerifyFlag();
+    this._verifyPoll = setInterval(() => {
+      if (this._unmounted || this.state.verified) return;
+      if (this.state.darkStoreOtpVerified) return;
+      this.pollOrderVerifyFlag();
+    }, 2000);
+  };
+
+  pollOrderVerifyFlag = () => {
+    const orderId = this.getOrderId();
+    if (!orderId) return;
+    fetch(constants.orderDetails, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ order_id: String(orderId) }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json?.status || !json?.order) return;
+        const darkStoreOtpVerified = this.parseVerifyOtp(json.order);
+        if (darkStoreOtpVerified !== this.state.darkStoreOtpVerified) {
+          this.setState({
+            orderData: json.order,
+            darkStoreOtpVerified,
+            hintOtp: this.extractHintOtp(this.getActionType(), json.order) || this.state.hintOtp,
+            otpExpireAt: this.parseOtpExpireAt(json.order),
+          }, () => this.syncOtpCountdown());
+        }
+      })
+      .catch(() => {});
+  };
+
   loadOrderDetails = () => {
     const orderId = this.getOrderId();
     const actionType = this.getActionType();
     const fromNav = this.props?.navigation?.getParam('order', null);
     const navOtp = this.extractHintOtp(actionType, fromNav);
     if (fromNav && navOtp) {
-      this.setState({ orderData: fromNav, hintOtp: navOtp });
+      this.applyOtpMeta(fromNav, navOtp);
     }
     if (!orderId) return;
     fetch(constants.orderDetails, {
@@ -120,10 +230,75 @@ class OrderOtpVerify extends Component {
       .then((r) => r.json())
       .then((json) => {
         if (!json?.status || !json?.order) return;
-        const otp = this.extractHintOtp(actionType, json.order);
-        this.setState({ orderData: json.order, hintOtp: otp });
+        this.applyOtpMeta(json.order);
+        const alreadyVerified = this.parseVerifyOtp(json.order);
+        // Every swipe into pickup/RTO verify → new random OTP (unless dark store already verified)
+        if (
+          !alreadyVerified &&
+          (actionType === 'pickup' || actionType === 'rto')
+        ) {
+          this.refreshOrderOtp(false);
+        }
       })
       .catch(() => {});
+  };
+
+  refreshOrderOtp = (showToast = true) => {
+    const orderId = this.getOrderId();
+    const actionType = this.getActionType();
+    if (!orderId || (actionType !== 'pickup' && actionType !== 'rto')) return;
+    if (this.state.isRefreshingOtp) return;
+
+    this.setState({ isRefreshingOtp: true });
+    fetch(constants.refreshOrderOtp, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + global.token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        order_id: String(orderId),
+        action_type: actionType,
+      }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        const payload = json?.data || json;
+        const ok = json?.success === true || json?.status === true || !!payload?.otp;
+        if (!ok) {
+          Toast.show(json?.message || json?.msg || 'OTP refresh fail', Toast.SHORT);
+          return;
+        }
+        const otp = String(payload.otp || '').trim();
+        // Always start a fresh 30s window on the device (avoid TZ skew from DB timestamps)
+        const expireAt = Date.now() + OTP_QR_TTL_MS;
+        const nextOrder = {
+          ...(this.state.orderData || {}),
+          verify_otp: false,
+          otp_expire_at: new Date(expireAt).toISOString(),
+          ...(actionType === 'rto'
+            ? { rto_return_otp: otp, return_otp: otp, returnOtp: otp }
+            : { pickup_otp: otp, pickupOtp: otp }),
+        };
+        this.setState(
+          {
+            orderData: nextOrder,
+            hintOtp: otp,
+            darkStoreOtpVerified: false,
+            otpExpireAt: expireAt,
+            otpSecondsLeft: OTP_QR_TTL_SEC,
+          },
+          () => this.syncOtpCountdown(),
+        );
+        if (showToast) Toast.show('Naya OTP / QR ready', Toast.SHORT);
+      })
+      .catch(() => {
+        Toast.show('OTP refresh fail', Toast.SHORT);
+      })
+      .finally(() => {
+        if (!this._unmounted) this.setState({ isRefreshingOtp: false });
+      });
   };
 
   copyHintOtp = () => {
@@ -185,6 +360,8 @@ class OrderOtpVerify extends Component {
 
     this.startPulse();
     this.loadOrderDetails();
+    this.startOtpTicker();
+    this.startVerifyOtpPoll();
   }
 
   startLocationPrefetch = () => {
@@ -416,6 +593,8 @@ class OrderOtpVerify extends Component {
   componentWillUnmount() {
     this._unmounted = true;
     if (this._navTimer) clearTimeout(this._navTimer);
+    if (this._otpTick) clearInterval(this._otpTick);
+    if (this._verifyPoll) clearInterval(this._verifyPoll);
   }
 
   showVerifiedAnimation = () => {
@@ -529,15 +708,28 @@ class OrderOtpVerify extends Component {
   render() {
     const actionType = this.getActionType();
     const order = this.getOrder();
-    const { hintOtp } = this.state;
+    const {
+      hintOtp, verified, deliveryProofs, isLoading, otp,
+      darkStoreOtpVerified, otpSecondsLeft, isRefreshingOtp,
+    } = this.state;
     const theme = THEMES[actionType] || THEMES.pickup;
     const isDeliver = actionType === 'deliver';
     const isPickup = actionType === 'pickup';
-    const hideOtpEntryAndVerify = isPickup;
-    const { verified, deliveryProofs } = this.state;
-    const hasOtp = this.state.otp.length >= 5;
+    const isRto = actionType === 'rto';
+    const hideOtpEntryAndVerify = isPickup || isRto;
+    // Pickup + RTO: same as old OTP submit → lmd/update_order_status (pickup / rto → RTO_DELIVERED)
+    const showAcknowledge = (isPickup || isRto) && !verified;
+    const otpExpired = (isPickup || isRto) && otpSecondsLeft <= 0;
+    const hasOtp = String(otp || '').length >= 5;
     const hasProof = deliveryProofs.length > 0;
-    const disabled = this.state.isLoading || (isDeliver ? (!hasOtp && !hasProof) : !hasOtp);
+    const disabled = isLoading || (isDeliver ? (!hasOtp && !hasProof) : !hasOtp);
+    // Gate ONLY on DB verify_otp — do not block after countdown hits 0 once verified
+    const ackDisabled =
+      isLoading ||
+      !darkStoreOtpVerified ||
+      !hintOtp ||
+      String(hintOtp).trim().length < 5;
+    const showBottomBar = (!verified && !hideOtpEntryAndVerify) || showAcknowledge;
 
     return (
       <View style={[s.root, { backgroundColor: PAGE_BG }]}>
@@ -562,7 +754,7 @@ class OrderOtpVerify extends Component {
           <ScrollView
             contentContainerStyle={[
               s.scroll,
-              !verified && !hideOtpEntryAndVerify && { paddingBottom: 72 + (Platform.OS === 'android' ? 0 : OVERLAY_BOTTOM) },
+              !verified && showBottomBar && { paddingBottom: 72 + (Platform.OS === 'android' ? 0 : OVERLAY_BOTTOM) },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -584,14 +776,51 @@ class OrderOtpVerify extends Component {
                 </Animated.View>
 
                 {hintOtp ? (
-                  <TouchableOpacity activeOpacity={0.88} onPress={this.copyHintOtp} style={s.otpShowCard}>
-                    <Text style={s.otpShowLbl}>{this.hintOtpLabel(actionType)}</Text>
-                    <Text style={s.otpShowVal}>{hintOtp}</Text>
-                    <View style={s.otpShowCopyRow}>
-                      <MaterialCommunityIcons name="content-copy" size={15} color={BRAND} />
-                      <Text style={s.otpShowCopy}>Copy</Text>
-                    </View>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity activeOpacity={0.88} onPress={this.copyHintOtp} style={s.otpShowCard}>
+                      <Text style={s.otpShowLbl}>{this.hintOtpLabel(actionType)}</Text>
+                      <Text style={s.otpShowVal}>{hintOtp}</Text>
+                      <View style={s.otpShowCopyRow}>
+                        <MaterialCommunityIcons name="content-copy" size={15} color={BRAND} />
+                        <Text style={s.otpShowCopy}>Copy</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <OtpQrCode value={hintOtp} forFarmer={actionType === 'deliver'} />
+                    {(isPickup || isRto) ? (
+                      <View style={s.otpTimerWrap}>
+                        {!otpExpired ? (
+                          <Text style={s.otpTimerText}>
+                            OTP expire in {String(otpSecondsLeft).padStart(2, '0')}s
+                          </Text>
+                        ) : !darkStoreOtpVerified ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => this.refreshOrderOtp(true)}
+                            disabled={isRefreshingOtp}
+                            style={[s.reloadQrBtn, isRefreshingOtp && { opacity: 0.6 }]}
+                          >
+                            {isRefreshingOtp ? (
+                              <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                              <>
+                                <MaterialCommunityIcons name="qrcode-scan" size={16} color="#FFF" style={{ marginRight: 8 }} />
+                                <Text style={s.reloadQrBtnT}>Reload QR</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={s.otpTimerText}>OTP verified</Text>
+                        )}
+                        {!darkStoreOtpVerified ? (
+                          <Text style={s.verifyWaitHint}>
+                            Dark Store OTP verify kare — phir Acknowledge enable hoga
+                          </Text>
+                        ) : (
+                          <Text style={s.verifyReadyHint}>Dark Store verify ho gaya — Acknowledge ready</Text>
+                        )}
+                      </View>
+                    ) : null}
+                  </>
                 ) : null}
 
                 <Animated.View style={[s.formWrap, { opacity: this.titleFade, transform: [{ translateY: this.formY }] }]}>
@@ -640,7 +869,30 @@ class OrderOtpVerify extends Component {
 
           </ScrollView>
 
-          {!verified && !hideOtpEntryAndVerify ? (
+          {showAcknowledge ? (
+            <View style={[s.bottomBar, { paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
+              <TouchableOpacity
+                onPress={() => this.verifyOtp(String(hintOtp || '').trim())}
+                disabled={ackDisabled}
+                activeOpacity={0.85}
+                style={[s.btn, { opacity: ackDisabled ? 0.5 : 1 }]}
+              >
+                {isLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={[s.btnT, { marginLeft: 10 }]}>
+                      {isRto ? 'RTO confirm ho raha hai...' : 'Pickup confirm ho raha hai...'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialCommunityIcons name="check-decagram" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                    <Text style={s.btnT}>Acknowledge</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : !verified && !hideOtpEntryAndVerify ? (
             <View style={[s.bottomBar, { paddingBottom: Platform.OS === 'android' ? 6 : (OVERLAY_BOTTOM || 6) }]}>
               <TouchableOpacity onPress={() => this.verifyOtp()} disabled={disabled} activeOpacity={0.85}
                 style={[s.btn, { opacity: disabled ? 0.5 : 1 }]}>
@@ -717,6 +969,44 @@ const s = StyleSheet.create({
     borderRadius: 999,
   },
   otpShowCopy: { fontSize: 12, fontWeight: '700', color: BRAND },
+  otpTimerWrap: {
+    alignSelf: 'center',
+    width: 312,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  otpTimerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#B45309',
+    marginBottom: 6,
+  },
+  reloadQrBtn: {
+    minWidth: 160,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: BRAND,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  reloadQrBtnT: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  verifyWaitHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  verifyReadyHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
 
   formWrap: { alignItems: 'center' },
   otpView: { alignSelf: 'center', width: 312, height: 65, marginBottom: 0 },
@@ -750,7 +1040,6 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(93,63,211,0.12)',
   },
-
   btn: {
     width: 312,
     height: 54,
