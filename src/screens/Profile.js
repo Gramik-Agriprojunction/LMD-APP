@@ -17,7 +17,6 @@ import constants from '../utils/constants';
 import Toast from 'react-native-simple-toast';
 import BottomSheet from '../components/BottomSheet';
 import ShimmerLoader from '../components/ShimmerLoader';
-import LiveOrdersGrid from '../components/LiveOrdersGrid';
 
 import {NavigationEvents} from '../utils/v4Compat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,25 +24,28 @@ import { StackActions, NavigationActions, withV4Navigation } from '../utils/v4Co
 import { prefetchSoilOrderPincode } from '../utils/locationHelper';
 import { stopBackgroundLocationTracker } from '../utils/locationTracker';
 import ScreenHeader from '../components/ScreenHeader';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { HEADER } from '../theme/headerColors';
 import { clearViewPartner } from '../utils/lmdViewMode';
 
 const resetAction = StackActions.reset({
-  index: 0,                       
+  index: 0,
   actions: [NavigationActions.navigate({ routeName: 'Login'})],
 });
 
 const SAFE_BOTTOM = overlayBottomPadding();
 
-const THEME = {
-  green: '#5D3FD3',
-  greenPill: '#0F7451',
-  bg: '#E8ECF4',
-  border: '#E6EAF0',
-  text: '#111827',
-  subText: '#6B7280',
-};
+const moneyIco = require('./assets/money.png');
+const cashIco = require('./assets/cashb.png');
+const boxIco = require('./assets/box.png');
+const truckIco = require('./assets/truck.png');
+const checkIco = require('./assets/tick.png');
+const clockIco = require('./assets/clock.png');
+const historyIco = require('./assets/history.png');
+const soilIco = require('./assets/soil.png');
+const plusIco = require('./assets/plus.png');
+const farmerIco = require('./assets/addu.png');
+const logoutIco = require('./assets/logout.png');
+const arrowIco = require('./assets/arrow.png');
 
 class Profile extends Component {
   constructor(props) {
@@ -51,15 +53,27 @@ class Profile extends Component {
     this.state = {
       profileLoading: false,
       refreshing: false,
-      profile: null, // API only
+      profile: null,
+      summary: {
+        delivered: 0,
+        pending: 0,
+        picked_up: 0,
+        rto: 0,
+        settled_count: 0,
+        settled_amount: 0,
+        pending_settlement_count: 0,
+        pending_settlement_amount: 0,
+        earnings: 0,
+        penalties: 0,
+      },
       missingFields: [],
-      show_login : false,
+      show_login: false,
     };
   }
 
   componentDidMount() {
     prefetchSoilOrderPincode();
-    this.profileApi();
+    this.loadProfileData();
   }
 
   goBack = () => {
@@ -81,113 +95,192 @@ class Profile extends Component {
   };
 
   goToCashSettlement = () => {
-    // this.props?.navigation?.navigate('CashSettlement');
     this.props?.navigation?.navigate('MainTabs', { screen: 'Cash' });
-
   };
 
   goToPenaltyOrders = () => {
     this.props?.navigation?.navigate('PenaltyOrders');
   };
 
+  goOrders = (selectedStatus) => {
+    this.props?.navigation?.navigate('Orders', selectedStatus ? { selectedStatus } : undefined);
+  };
+
   onRefresh = () => {
     this.setState({ refreshing: true }, () => {
-      this.profileApi(() => {
-        this.setState({ refreshing: false });
-      });
+      this.loadProfileData(() => this.setState({ refreshing: false }));
     });
   };
 
-  // ✅ Navigate to TrackOrders with selected delivery status
-  onPressStatus = (statusKey) => {
-    this.props?.navigation?.navigate('Orders', { selectedStatus: statusKey });
-  };
-
-  // ✅ PROFILE API (GET) - your API returns object directly
-  profileApi = (callback) => {
-    this.setState({ profileLoading: true, missingFields: [] }, () => {
-      fetch(constants.profile, {
-        method: 'GET',
-        headers: {
-          Authorization: 'Bearer ' + global.token,
-          Accept: 'application/json',
-        },
-      })
-        .then((r) => r.json())
-        .then((json) => {
-          console.log('Profile API response== ', JSON.stringify(json));
-
-          const p = json || null;
-
-          // log missing fields only (no UI dummy text)
-          const missing = [];
-          if (!p?.id) missing.push('id');
-          if (!p?.name) missing.push('name');
-          if (!p?.user_type) missing.push('user_type');
-          if (!p?.phone) missing.push('phone');
-          if (!p?.avatar) missing.push('avatar');
-          if (!p?.orders) missing.push('orders');
-
-          const o = p?.orders || {};
-          ['picked_up', 'pending', 'delivered', 'in_transit', 'reschedule_order', 'rto', 'rto_delivered'].forEach((k) => {
-            if (o?.[k] === undefined || o?.[k] === null) missing.push(`orders.${k}`);
-          });
-
-          if (missing.length) console.log('PROFILE MISSING FIELDS =>', missing);
-
-          this.setState({
-            profileLoading: false,
-            profile: p,
-            missingFields: missing,
-          }, () => { if (callback) callback(); });
-        })
-        .catch((e) => {
-          console.log('Profile API error== ', e);
-          Toast.show(e?.message || String(e), Toast.SHORT);
-          this.setState({ profileLoading: false, profile: null }, () => { if (callback) callback(); });
-        });
-    });
-  };
+  authHeaders = () => ({
+    Authorization: 'Bearer ' + global.token,
+    Accept: 'application/json',
+    'X-localization': 'en',
+  });
 
   toNum = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   };
 
+  fmtCount = (v) => this.toNum(v).toLocaleString('en-IN');
+  fmtMoney = (v) => `₹ ${this.toNum(v).toLocaleString('en-IN')}`;
 
-    async onLogout() {
-      try {
-        stopBackgroundLocationTracker();
-        global.token = '';
-        global.userType = '';
-        await clearViewPartner();
-        await AsyncStorage.multiRemove(['accessToken', 'userType', 'language', 'referral_code']);
-      } catch (e) {
-        console.log('Logout clear error:', e);
-      }
-      this.props.navigation.dispatch(resetAction);
+  loadProfileData = (callback) => {
+    this.setState({
+      profileLoading: !this.state.profile && !this.state.refreshing,
+      missingFields: [],
+    });
+
+    Promise.all([
+      fetch(constants.profile, { method: 'GET', headers: this.authHeaders() }).then((r) => r.json()).catch(() => null),
+      fetch(constants.homescreen, { method: 'GET', headers: this.authHeaders() }).then((r) => r.json()).catch(() => null),
+      fetch(constants.settleHistory, { method: 'GET', headers: this.authHeaders() }).then((r) => r.json()).catch(() => null),
+    ])
+      .then(([profileJson, homeJson, settleJson]) => {
+        const p = profileJson?.data && typeof profileJson.data === 'object' && !Array.isArray(profileJson.data)
+          ? profileJson.data
+          : (profileJson?.id || profileJson?.name ? profileJson : null);
+
+        const home = homeJson?.data && typeof homeJson.data === 'object' ? homeJson.data : {};
+        const settleRoot = settleJson?.data && typeof settleJson.data === 'object' && !Array.isArray(settleJson.data)
+          ? settleJson.data
+          : settleJson;
+        const lc = settleRoot?.list_count || settleJson?.list_count || {};
+        const orders = p?.orders || {};
+
+        const settleItems = Array.isArray(settleRoot?.items)
+          ? settleRoot.items
+          : Array.isArray(settleJson?.data)
+            ? settleJson.data
+            : [];
+
+        const settledAmount = settleItems.reduce((sum, it) => {
+          const st = String(it?.settlement_status || it?.status || '')
+            .trim()
+            .toLowerCase();
+          if (st !== 'settled' && st !== 'success') return sum;
+          const fromOrders = Array.isArray(it?.orders)
+            ? it.orders.reduce(
+                (s, o) =>
+                  s +
+                  this.toNum(o?.amount ?? o?.collected_amount ?? o?.order_amount),
+                0,
+              )
+            : 0;
+          const amt = this.toNum(it?.amount) || fromOrders;
+          return sum + amt;
+        }, 0);
+
+        const summary = {
+          delivered: this.toNum(orders.delivered),
+          pending: this.toNum(orders.pending),
+          picked_up: this.toNum(orders.picked_up),
+          rto: this.toNum(orders.rto),
+          settled_count: this.toNum(lc.settled_count),
+          settled_amount: settledAmount,
+          pending_settlement_count: this.toNum(
+            home.pending_settlement_orders_count ?? lc.pending_count,
+          ),
+          pending_settlement_amount: this.toNum(home.pending_settlement_amount),
+          earnings: this.toNum(home?.earnings?.this_month ?? p?.earnings?.this_month),
+          penalties: this.toNum(home?.penalties?.this_month ?? p?.penalties?.this_month),
+        };
+
+        this.setState({
+          profileLoading: false,
+          profile: p,
+          summary,
+        }, () => { if (callback) callback(); });
+      })
+      .catch((e) => {
+        console.log('Profile load error== ', e);
+        Toast.show(e?.message || String(e), Toast.SHORT);
+        this.setState({ profileLoading: false }, () => { if (callback) callback(); });
+      });
+  };
+
+  async onLogout() {
+    try {
+      stopBackgroundLocationTracker();
+      global.token = '';
+      global.userType = '';
+      await clearViewPartner();
+      await AsyncStorage.multiRemove(['accessToken', 'userType', 'language', 'referral_code']);
+    } catch (e) {
+      console.log('Logout clear error:', e);
     }
+    this.props.navigation.dispatch(resetAction);
+  }
 
   render() {
-    const { profile, profileLoading } = this.state;
+    const { profile, profileLoading, summary } = this.state;
 
     const name = profile?.name ? String(profile.name).trim() : '';
-    const avatar = profile?.avatar ? String(profile.avatar) : '';
     const phone = profile?.phone ? String(profile.phone) : '';
 
     const role =
       profile?.user_type === 'delivery_partner'
-        ? 'Delivery Partner'
+        ? 'LMD Partner'
         : profile?.user_type
         ? String(profile.user_type).replace(/_/g, ' ')
-        : '';
+        : 'LMD Partner';
 
-    const orders = profile?.orders || {};
+    const summaryRows = [
+      {
+        key: 'delivered',
+        label: 'Delivered orders',
+        value: this.fmtCount(summary.delivered),
+        asset: checkIco,
+        tint: '#DCFCE7',
+        onPress: () => this.goOrders('DELIVERED'),
+      },
+      {
+        key: 'pending',
+        label: 'Pending orders',
+        value: this.fmtCount(summary.pending),
+        asset: clockIco,
+        tint: '#FFEDD5',
+        onPress: () => this.goOrders('PENDING'),
+      },
+      {
+        key: 'picked',
+        label: 'Picked up',
+        value: this.fmtCount(summary.picked_up),
+        asset: truckIco,
+        tint: '#E0F2FE',
+        onPress: () => this.goOrders('PICKUP'),
+      },
+      {
+        key: 'rto',
+        label: 'RTO orders',
+        value: this.fmtCount(summary.rto),
+        asset: boxIco,
+        tint: '#EDE9FE',
+        onPress: () => this.goOrders('RTO'),
+      },
+      {
+        key: 'settled',
+        label: 'Settlements done',
+        value: `${this.fmtMoney(summary.settled_amount)} · ${this.fmtCount(summary.settled_count)}`,
+        asset: moneyIco,
+        tint: '#CCFBF1',
+        onPress: this.goToSettlementHistory,
+      },
+      {
+        key: 'pendingSettle',
+        label: 'Pending settlement',
+        value: `${this.fmtMoney(summary.pending_settlement_amount)} · ${this.fmtCount(summary.pending_settlement_count)}`,
+        asset: cashIco,
+        tint: '#FEF3C7',
+        onPress: this.goToCashSettlement,
+      },
+    ];
 
     return (
       <View style={styles.root}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER.profile} />
-        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.profileApi()} />
+        <NavigationEvents onWillFocus={() => {}} onDidFocus={() => this.loadProfileData()} />
 
         <ScreenHeader
           bg={HEADER.profile}
@@ -205,6 +298,9 @@ class Profile extends Component {
                   )}
                   {!!phone && (
                     <Text style={styles.phoneText} numberOfLines={1}>{phone}</Text>
+                  )}
+                  {!!role && (
+                    <Text style={styles.role} numberOfLines={1}>{role}</Text>
                   )}
                 </View>
               ) : null}
@@ -225,11 +321,10 @@ class Profile extends Component {
           }
         >
 
-          {/* Earnings & Penalties — same layout as LMDDashboard */}
           <View style={styles.earnRow}>
             <View style={[styles.earnCard, { backgroundColor: '#16A34A' }]}>
               <Text style={styles.earnLbl}>My Earnings</Text>
-              <Text style={styles.earnVal}>{`₹ ${this.toNum(profile?.earnings?.this_month).toLocaleString('en-IN')}`}</Text>
+              <Text style={styles.earnVal}>{this.fmtMoney(summary.earnings)}</Text>
             </View>
             <View style={{ width: 8 }} />
             <TouchableOpacity
@@ -239,7 +334,7 @@ class Profile extends Component {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.earnLbl}>Penalties</Text>
-                <Text style={styles.earnVal}>{`₹ ${this.toNum(profile?.penalties?.this_month).toLocaleString('en-IN')}`}</Text>
+                <Text style={styles.earnVal}>{this.fmtMoney(summary.penalties)}</Text>
               </View>
               <View style={styles.penArrow}>
                 <Image source={require('./assets/arrow.png')} style={styles.penArrowIco} />
@@ -247,23 +342,61 @@ class Profile extends Component {
             </TouchableOpacity>
           </View>
 
-          {/* ✅ Live Orders (exact same structure as LMDDashboard) */}
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionTop}>
-              <Text style={styles.sectionTitle}>Live Orders</Text>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => this.props?.navigation?.navigate('Orders')}
-                style={styles.viewBtn}
-              >
-                <Text style={styles.viewBtnText}>View</Text>
-                <Text style={styles.viewBtnArrow}>›</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.tilesGrid}>
-              <LiveOrdersGrid live={orders} onPress={this.onPressStatus} />
-            </View>
+          <Text style={styles.menuSectionLbl}>Mera summary</Text>
+          <View style={styles.summaryCard}>
+            {(() => {
+              const COLS = 3;
+              const rows = [];
+              for (let i = 0; i < summaryRows.length; i += COLS) {
+                rows.push(summaryRows.slice(i, i + COLS));
+              }
+              // Pad last row so layout stays a full 3×N grid
+              const last = rows[rows.length - 1];
+              while (last && last.length < COLS) {
+                last.push({ key: `pad-${last.length}`, pad: true });
+              }
+              return rows.map((row, rowIdx) => (
+                <View
+                  key={`sum-row-${rowIdx}`}
+                  style={[
+                    styles.summaryRow,
+                    rowIdx < rows.length - 1 && styles.summaryRowBorder,
+                  ]}
+                >
+                  {row.map((cell, colIdx) =>
+                    cell.pad ? (
+                      <View
+                        key={cell.key}
+                        style={[
+                          styles.summaryTile,
+                          colIdx < COLS - 1 && styles.summaryTileBorderRight,
+                        ]}
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        key={cell.key}
+                        style={[
+                          styles.summaryTile,
+                          colIdx < COLS - 1 && styles.summaryTileBorderRight,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={cell.onPress}
+                      >
+                        <View style={[styles.summaryIcoWrap, { backgroundColor: cell.tint }]}>
+                          <Image source={cell.asset} style={styles.summaryAsset} />
+                        </View>
+                        <Text style={styles.summaryValue} numberOfLines={2}>
+                          {cell.value}
+                        </Text>
+                        <Text style={styles.summaryLabel} numberOfLines={2}>
+                          {cell.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
+                </View>
+              ));
+            })()}
           </View>
 
           <Text style={styles.menuSectionLbl}>More options</Text>
@@ -273,27 +406,24 @@ class Profile extends Component {
                 key: 'hist',
                 title: 'Settlement History',
                 sub: 'Saare settlements dekhein',
-                icon: 'history',
+                asset: historyIco,
                 tint: '#E0F2FE',
-                accent: '#0284C7',
                 onPress: this.goToSettlementHistory,
               },
               {
                 key: 'cash',
                 title: 'Cash Settlement',
                 sub: 'Proof upload aur settle',
-                icon: 'cash-multiple',
+                asset: cashIco,
                 tint: '#CCFBF1',
-                accent: '#0D9488',
                 onPress: this.goToCashSettlement,
               },
               {
                 key: 'soil',
                 title: 'Soil Testing',
                 sub: 'Mitti jaanch orders',
-                icon: 'sprout',
+                asset: soilIco,
                 tint: '#DCFCE7',
-                accent: '#16A34A',
                 onPress: () => {
                   prefetchSoilOrderPincode();
                   this.props?.navigation?.navigate('SoilOrders');
@@ -303,9 +433,8 @@ class Profile extends Component {
                 key: 'createSoil',
                 title: 'Create Soil Order',
                 sub: 'Naya soil test book karein',
-                icon: 'plus-box-outline',
+                asset: plusIco,
                 tint: '#EDE9FE',
-                accent: '#5D3FD3',
                 onPress: () => {
                   prefetchSoilOrderPincode();
                   this.props?.navigation?.navigate('CreateSoilOrder');
@@ -315,9 +444,8 @@ class Profile extends Component {
                 key: 'farmer',
                 title: 'Add Farmer',
                 sub: 'Naya kisan jodein',
-                icon: 'account-plus',
+                asset: farmerIco,
                 tint: '#DCFCE7',
-                accent: '#15803D',
                 onPress: () => this.props?.navigation?.navigate('MainTabs', { screen: 'Farmers' }),
               },
             ].map((item, idx, arr) => (
@@ -328,14 +456,14 @@ class Profile extends Component {
                 onPress={item.onPress}
               >
                 <View style={[styles.menuIco, { backgroundColor: item.tint }]}>
-                  <MaterialCommunityIcons name={item.icon} size={20} color={item.accent} />
+                  <Image source={item.asset} style={styles.menuAsset} />
                 </View>
                 <View style={styles.menuText}>
                   <Text style={styles.menuTitle}>{item.title}</Text>
                   <Text style={styles.menuSub}>{item.sub}</Text>
                 </View>
                 <View style={styles.menuChevron}>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color="#94A3B8" />
+                  <Image source={arrowIco} style={styles.menuChevronIco} />
                 </View>
               </TouchableOpacity>
             ))}
@@ -347,20 +475,18 @@ class Profile extends Component {
             onPress={() => this.setState({ show_login: true })}
           >
             <View style={styles.logoutIco}>
-              <MaterialCommunityIcons name="logout" size={20} color="#DC2626" />
+              <Image source={logoutIco} style={styles.menuAsset} />
             </View>
             <View style={styles.menuText}>
               <Text style={styles.logoutTitle}>Logout</Text>
               <Text style={styles.logoutSub}>Account se bahar niklein</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color="#F87171" />
+            <Image source={arrowIco} style={[styles.menuChevronIco, { tintColor: '#F87171' }]} />
           </TouchableOpacity>
-
 
           <View style={{ height: 16 }} />
         </ScrollView>
 
-        
         {profileLoading ? <ShimmerLoader /> : null}
 
         {this.state.show_login ? (
@@ -400,7 +526,7 @@ class Profile extends Component {
               </View>
             </View>
           </BottomSheet>
-        ) : null}  
+        ) : null}
 
       </View>
     );
@@ -490,28 +616,60 @@ const styles = StyleSheet.create({
   role: { marginTop: 4, fontSize: 12, fontWeight: '700', color: '#fff' },
   phoneText: { marginTop: 2, fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
 
-  sectionCard: {
-    backgroundColor: '#F7F5FC',
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#D6D3F0',
+    overflow: 'hidden',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E5F0',
-    elevation: 0,
   },
-  sectionTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { fontSize: 15.5, fontWeight: '700', color: '#171A2A' },
-
-  viewBtn: {
+  summaryRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingLeft: 8,
+    alignItems: 'stretch',
   },
-  viewBtnText: { color: '#5D3FD3', fontSize: 12.5, fontWeight: '600' },
-  viewBtnArrow: { color: '#5D3FD3', fontSize: 18, marginLeft: 2, marginTop: -1, fontWeight: '600' },
+  summaryRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
+    borderBottomColor: '#E8ECF1',
+  },
+  summaryTile: {
+    width: '33.333%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    minHeight: 102,
+    backgroundColor: '#FFFFFF',
+  },
+  summaryTileBorderRight: {
+    borderRightWidth: StyleSheet.hairlineWidth * 2,
+    borderRightColor: '#E8ECF1',
+  },
+  summaryIcoWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  summaryAsset: { width: 22, height: 22, resizeMode: 'contain' },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  summaryLabel: {
+    marginTop: 2,
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#64748B',
+    textAlign: 'center',
+  },
 
-  tilesGrid: { marginTop: 12 },
+
 
   menuSectionLbl: {
     fontSize: 13,
@@ -548,6 +706,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  menuAsset: { width: 24, height: 24, resizeMode: 'contain' },
   menuText: { flex: 1, marginLeft: 12, marginRight: 8 },
   menuTitle: { fontSize: 14.5, fontWeight: '700', color: '#0F172A' },
   menuSub: { marginTop: 2, fontSize: 12, fontWeight: '500', color: '#64748B' },
@@ -558,6 +717,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuChevronIco: {
+    width: 10,
+    height: 10,
+    resizeMode: 'contain',
+    tintColor: '#94A3B8',
   },
   logoutCard: {
     flexDirection: 'row',
@@ -578,6 +743,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   logoutTitle: { fontSize: 14.5, fontWeight: '700', color: '#B91C1C' },
   logoutSub: { marginTop: 2, fontSize: 12, fontWeight: '500', color: '#F87171' },
 
@@ -593,7 +759,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6EAF0',
     paddingHorizontal: 50,
-    paddingVertical: 20, 
+    paddingVertical: 20,
     flexDirection: 'row',
     alignItems: 'center',
   },

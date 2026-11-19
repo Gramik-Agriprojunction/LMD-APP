@@ -48,22 +48,18 @@ const QUICK_ACTIONS = [
   {
     l: 'Jama Karein',
     sub: 'Cash settle',
-    icon: 'cash-multiple',
     tile: '#EFEAFE',
     ico: require('./assets/money.png'),
-    bg: COLORS.tintPurple,
-    bubble: '#EDE9FE',
+    bubble: '#F5F0FF',
     accent: COLORS.primary,
     nav: 'SettlementList',
   },
   {
     l: 'Mitti Jaanch',
     sub: 'Soil orders',
-    icon: 'sprout',
     tile: '#E3F6EC',
     ico: require('./assets/soil.png'),
-    bg: COLORS.tintGreen,
-    bubble: '#E8F8EE',
+    bubble: '#ECFBF2',
     accent: '#059669',
     countBg: '#EF4444',
     nav: 'SoilOrders',
@@ -72,11 +68,9 @@ const QUICK_ACTIONS = [
   {
     l: 'Madad',
     sub: 'Support call',
-    icon: 'headset',
     tile: '#E1ECFB',
     ico: require('./assets/consultation.png'),
-    bg: COLORS.tintBlue,
-    bubble: '#E1ECFB',
+    bubble: '#EEF4FF',
     accent: '#2563EB',
     nav: 'support',
   },
@@ -408,7 +402,7 @@ class LMDDashboard extends Component {
             <View style={$.brandRow}>
               <View style={$.brandLeft}>
                 <Image source={require('./assets/logo.png')} style={$.brandLogo} />
-                <Text style={$.brandName}>LMD</Text>
+                <Text style={$.brandName}>Gramik</Text>
               </View>
               <NotificationBellButton navigation={this.props.navigation} />
             </View>
@@ -557,8 +551,8 @@ class LMDDashboard extends Component {
                               )
                         )}
                       >
-                        <View style={[$.qaBubble, { backgroundColor: q.accent }]}>
-                          <MaterialCommunityIcons name={q.icon} size={22} color="#FFF" />
+                        <View style={[$.qaBubble, { backgroundColor: q.bubble }]}>
+                          <Image source={q.ico} style={$.qaIco} resizeMode="contain" />
                         </View>
                         <Text style={[$.qaL, { color: COLORS.textPrimary }]} numberOfLines={1}>{q.l}</Text>
                         <Text style={$.qaHint} numberOfLines={1}>{q.sub}</Text>
@@ -822,12 +816,18 @@ const $ = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.8)',
   },
   qaBubble: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+  },
+  qaIco: {
+    width: 34,
+    height: 34,
   },
   qaL: { fontSize: 13, fontWeight: '800', letterSpacing: 0.1, textAlign: 'center' },
   qaHint: { fontSize: 10.5, fontWeight: '600', color: COLORS.textMuted, marginTop: 2, textAlign: 'center' },

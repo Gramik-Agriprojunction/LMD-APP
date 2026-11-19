@@ -22,7 +22,7 @@ const TABS = [
 function TabItem({ name, label, focused }) {
   return (
     <View style={styles.iconWrap}>
-      <View style={[styles.iconPill, focused && styles.iconPillOn]}>
+      <View style={styles.iconPill}>
         <MaterialCommunityIcons name={name} size={22} color={focused ? BRAND : MUTED} />
       </View>
       <Text style={[styles.label, focused && styles.labelOn]} numberOfLines={1}>
@@ -51,7 +51,7 @@ export default function MainTabBar({ navigation, activeTab = null }) {
           <TouchableOpacity
             key={tab.key}
             style={styles.tabHit}
-            activeOpacity={0.75}
+            activeOpacity={1}
             onPress={() => goTab(navigation, tab.key)}
             accessibilityRole="button"
             accessibilityLabel={tab.label}
@@ -95,12 +95,8 @@ const styles = StyleSheet.create({
   iconPill: {
     width: 44,
     height: 30,
-    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconPillOn: {
-    backgroundColor: '#EDE9FE',
   },
   label: {
     marginTop: 3,

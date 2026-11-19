@@ -73,10 +73,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
             accessibilityState={focused ? { selected: true } : {}}
             accessibilityLabel={options.tabBarAccessibilityLabel || label}
             onPress={onPress}
-            activeOpacity={0.85}
+            activeOpacity={1}
             style={styles.item}
           >
-            <View style={[styles.iconWrap, focused && styles.iconWrapOn]}>
+            <View style={styles.iconWrap}>
               <MaterialCommunityIcons
                 name={focused ? tab.iconOn : tab.icon}
                 size={22}
@@ -138,12 +138,8 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 40,
     height: 32,
-    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconWrapOn: {
-    backgroundColor: '#EDE9FE',
   },
   label: {
     marginTop: 2,

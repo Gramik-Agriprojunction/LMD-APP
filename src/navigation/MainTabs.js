@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +20,7 @@ const BAR_BG = '#F3F0FA';
 function TabIcon({ name, focused, label }) {
   return (
     <View style={styles.iconWrap}>
-      <View style={[styles.iconPill, focused && styles.iconPillOn]}>
+      <View style={styles.iconPill}>
         <MaterialCommunityIcons
           name={name}
           size={22}
@@ -34,6 +34,17 @@ function TabIcon({ name, focused, label }) {
   );
 }
 
+/** No Android ripple / iOS highlight — avoids rounded press “shadow”. */
+function TabBarButton(props) {
+  return (
+    <Pressable
+      {...props}
+      android_ripple={null}
+      style={[props.style, { backgroundColor: 'transparent' }]}
+    />
+  );
+}
+
 export default function MainTabs() {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 4);
@@ -44,6 +55,9 @@ export default function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        tabBarActiveBackgroundColor: 'transparent',
+        tabBarInactiveBackgroundColor: 'transparent',
+        tabBarButton: (props) => <TabBarButton {...props} />,
         tabBarStyle: [
           styles.bar,
           {
@@ -139,12 +153,8 @@ const styles = StyleSheet.create({
   iconPill: {
     width: 44,
     height: 30,
-    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconPillOn: {
-    backgroundColor: '#EDE9FE',
   },
   label: {
     marginTop: 3,
